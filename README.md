@@ -1,4 +1,4 @@
-![Slate](/Misc/Art/banner.png)
+![Slate](/Misc/Banner/banner.png)
 
 ![Swift 4.1](https://img.shields.io/badge/Swift-4.1-orange.svg?style=flat)
 
