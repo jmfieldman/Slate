@@ -984,7 +984,7 @@ public class SlateQueryContext {
      
      context.resolve(immObject).other
      */
-    public func query<SO: SlateObject>(_ slateObject: SO) -> SlateRelationshipResolver<SO> {
+    public func resolve<SO: SlateObject>(_ slateObject: SO) -> SlateRelationshipResolver<SO> {
         return SlateRelationshipResolver<SO>(context: self, object: slateObject)
     }
     
