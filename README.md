@@ -22,20 +22,26 @@ struct ImmBook {
     let pageCount: Int
 }
 
-/* Run queries on a Core Data object graph that return immutable, non-managed objects.
-   Slate is responsible for the conversion between Core Data and the immutable types.  */
 slate.queryAsync { context in
+    // Run queries on a Core Data object graph that return immutable, non-managed objects.
+    // Slate is responsible for the conversion between Core Data and the immutable types.
     let books: [ImmBook] = try context[ImmBook.self].filter("pageCount > 100").fetch()
+
 }.catch { error in
+    // The optional trailing catch method allows you to batch all try-based calls inside
+    // of the transaction (similar to PromiseKit)
     print(error)
 }
 
-/* Mutate managed objects in a single-writer MOC.  
-   Insert/delete/updates are announced to all registered listeners on completion. */
 slate.mutateAsync { moc in
+    // Mutate managed objects in a single-writer MOC.  
+    // Insert/delete/updates are announced to all registered listeners on completion. 
     if let cdBook = moc.object(with: someId) as? CDBook {
         cdBook.pageCount = 200
     }
+
+    // The Any? return value is passed to listeners to help implement more intelligent
+    // dispatch logic.
     return MutationType.changedPageCount
 }
 ```
