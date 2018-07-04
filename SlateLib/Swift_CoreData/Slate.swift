@@ -1271,3 +1271,175 @@ public class SlateQueryRequest<SO: SlateObject> {
         return try currentContext.managedObjectContext.count(for: nsFetchRequest)
     }
 }
+
+/**
+ The SlateMOCFetchRequest provides a wrapping around the standard NSFetchRequest in order to
+ buildable query interface.
+ */
+public class SlateMOCFetchRequest<MO: NSManagedObject> {
+
+    /// The backing NSFetchRequest that will power this fetch
+    private let nsFetchRequest: NSFetchRequest<NSFetchRequestResult>
+
+    /// The backing MOC
+    private let moc: NSManagedObjectContext
+
+    /**
+     Initializes the SlateFetchRequest with the backing NSFetchRequest returned based
+     on the generic SlateObject type.
+     */
+    fileprivate init(moc: NSManagedObjectContext) {
+        self.moc = moc
+        self.nsFetchRequest = MO.fetchRequest()
+    }
+
+    // -------------------------- Filtering ------------------------------
+
+    /**
+     Filter the query by a specified predicate.  Will create a compound AND predicate with any
+     existing predicates.
+     */
+    public func filter(_ predicate: NSPredicate) -> SlateMOCFetchRequest<MO> {
+        if let currentPredicate = nsFetchRequest.predicate {
+            nsFetchRequest.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [currentPredicate, predicate])
+        } else {
+            nsFetchRequest.predicate = predicate
+        }
+        return self
+    }
+
+    /**
+     Filter the query by a specified predicate.  Will create a compound AND predicate with any
+     existing predicates.
+     */
+    public func filter(_ predicateString: String, _ predicateArgs: Any...) -> SlateMOCFetchRequest<MO> {
+        let newPredicate = NSPredicate(format: predicateString, argumentArray: predicateArgs)
+        return filter(newPredicate)
+    }
+
+    /**
+     An alias for `filter`.  Semantically, it should come after an initial filter call.
+     */
+    public func and(_ predicate: NSPredicate) -> SlateMOCFetchRequest<MO> {
+        return filter(predicate)
+    }
+
+    /**
+     An alias for `filter`.  Semantically, it should come after an initial filter call.
+     */
+    public func and(_ predicateString: String, _ predicateArgs: AnyObject...) -> SlateMOCFetchRequest<MO> {
+        let newPredicate = NSPredicate(format: predicateString, argumentArray: predicateArgs)
+        return and(newPredicate)
+    }
+
+    /**
+     Creates an OR compound predicate with an existing predicate.
+     */
+    public func or(_ predicate: NSPredicate) -> SlateMOCFetchRequest<MO> {
+        if let currentPredicate = nsFetchRequest.predicate {
+            nsFetchRequest.predicate = NSCompoundPredicate(orPredicateWithSubpredicates: [currentPredicate, predicate])
+        } else {
+            nsFetchRequest.predicate = predicate
+        }
+        return self
+    }
+
+    /**
+     Creates an OR compound predicate with an existing predicate.
+     */
+    public func or(_ predicateString: String, _ predicateArgs: AnyObject...) -> SlateMOCFetchRequest<MO> {
+        let newPredicate = NSPredicate(format: predicateString, argumentArray: predicateArgs)
+        return or(newPredicate)
+    }
+
+    // -------------------------- Sorting ------------------------------
+
+    /**
+     Attach a sort descriptor to the fetch using key and ascending.
+     */
+    public func sort(_ property: String, ascending: Bool = true) -> SlateMOCFetchRequest<MO> {
+        let descriptor = NSSortDescriptor(key: property, ascending: ascending)
+        return sort(descriptor)
+    }
+
+    /**
+     Attach a sort descriptor to the fetch using an NSSortDescriptor
+     */
+    public func sort(_ descriptor: NSSortDescriptor) -> SlateMOCFetchRequest<MO> {
+        if nsFetchRequest.sortDescriptors == nil {
+            nsFetchRequest.sortDescriptors = [descriptor]
+        } else {
+            nsFetchRequest.sortDescriptors!.append(descriptor)
+        }
+        return self
+    }
+
+    // ------------------------ Misc Operations --------------------------
+
+    /**
+     Specify the limit of objects to query for. This modifies fetchLimit.
+     */
+    public func limit(_ limit: Int) -> SlateMOCFetchRequest<MO> {
+        nsFetchRequest.fetchLimit = limit
+        return self
+    }
+
+    /**
+     Specify the offset to begin the fetch. This modifies fetchOffset.
+     */
+    public func offset(_ offset: Int) -> SlateMOCFetchRequest<MO> {
+        nsFetchRequest.fetchOffset = offset
+        return self
+    }
+
+    // -------------------------- Fetching ------------------------------
+
+    /**
+     Executes the fetch on the current context.  You cannot execute a fetch from
+     any scope other than the query scope it was created in.
+     */
+    public func fetch() throws -> [MO] {
+        return (try moc.fetch(nsFetchRequest) as? [MO]) ?? []
+    }
+
+    /**
+     Executes the fetch on the current context.  You cannot execute a fetch from
+     any scope other than the query scope it was created in.
+     */
+    public func fetchOne() throws -> MO? {
+        let prevLimit = nsFetchRequest.fetchLimit
+        nsFetchRequest.fetchLimit = 1
+        let result: MO? = try fetch().first
+        nsFetchRequest.fetchLimit = prevLimit
+        return result
+    }
+
+    /**
+     Returns the number of objects that match the fetch parameters.  If you are only interested in
+     counting objects, this method is much faster than performing a normal fetch and counting
+     the objects in the full response array.
+     */
+    public func count() throws -> Int {
+        return try moc.count(for: nsFetchRequest)
+    }
+}
+
+public extension NSManagedObjectContext {
+    /**
+     Begin an object query, e.g. to query for ImmObject:
+
+     context.query(ImmObject.self).filter(...).fetch()
+     */
+    public func query<MO: NSManagedObject>(_ objectClass: MO.Type) -> SlateMOCFetchRequest<MO> {
+        return SlateMOCFetchRequest<MO>(moc: self)
+    }
+
+    /**
+     A subscript shortcut to begin an object query, e.g. to query for ImmObject:
+
+     context[ImmObject.self].filter(...).fetch()
+     */
+    public subscript<MO: NSManagedObject>(_ objectClass: MO.Type) -> SlateMOCFetchRequest<MO> {
+        return SlateMOCFetchRequest<MO>(moc: self)
+    }
+}
