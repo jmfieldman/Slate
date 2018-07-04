@@ -95,6 +95,14 @@ struct CoreDataAttribute {
     let optional: Bool
     let useScalar: Bool
     let type: CoreDataAttrType
+    let userdata: [String: String]
+}
+
+struct CoreDataSubstruct {
+    let structName: String
+    let varName: String
+    let optional: Bool
+    let attributes: [CoreDataAttribute]
 }
 
 struct CoreDataEntity {
@@ -102,4 +110,5 @@ struct CoreDataEntity {
     let codeClass: String
     let attributes: [CoreDataAttribute]
     let relationships: [CoreDataRelationship]
+    let substructs: [CoreDataSubstruct]
 }

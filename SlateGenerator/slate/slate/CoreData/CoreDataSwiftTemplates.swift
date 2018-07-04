@@ -72,6 +72,9 @@ extension {COREDATACLASS} {
 let template_CD_Swift_SlateClassImpl: String = """
 public {OBJTYPE} {SLATECLASS}: SlateObject {
 
+    // -- Attribute Declarations --
+{ATTRDECLARATIONS}
+
     /**
      Identifies the NSManagedObject type that backs this SlateObject
      */
@@ -95,13 +98,37 @@ public {OBJTYPE} {SLATECLASS}: SlateObject {
         // Attribute assignment
 {ATTRASSIGNMENT}
     }
-
-    // -- Attribute Declarations --
-{ATTRDECLARATIONS}
 }
 
 
 """
+
+/// Inputs:
+///  * SLATESUBSTRUCT - The Slate substruct struct name
+///  * COREDATACLASS - The backing Core Data class name
+///  * ATTRASSIGNMENT - A series of attribute assignments for this class
+///  * ATTRDECLARATIONS - A series of attribute declarations
+let template_CD_Swift_SlateSubstructImpl: String = """
+public struct {SLATESUBSTRUCT} {
+
+    // -- Attribute Declarations --
+{ATTRDECLARATIONS}
+
+    /**
+     Instantiation is private to this file; Substructs should only be instantiated
+     by their parent Slate object.
+     */
+    fileprivate init(managedObject: {COREDATACLASS}) {
+
+        // Attribute assignment
+{ATTRASSIGNMENT}
+    }
+}
+
+
+"""
+
+
 
 /// Inputs:
 ///  * ATTR - The name of the attribute
@@ -112,6 +139,29 @@ let template_CD_Swift_AttrAssignment: String = "        self.{ATTR} = managedObj
 ///  * ATTR - The name of the attribute
 ///  * TYPE - The type of the managed object
 let template_CD_Swift_AttrForceAssignment: String = "        self.{ATTR} = { let t: {TYPE}? = managedObject.{ATTR}; return t! }()\n"
+
+/// Inputs:
+///  * ATTR - The name of the attribute
+///  * TYPE - The type of substruct
+let template_CD_Swift_AttrAssignmentForSubstruct: String = "        self.{ATTR} = {TYPE}(managedObject: managedObject)\n"
+
+/// Inputs:
+///  * ATTR - The name of the attribute
+///  * TYPE - The type of substruct
+let template_CD_Swift_AttrAssignmentForOptSubstruct: String = "        self.{ATTR} = managedObject.{ATTR}_has ? {TYPE}(managedObject: managedObject) : nil\n"
+
+/// Inputs:
+///  * STRNAME - The managed property's struct prefix
+///  * ATTR - The name of the attribute
+///  * CONV - The conversion to the proper swift type
+let template_CD_Swift_SubstructAttrAssignment: String = "        self.{ATTR} = managedObject.{STRNAME}_{ATTR}{CONV}\n"
+
+/// Inputs:
+///  * STRNAME - The managed property's struct prefix
+///  * ATTR - The name of the attribute
+///  * TYPE - The type of the managed object
+///  * DEF - The default value
+let template_CD_Swift_SubstructAttrForceAssignment: String = "        self.{ATTR} = { let t: {TYPE}? = managedObject.{STRNAME}_{ATTR}{CONV}; return t ?? {DEF} }()\n"
 
 /// Inputs:
 ///  * ATTR - The name of the attribute

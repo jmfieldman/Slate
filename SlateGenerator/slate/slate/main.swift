@@ -9,6 +9,7 @@
 import Foundation
 
 
+//try?
 command(
     Argument<String>("modelPath", description: "Path to the xcdatamodel file"),
     Argument<String>("outputPath", description: "Directory to write generated files"),
@@ -44,6 +45,6 @@ command(
                                             importModule: importModule)
     
 }.run(
-    //["/Users/jasonfieldman/Development/Slate/SlatePlayground/SlatePlayground/SlatePlayground.xcdatamodeld/SlatePlayground 2.xcdatamodel",
-    // "/tmp/"]
+    //["/Users/jasonfieldman/Development/Slate_Start/SlatePlayground/SlatePlayground/SlatePlayground.xcdatamodeld/SlatePlayground 2.xcdatamodel",
+    //"/tmp/"]
 )

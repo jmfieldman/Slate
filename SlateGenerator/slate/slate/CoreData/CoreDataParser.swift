@@ -30,8 +30,11 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
             print("Error getting name attribute of entity")
             exit(2)
         }
-        
+
+        // Attributes
+
         var attributes: [CoreDataAttribute] = []
+        var prestructAttrs: [CoreDataAttribute] = []
         for attribute in entity.childElements {
             guard attribute.name == "attribute" else {
                 continue
@@ -56,15 +59,93 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
             
             let useScalar = (attribute.attributes["usesScalarValueType"] ?? "NO") == "YES"
             
-            
-            
-            attributes.append(
-                CoreDataAttribute(name: name,
-                                  optional: optional,
-                                  useScalar: useScalar,
-                                  type: attrType)
-            )
+            var userdata: [String: String] = [:]
+            for userdataElement in attribute.childElements {
+                guard userdataElement.name == "userInfo" else {
+                    continue
+                }
+                for entry in userdataElement.childElements {
+                    guard entry.name == "entry" else {
+                        continue
+                    }
+                    if let key = entry.attributes["key"], let value = entry.attributes["value"] {
+                        userdata[key] = value
+                    }
+                }
+            }
+
+            let newAttr = CoreDataAttribute(name: name,
+                                            optional: optional,
+                                            useScalar: useScalar,
+                                            type: attrType,
+                                            userdata: userdata)
+
+            if name.contains("_") {
+                prestructAttrs.append(newAttr)
+            } else {
+                attributes.append(newAttr)
+            }
         }
+
+        // Substructs
+
+        var subAttrs: [String: [CoreDataAttribute]] = [:]
+        for attr in prestructAttrs {
+            let breakdown = attr.name.components(separatedBy: "_")
+            if breakdown.count != 2 {
+                print("cannot parse substruct attribute \(attr.name) with more than 2 components")
+                continue
+            }
+
+            let structname = breakdown[0]
+            let attrname = breakdown[1]
+
+            let newAttr = CoreDataAttribute(name: attrname,
+                                            optional: attr.optional,
+                                            useScalar: attr.useScalar,
+                                            type: attr.type,
+                                            userdata: attr.userdata)
+            if subAttrs[structname] == nil {
+                subAttrs[structname] = [newAttr]
+            } else {
+                subAttrs[structname]!.append(newAttr)
+            }
+        }
+
+        var substructs: [CoreDataSubstruct] = []
+        for (varname, attrArr) in subAttrs {
+
+            let hasAttr = attrArr.first(where: { $0.name == "has" })
+            if let hasAttr = hasAttr {
+                if hasAttr.type != .boolean || hasAttr.optional == true || hasAttr.useScalar == false {
+                    print("a substruct _has property must be a non-optional scalar boolean")
+                    continue
+                }
+            }
+
+            let isOptional = hasAttr != nil
+            let attrs = attrArr.filter({ $0.name != "has" })
+
+            // Make sure optional structs have all-optional properties
+            if isOptional {
+                var bad = false
+                for attr in attrs {
+                    if !attr.optional {
+                        print("in entity \(entityName) substruct \(varname) is optional (_has exists) -- all substruct attributes must be labeled optional in core data but [\(varname + "_" + attr.name)] is not")
+                        bad = true
+                    }
+                }
+                if bad { continue }
+            }
+
+            let substruct = CoreDataSubstruct(structName: varname.capitalized,
+                                              varName: varname,
+                                              optional: isOptional,
+                                              attributes: attrs)
+            substructs.append(substruct)
+        }
+
+        // Relationships
         
         var relationships: [CoreDataRelationship] = []
         for relationship in entity.childElements {
@@ -99,7 +180,8 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
             CoreDataEntity(entityName: entityName,
                            codeClass: representedClass,
                            attributes: attributes,
-                           relationships: relationships)
+                           relationships: relationships,
+                           substructs: substructs)
         )
     }
     

@@ -46,7 +46,7 @@ class CoreDataSwiftGenerator {
                 fileAccumulator = generateHeader(filename: filename, importModule: importModule)
             }
             
-            fileAccumulator += entityCode(entity: entity, useClass: useClass, className: className)
+            fileAccumulator += entityCode(entity: entity, useClass: useClass, className: className, classXform: classXform)
             
             // Write to file if necessary
             if filePerClass {
@@ -77,7 +77,8 @@ class CoreDataSwiftGenerator {
     static func entityCode(
         entity: CoreDataEntity,
         useClass: Bool,
-        className: String
+        className: String,
+        classXform: String
     ) -> String {
         
         let convertible = template_CD_Swift_SlateObjectConvertible.replacingWithMap(
@@ -89,15 +90,20 @@ class CoreDataSwiftGenerator {
             ["COREDATACLASS": entity.codeClass,
              "COREDATAENTITYNAME": entity.entityName]
         )
-        
-        let classImpl = generateClassImpl(entity: entity, useClass: useClass, className: className)
+
+        let substruct = entity.substructs.reduce("") {
+            let structName: String = classXform.replacingOccurrences(of: kStringArgVar, with: entity.entityName + $1.varName.capitalized)
+            return $0 + generateSubstructImpl(substruct: $1, baseEntityClass: entity.codeClass, name: structName)
+        }
+
+        let classImpl = generateClassImpl(entity: entity, useClass: useClass, className: className, classXform: classXform)
         let relations = generateRelationships(entity: entity, useClass: useClass, className: className)
         let equatable = generateEquatable(entity: entity, className: className)
         
-        return "\(convertible)\(moExtension)\(classImpl)\(relations)\(equatable)"
+        return "\(convertible)\(moExtension)\(substruct)\(classImpl)\(relations)\(equatable)"
     }
 
-    static func generateClassImpl(entity: CoreDataEntity, useClass: Bool, className: String) -> String {
+    static func generateClassImpl(entity: CoreDataEntity, useClass: Bool, className: String, classXform: String) -> String {
         var declarations: String = ""
         var assignments: String = ""
         
@@ -119,11 +125,71 @@ class CoreDataSwiftGenerator {
                  "CONV": conv,
                 ])
         }
+
+        for substruct in entity.substructs {
+            let substructType = classXform.replacingOccurrences(of: kStringArgVar, with: entity.entityName + substruct.varName.capitalized)
+            declarations += template_CD_Swift_AttrDeclaration.replacingWithMap(
+                ["ATTR": substruct.varName,
+                 "TYPE": substructType,
+                 "OPTIONAL": substruct.optional ? "?" : ""])
+
+            let str = substruct.optional ? template_CD_Swift_AttrAssignmentForOptSubstruct : template_CD_Swift_AttrAssignmentForSubstruct
+            assignments += str.replacingWithMap(
+                ["ATTR": substruct.varName,
+                 "TYPE": substructType]
+            )
+        }
         
         return template_CD_Swift_SlateClassImpl.replacingWithMap(
             ["OBJTYPE": useClass ? "class" : "struct",
              "SLATECLASS": className,
              "COREDATACLASS": entity.codeClass,
+             "ATTRASSIGNMENT": assignments,
+             "ATTRDECLARATIONS": declarations]
+        )
+    }
+
+    static func generateSubstructImpl(substruct: CoreDataSubstruct, baseEntityClass: String, name: String) -> String {
+        var declarations: String = ""
+        var assignments: String = ""
+
+        for attr in substruct.attributes {
+            let isOptionalForStruct: Bool = {
+                if let optInStruct = attr.userdata["optInStruct"] {
+                    return optInStruct == "true"
+                }
+                return attr.optional
+            }()
+
+            declarations += template_CD_Swift_AttrDeclaration.replacingWithMap(
+                ["ATTR": attr.name,
+                 "TYPE": attr.type.immType,
+                 "OPTIONAL": isOptionalForStruct ? "?" : ""])
+
+            let useForce = !isOptionalForStruct && (attr.type.codeGenForceOptional || attr.optional)
+            let str = useForce ? template_CD_Swift_SubstructAttrForceAssignment : template_CD_Swift_SubstructAttrAssignment
+            var conv = ""
+            if let sconv = attr.type.swiftValueConversion, !attr.useScalar {
+                conv = (attr.optional ? "?" : "") + sconv
+            }
+
+            let def: String = attr.userdata["default"] ?? ""
+            if useForce && def.isEmpty {
+                print("substruct property \(baseEntityClass).\(substruct.varName + "_" + attr.name) is forced non-optional but does not have a default userInfo key")
+            }
+
+            assignments += str.replacingWithMap(
+                ["ATTR": attr.name,
+                 "STRNAME": substruct.varName,
+                 "TYPE": attr.type.immType,
+                 "CONV": conv,
+                 "DEF": def,
+                 ])
+        }
+
+        return template_CD_Swift_SlateSubstructImpl.replacingWithMap(
+            ["SLATESUBSTRUCT": name,
+             "COREDATACLASS": baseEntityClass,
              "ATTRASSIGNMENT": assignments,
              "ATTRDECLARATIONS": declarations]
         )
