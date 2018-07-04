@@ -109,9 +109,14 @@ class CoreDataSwiftGenerator {
             
             let useForce = !attr.optional && attr.type.codeGenForceOptional
             let str = useForce ? template_CD_Swift_AttrForceAssignment : template_CD_Swift_AttrAssignment
+            var conv = ""
+            if let sconv = attr.type.swiftValueConversion, !attr.useScalar {
+                conv = (attr.optional ? "?" : "") + sconv
+            }
             assignments += str.replacingWithMap(
                 ["ATTR": attr.name,
                  "TYPE": attr.type.immType,
+                 "CONV": conv,
                 ])
         }
         

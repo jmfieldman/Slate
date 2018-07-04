@@ -105,7 +105,8 @@ public {OBJTYPE} {SLATECLASS}: SlateObject {
 
 /// Inputs:
 ///  * ATTR - The name of the attribute
-let template_CD_Swift_AttrAssignment: String = "        self.{ATTR} = managedObject.{ATTR}\n"
+///  * CONV - The conversion to the proper swift type
+let template_CD_Swift_AttrAssignment: String = "        self.{ATTR} = managedObject.{ATTR}{CONV}\n"
 
 /// Inputs:
 ///  * ATTR - The name of the attribute

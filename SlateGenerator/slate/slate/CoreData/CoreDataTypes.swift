@@ -61,6 +61,25 @@ enum CoreDataAttrType: String {
         case .transformable: return true
         }
     }
+
+    // Converts something like NSNumber to Double
+    var swiftValueConversion: String? {
+        switch self {
+        case .integer16: return ".int16Value"
+        case .integer32: return ".int32Value"
+        case .integer64: return ".int64Value"
+        case .decimal: return ".decimalValue"
+        case .double: return ".doubleValue"
+        case .float: return ".floatValue"
+        case .string: return nil
+        case .boolean: return ".boolValue"
+        case .date: return nil
+        case .binaryData: return nil
+        case .uuid: return nil
+        case .uri: return nil
+        case .transformable: return nil
+        }
+    }
 }
 
 struct CoreDataRelationship {
