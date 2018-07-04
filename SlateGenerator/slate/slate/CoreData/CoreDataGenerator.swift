@@ -46,7 +46,7 @@ class CoreDataSwiftGenerator {
                 fileAccumulator = generateHeader(filename: filename, importModule: importModule)
             }
             
-            fileAccumulator += entityCode(entity: entity, useClass: useClass, className: className, classXform: classXform)
+            fileAccumulator += entityCode(entity: entity, useClass: useClass, className: className)
             
             // Write to file if necessary
             if filePerClass {
@@ -77,8 +77,7 @@ class CoreDataSwiftGenerator {
     static func entityCode(
         entity: CoreDataEntity,
         useClass: Bool,
-        className: String,
-        classXform: String
+        className: String
     ) -> String {
         
         let convertible = template_CD_Swift_SlateObjectConvertible.replacingWithMap(
@@ -91,19 +90,14 @@ class CoreDataSwiftGenerator {
              "COREDATAENTITYNAME": entity.entityName]
         )
 
-        let substruct = entity.substructs.reduce("") {
-            let structName: String = classXform.replacingOccurrences(of: kStringArgVar, with: entity.entityName + $1.varName.capitalized)
-            return $0 + generateSubstructImpl(substruct: $1, baseEntityClass: entity.codeClass, name: structName)
-        }
-
-        let classImpl = generateClassImpl(entity: entity, useClass: useClass, className: className, classXform: classXform)
+        let classImpl = generateClassImpl(entity: entity, useClass: useClass, className: className)
         let relations = generateRelationships(entity: entity, useClass: useClass, className: className)
         let equatable = generateEquatable(entity: entity, className: className)
         
-        return "\(convertible)\(moExtension)\(substruct)\(classImpl)\(relations)\(equatable)"
+        return "\(convertible)\(moExtension)\(classImpl)\(relations)\(equatable)"
     }
 
-    static func generateClassImpl(entity: CoreDataEntity, useClass: Bool, className: String, classXform: String) -> String {
+    static func generateClassImpl(entity: CoreDataEntity, useClass: Bool, className: String) -> String {
         var declarations: String = ""
         var assignments: String = ""
         
@@ -126,8 +120,12 @@ class CoreDataSwiftGenerator {
                 ])
         }
 
+        let substruct = entity.substructs.reduce("") {
+            return $0 + generateSubstructImpl(substruct: $1, baseEntityClass: entity.codeClass)
+        }
+
         for substruct in entity.substructs {
-            let substructType = classXform.replacingOccurrences(of: kStringArgVar, with: entity.entityName + substruct.varName.capitalized)
+            let substructType = className + "." + substruct.structName
             declarations += template_CD_Swift_AttrDeclaration.replacingWithMap(
                 ["ATTR": substruct.varName,
                  "TYPE": substructType,
@@ -145,11 +143,12 @@ class CoreDataSwiftGenerator {
              "SLATECLASS": className,
              "COREDATACLASS": entity.codeClass,
              "ATTRASSIGNMENT": assignments,
-             "ATTRDECLARATIONS": declarations]
+             "ATTRDECLARATIONS": declarations,
+             "SUBSTRUCTS": substruct]
         )
     }
 
-    static func generateSubstructImpl(substruct: CoreDataSubstruct, baseEntityClass: String, name: String) -> String {
+    static func generateSubstructImpl(substruct: CoreDataSubstruct, baseEntityClass: String) -> String {
         var declarations: String = ""
         var assignments: String = ""
 
@@ -161,7 +160,7 @@ class CoreDataSwiftGenerator {
                 return attr.optional
             }()
 
-            declarations += template_CD_Swift_AttrDeclaration.replacingWithMap(
+            declarations += template_CD_Swift_SubstructAttrDeclaration.replacingWithMap(
                 ["ATTR": attr.name,
                  "TYPE": attr.type.immType,
                  "OPTIONAL": isOptionalForStruct ? "?" : ""])
@@ -188,7 +187,7 @@ class CoreDataSwiftGenerator {
         }
 
         return template_CD_Swift_SlateSubstructImpl.replacingWithMap(
-            ["SLATESUBSTRUCT": name,
+            ["SLATESUBSTRUCT": substruct.structName,
              "COREDATACLASS": baseEntityClass,
              "ATTRASSIGNMENT": assignments,
              "ATTRDECLARATIONS": declarations]

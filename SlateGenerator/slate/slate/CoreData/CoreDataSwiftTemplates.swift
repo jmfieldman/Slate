@@ -98,6 +98,10 @@ public {OBJTYPE} {SLATECLASS}: SlateObject {
         // Attribute assignment
 {ATTRASSIGNMENT}
     }
+
+    // -- Substruct Definitions
+
+{SUBSTRUCTS}
 }
 
 
@@ -109,21 +113,21 @@ public {OBJTYPE} {SLATECLASS}: SlateObject {
 ///  * ATTRASSIGNMENT - A series of attribute assignments for this class
 ///  * ATTRDECLARATIONS - A series of attribute declarations
 let template_CD_Swift_SlateSubstructImpl: String = """
-public struct {SLATESUBSTRUCT} {
+    public struct {SLATESUBSTRUCT} {
 
-    // -- Attribute Declarations --
+        // -- Attribute Declarations --
 {ATTRDECLARATIONS}
 
-    /**
-     Instantiation is private to this file; Substructs should only be instantiated
-     by their parent Slate object.
-     */
-    fileprivate init(managedObject: {COREDATACLASS}) {
+        /**
+         Instantiation is private to this file; Substructs should only be instantiated
+         by their parent Slate object.
+         */
+        fileprivate init(managedObject: {COREDATACLASS}) {
 
-        // Attribute assignment
+            // Attribute assignment
 {ATTRASSIGNMENT}
+        }
     }
-}
 
 
 """
@@ -154,20 +158,26 @@ let template_CD_Swift_AttrAssignmentForOptSubstruct: String = "        self.{ATT
 ///  * STRNAME - The managed property's struct prefix
 ///  * ATTR - The name of the attribute
 ///  * CONV - The conversion to the proper swift type
-let template_CD_Swift_SubstructAttrAssignment: String = "        self.{ATTR} = managedObject.{STRNAME}_{ATTR}{CONV}\n"
+let template_CD_Swift_SubstructAttrAssignment: String = "            self.{ATTR} = managedObject.{STRNAME}_{ATTR}{CONV}\n"
 
 /// Inputs:
 ///  * STRNAME - The managed property's struct prefix
 ///  * ATTR - The name of the attribute
 ///  * TYPE - The type of the managed object
 ///  * DEF - The default value
-let template_CD_Swift_SubstructAttrForceAssignment: String = "        self.{ATTR} = { let t: {TYPE}? = managedObject.{STRNAME}_{ATTR}{CONV}; return t ?? {DEF} }()\n"
+let template_CD_Swift_SubstructAttrForceAssignment: String = "            self.{ATTR} = { let t: {TYPE}? = managedObject.{STRNAME}_{ATTR}{CONV}; return t ?? {DEF} }()\n"
 
 /// Inputs:
 ///  * ATTR - The name of the attribute
 ///  * TYPE - The immutable type of the attribute
 ///  * OPTIONAL - Use `?` to indicate that this attribute is optional
 let template_CD_Swift_AttrDeclaration: String = "    let {ATTR}: {TYPE}{OPTIONAL}\n"
+
+/// Inputs:
+///  * ATTR - The name of the attribute
+///  * TYPE - The immutable type of the attribute
+///  * OPTIONAL - Use `?` to indicate that this attribute is optional
+let template_CD_Swift_SubstructAttrDeclaration: String = "        let {ATTR}: {TYPE}{OPTIONAL}\n"
 
 /// Inputs:
 ///  * OBJQUAL - The SO qualifier string; `: ` for class or ` == ` for struct
