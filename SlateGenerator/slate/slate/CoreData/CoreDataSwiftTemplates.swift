@@ -171,13 +171,13 @@ let template_CD_Swift_SubstructAttrForceAssignment: String = "            self.{
 ///  * ATTR - The name of the attribute
 ///  * TYPE - The immutable type of the attribute
 ///  * OPTIONAL - Use `?` to indicate that this attribute is optional
-let template_CD_Swift_AttrDeclaration: String = "    let {ATTR}: {TYPE}{OPTIONAL}\n"
+let template_CD_Swift_AttrDeclaration: String = "    public let {ATTR}: {TYPE}{OPTIONAL}\n"
 
 /// Inputs:
 ///  * ATTR - The name of the attribute
 ///  * TYPE - The immutable type of the attribute
 ///  * OPTIONAL - Use `?` to indicate that this attribute is optional
-let template_CD_Swift_SubstructAttrDeclaration: String = "        let {ATTR}: {TYPE}{OPTIONAL}\n"
+let template_CD_Swift_SubstructAttrDeclaration: String = "        public let {ATTR}: {TYPE}{OPTIONAL}\n"
 
 /// Inputs:
 ///  * OBJQUAL - The SO qualifier string; `: ` for class or ` == ` for struct
