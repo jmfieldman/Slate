@@ -324,7 +324,7 @@ public class Slate {
                 return
             }
             
-            // Validate and insert the storeURL for disk-based persistent stores.
+            // Validate the storeURL for disk-based persistent stores.
             if (persistentStoreDescription.type != NSInMemoryStoreType) {
                 guard let storeURL = persistentStoreDescription.url else {
                     completionHandler(persistentStoreDescription, SlateError.storageURLRequired)
@@ -337,7 +337,6 @@ public class Slate {
                     completionHandler(persistentStoreDescription, SlateError.storageURLAlreadyInUse)
                     return
                 }
-                Slate.storeUrlSet.insert(storeURL)
                 Slate.storeUrlCheckLock.unlock()
             }
             
@@ -353,6 +352,18 @@ public class Slate {
             self.persistentStoreCoordinator?.addPersistentStore(with: persistentStoreDescription) { desc, error in
                 // If the PSC is configured properly we can spin up the access queue
                 if error == nil {
+                    
+                    // insert the storeURL for disk-based persistent stores.
+                    if (persistentStoreDescription.type != NSInMemoryStoreType) {
+                        guard let storeURL = persistentStoreDescription.url else {
+                            return
+                        }
+                        
+                        Slate.storeUrlCheckLock.lock()
+                        Slate.storeUrlSet.insert(storeURL)
+                        Slate.storeUrlCheckLock.unlock()
+                    }
+                    
                     self.configured = true
                     self.accessQueue.activate()
                 }
