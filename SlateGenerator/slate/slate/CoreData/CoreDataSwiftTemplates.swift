@@ -142,7 +142,7 @@ let template_CD_Swift_AttrAssignment: String = "        self.{ATTR} = managedObj
 /// Inputs:
 ///  * ATTR - The name of the attribute
 ///  * TYPE - The type of the managed object
-let template_CD_Swift_AttrForceAssignment: String = "        self.{ATTR} = { let t: {TYPE}? = managedObject.{ATTR}; return t! }()\n"
+let template_CD_Swift_AttrForceAssignment: String = "        self.{ATTR} = { let t: {TYPE}? = managedObject.{ATTR}{CONV}; return t! }()\n"
 
 /// Inputs:
 ///  * ATTR - The name of the attribute

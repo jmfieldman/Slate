@@ -62,6 +62,26 @@ enum CoreDataAttrType: String {
         }
     }
 
+    // If the CD value is not scalar, we'll need to convert it to the
+    // native scalar
+    var needsOptConvIfNotScalar: Bool {
+        switch self {
+        case .integer16: return true
+        case .integer32: return true
+        case .integer64: return true
+        case .decimal: return true
+        case .double: return true
+        case .float: return true
+        case .string: return false
+        case .boolean: return true
+        case .date: return false
+        case .binaryData: return false
+        case .uuid: return false
+        case .uri: return false
+        case .transformable: return false
+        }
+    }
+
     // Converts something like NSNumber to Double
     var swiftValueConversion: String? {
         switch self {
