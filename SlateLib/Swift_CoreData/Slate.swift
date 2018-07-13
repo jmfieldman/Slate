@@ -1290,18 +1290,26 @@ public class SlateQueryRequest<SO: SlateObject> {
 public class SlateMOCFetchRequest<MO: NSManagedObject> {
 
     /// The backing NSFetchRequest that will power this fetch
-    private let nsFetchRequest: NSFetchRequest<NSFetchRequestResult>
+    fileprivate let nsFetchRequest: NSFetchRequest<MO>
 
     /// The backing MOC
-    private let moc: NSManagedObjectContext
+    fileprivate let moc: NSManagedObjectContext
 
+    /// Generate a fetched results controller for this query
+    public var fetchedResultsController: NSFetchedResultsController<MO> {
+        return NSFetchedResultsController<MO>(fetchRequest: nsFetchRequest,
+                                              managedObjectContext: moc,
+                                              sectionNameKeyPath: nil,
+                                              cacheName: nil)
+    }
+    
     /**
      Initializes the SlateFetchRequest with the backing NSFetchRequest returned based
      on the generic SlateObject type.
      */
     fileprivate init(moc: NSManagedObjectContext) {
         self.moc = moc
-        self.nsFetchRequest = MO.fetchRequest()
+        self.nsFetchRequest = MO.fetchRequest() as! NSFetchRequest<MO>
     }
 
     // -------------------------- Filtering ------------------------------
@@ -1410,7 +1418,7 @@ public class SlateMOCFetchRequest<MO: NSManagedObject> {
      any scope other than the query scope it was created in.
      */
     public func fetch() throws -> [MO] {
-        return (try moc.fetch(nsFetchRequest) as? [MO]) ?? []
+        return try moc.fetch(nsFetchRequest)
     }
 
     /**
@@ -1452,5 +1460,24 @@ public extension NSManagedObjectContext {
      */
     public subscript<MO: NSManagedObject>(_ objectClass: MO.Type) -> SlateMOCFetchRequest<MO> {
         return SlateMOCFetchRequest<MO>(moc: self)
+    }
+}
+
+public extension Slate {
+    public func convert<MO: NSManagedObject, SO: SlateObject>(managedObjects: [MO]) throws -> [SO] {
+        guard let slatableResult = managedObjects as? [SlateObjectConvertible] else {
+            throw SlateError.queryInvalidCast
+        }
+        
+        let immResults: [SO] = try slatableResult.map { slatableObject in
+            let slateObject = self.cachedObjectOrCreate(id: slatableObject.objectID, make: { slatableObject.slateObject })
+            guard let immObj = slateObject as? SO else {
+                throw SlateError.queryInvalidCast
+            }
+            
+            return immObj
+        }
+        
+        return immResults
     }
 }
