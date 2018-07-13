@@ -21,6 +21,19 @@ let template_CD_Swift_fileheader: String = """
 import Foundation
 import CoreData{EXTRAIMPORT}
 
+/** These extensions are available if conversion to basic integer is required */
+private extension Int16 {
+    var slate_asInt: Int { return Int(self) }
+}
+
+private extension Int32 {
+    var slate_asInt: Int { return Int(self) }
+}
+
+private extension Int64 {
+    var slate_asInt: Int { return Int(self) }
+}
+
 
 """
 
@@ -74,7 +87,6 @@ public {OBJTYPE} {SLATECLASS}: SlateObject {
 
     // -- Attribute Declarations --
 {ATTRDECLARATIONS}
-
     /**
      Identifies the NSManagedObject type that backs this SlateObject
      */

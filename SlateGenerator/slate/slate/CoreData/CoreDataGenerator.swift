@@ -113,6 +113,8 @@ class CoreDataSwiftGenerator {
             var conv = ""
             if let sconv = attr.type.swiftValueConversion, !attr.useScalar {
                 conv = ((attr.optional || useForce) ? "?" : "") + sconv
+            } else if _useInt && attr.type.isInt {
+                conv = ((attr.optional  && !attr.useScalar) ? "?" : "") + ".slate_asInt"
             }
             assignments += str.replacingWithMap(
                 ["ATTR": attr.name,
@@ -170,7 +172,9 @@ class CoreDataSwiftGenerator {
             let str = useForce ? template_CD_Swift_SubstructAttrForceAssignment : template_CD_Swift_SubstructAttrAssignment
             var conv = ""
             if let sconv = attr.type.swiftValueConversion, !attr.useScalar {
-                conv = ((attr.optional || useForce) ? "?" : "") + sconv
+                conv = ((attr.optional) ? "?" : "") + sconv
+            } else if _useInt && attr.type.isInt {
+                conv = ((attr.optional && !attr.useScalar) ? "?" : "") + ".slate_asInt"
             }
 
             let def: String = attr.userdata["default"] ?? ""

@@ -26,9 +26,9 @@ enum CoreDataAttrType: String {
     
     var immType: String {
         switch self {
-        case .integer16: return "Int16"
-        case .integer32: return "Int32"
-        case .integer64: return "Int64"
+        case .integer16: return _useInt ? "Int" : "Int16"
+        case .integer32: return _useInt ? "Int" : "Int32"
+        case .integer64: return _useInt ? "Int" : "Int64"
         case .decimal: return "Decimal"
         case .double: return "Double"
         case .float: return "Float"
@@ -82,12 +82,22 @@ enum CoreDataAttrType: String {
         }
     }
 
+    // true if this is an integer type
+    var isInt: Bool {
+        switch self {
+        case .integer16: return true
+        case .integer32: return true
+        case .integer64: return true
+        default: return false
+        }
+    }
+
     // Converts something like NSNumber to Double
     var swiftValueConversion: String? {
         switch self {
-        case .integer16: return ".int16Value"
-        case .integer32: return ".int32Value"
-        case .integer64: return ".int64Value"
+        case .integer16: return _useInt ? ".intValue" : ".int16Value"
+        case .integer32: return _useInt ? ".intValue" : ".int32Value"
+        case .integer64: return _useInt ? ".intValue" : ".int64Value"
         case .decimal: return ".decimalValue"
         case .double: return ".doubleValue"
         case .float: return ".floatValue"
