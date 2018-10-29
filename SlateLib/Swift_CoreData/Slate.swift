@@ -344,9 +344,6 @@ public class Slate {
             self.managedObjectModel = managedObjectModel
             self.persistentStoreDescription = persistentStoreDescription
             
-            // The configuration will wait on the persistent store addition
-            let semaphore = DispatchSemaphore(value: 0)
-            
             // The PSC is created and attached to the store
             self.persistentStoreCoordinator = NSPersistentStoreCoordinator(managedObjectModel: managedObjectModel)
             self.persistentStoreCoordinator?.addPersistentStore(with: persistentStoreDescription) { desc, error in
@@ -364,23 +361,22 @@ public class Slate {
                         Slate.storeUrlCheckLock.unlock()
                     }
                     
+                    // The master MOC is created and attached to the PSC
+                    self.masterContext = _SlateManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+                    self.masterContext?.persistentStoreCoordinator = self.persistentStoreCoordinator
+                    self.masterContext?.undoManager = nil
+                    self.masterContext?.performAndWait {
+                        // Guarantees that the master context is setup before activating
+                        // the access queue.
+                    }
+                    
                     self.configured = true
                     self.accessQueue.activate()
                 }
                 
                 // Call our parent completion handler
                 completionHandler(desc, error)
-                
-                // Done
-                semaphore.signal()
             }
-            
-            let _ = semaphore.wait(timeout: DispatchTime.distantFuture)
-            
-            // The master MOC is created and attached to the PSC
-            self.masterContext = _SlateManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
-            self.masterContext?.persistentStoreCoordinator = self.persistentStoreCoordinator
-            self.masterContext?.undoManager = nil
         }
     }
     
@@ -625,6 +621,11 @@ public class Slate {
                     updateMap = Slate.toSlateChangeMap(masterContext.updatedObjects)
                     deleteMap = Slate.toSlateChangeMap(masterContext.deletedObjects)
                     insertMap = Slate.toSlateChangeMap(masterContext.insertedObjects)
+                    
+                    // Update cache (after getting objects but before saving
+                    // so that we are cached for any fetched results controllers
+                    self.updateImmObjectCache(with: Array(updateMap.values), deletes: Array(deleteMap.values))
+                    
                     try masterContext.safeSave()
                 } catch {
                     catchBlock.error = error
@@ -642,9 +643,6 @@ public class Slate {
                                                          updateMap: updateMap,
                                                          deleteMap: deleteMap,
                                                          insertMap: insertMap)
-                
-                // Update cache
-                self.updateImmObjectCache(with: Array(updateMap.values), deletes: Array(deleteMap.values))
                 
                 // The announcement is made within the perform queue of the
                 // masterContext (since it is being used for reads in the query context)
@@ -711,6 +709,11 @@ public class Slate {
                     updateMap = Slate.toSlateChangeMap(masterContext.updatedObjects)
                     deleteMap = Slate.toSlateChangeMap(masterContext.deletedObjects)
                     insertMap = Slate.toSlateChangeMap(masterContext.insertedObjects)
+                    
+                    // Update cache (after getting objects but before saving
+                    // so that we are cached for any fetched results controllers
+                    self.updateImmObjectCache(with: Array(updateMap.values), deletes: Array(deleteMap.values))
+                    
                     try masterContext.safeSave()
                 } catch {
                     catchBlock.error = error
@@ -728,9 +731,6 @@ public class Slate {
                                                          updateMap: updateMap,
                                                          deleteMap: deleteMap,
                                                          insertMap: insertMap)
-                
-                // Update cache
-                self.updateImmObjectCache(with: Array(updateMap.values), deletes: Array(deleteMap.values))
                 
                 // The announcement is made within the perform queue of the
                 // masterContext (since it is being used for reads in the query context)
