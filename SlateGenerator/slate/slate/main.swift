@@ -20,8 +20,9 @@ command(
     Option<String>("name", default: "Slate%@", description: "Immutable class name transform; %@ is replaced by Entity name."),
     Option<String>("file", default: "", description: "File name transform; %@ is replaced by Entity name.  No %@ puts all classes in one file."),
     Option<String>("import", default: "", description: "Import an additional swift module"),
-    Option<Int>("embedcommand", default: 0, description: "set 1 to embed the full command used to generate files.")
-) { modelPath, outputPath, useclass, useint, classXform, fileXform, importModule, embedCommand in
+    Option<Int>("embedcommand", default: 0, description: "set 1 to embed the full command used to generate files."),
+    Option<String>("entityPath", default: "", description: "The path to generate core data entities")
+) { modelPath, outputPath, useclass, useint, classXform, fileXform, importModule, embedCommand, entityPath in
 
     let contentsPath = ((modelPath as NSString).expandingTildeInPath as NSString).appendingPathComponent("contents")
     if !FileManager.default.fileExists(atPath: contentsPath) {
@@ -48,6 +49,7 @@ command(
                                             classXform: classXform,
                                             fileXform: realFileXform,
                                             outputPath: outputPath,
+                                            entityPath: entityPath,
                                             importModule: importModule)
     
 }.run(

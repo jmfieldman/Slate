@@ -251,3 +251,30 @@ extension {SLATECLASS}: Equatable {
 
 
 """
+
+// -----------------------------------
+// --- Core Data Entity Generators ---
+// -----------------------------------
+
+/// Inputs:
+///  * COMMAND - Command used to generate the file
+///  * PROPERTIES - Core Data properties of the class
+///  * CDENTITYCLASS - Core Data entity class name
+///  * CDENTITYNAME - Core Data entity name
+let template_CD_Entity: String = """
+// {FILENAME}.swift
+// ----- DO NOT MODIFY -----{COMMAND}
+
+import Foundation
+import CoreData
+
+@objc({CDENTITYCLASS})
+public class {CDENTITYCLASS}: NSManagedObject {
+    @nonobjc public class func fetchRequest() -> NSFetchRequest<{CDENTITYCLASS}> {
+        return NSFetchRequest<{CDENTITYCLASS}>(entityName: "{CDENTITYNAME}")
+    }
+
+    {PROPERTIES}
+}
+
+"""
