@@ -141,7 +141,7 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
             let substruct = CoreDataSubstruct(structName: varname.capitalized,
                                               varName: varname,
                                               optional: isOptional,
-                                              attributes: attrs)
+                                              attributes: attrs.sorted { $0.name < $1.name })
             substructs.append(substruct)
         }
 
@@ -179,9 +179,9 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
         coreDataEntities.append(
             CoreDataEntity(entityName: entityName,
                            codeClass: representedClass,
-                           attributes: attributes,
-                           relationships: relationships,
-                           substructs: substructs)
+                           attributes: attributes.sorted { $0.name < $1.name },
+                           relationships: relationships.sorted { $0.name < $1.name },
+                           substructs: substructs.sorted { $0.structName < $1.structName })
         )
     }
     
