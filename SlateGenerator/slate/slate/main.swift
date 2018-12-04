@@ -9,6 +9,7 @@
 import Foundation
 
 var _useInt: Bool = false
+var _embedCommand: Bool = false
 
 //try?
 command(
@@ -18,8 +19,9 @@ command(
     Option<Int>("useint", default: 0, description: "0 to use declared values (Int16, etc), 1 to force Int"),
     Option<String>("name", default: "Slate%@", description: "Immutable class name transform; %@ is replaced by Entity name."),
     Option<String>("file", default: "", description: "File name transform; %@ is replaced by Entity name.  No %@ puts all classes in one file."),
-    Option<String>("import", default: "", description: "Import an additional swift module")
-) { modelPath, outputPath, useclass, useint, classXform, fileXform, importModule in
+    Option<String>("import", default: "", description: "Import an additional swift module"),
+    Option<Int>("embedcommand", default: 0, description: "set 1 to embed the full command used to generate files.")
+) { modelPath, outputPath, useclass, useint, classXform, fileXform, importModule, embedCommand in
 
     let contentsPath = ((modelPath as NSString).expandingTildeInPath as NSString).appendingPathComponent("contents")
     if !FileManager.default.fileExists(atPath: contentsPath) {
@@ -38,6 +40,7 @@ command(
     let realFileXform = (fileXform == "") ? classXform : fileXform
     let shouldUseClass = useclass != 0
     _useInt = useint != 0
+    _embedCommand = embedCommand != 0
 
     let entities = ParseCoreData(contentsPath: contentsPath)
     CoreDataSwiftGenerator.generateCoreData(entities: entities,
