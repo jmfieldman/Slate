@@ -274,7 +274,13 @@ public class {CDENTITYCLASS}: NSManagedObject {
         return NSFetchRequest<{CDENTITYCLASS}>(entityName: "{CDENTITYNAME}")
     }
 
-    {PROPERTIES}
+{PROPERTIES}
 }
 
 """
+
+/// Inputs:
+///  * VARNAME - Variable name
+///  * TYPE - The property type
+///  * OPTIONAL - The string "?" if the type is optional
+let template_CD_Entity_Property: String = "    @NSManaged public var {VARNAME}: {TYPE}{OPTIONAL}\n"

@@ -110,6 +110,25 @@ enum CoreDataAttrType: String {
         case .transformable: return nil
         }
     }
+
+    // Returns the type of the property in an NSManagedObject property
+    func swiftManagedType(scalar: Bool) -> String {
+        switch self {
+        case .integer16: return scalar ? "Int16" : "NSNumber"
+        case .integer32: return scalar ? "Int32" : "NSNumber"
+        case .integer64: return scalar ? "Int64" : "NSNumber"
+        case .decimal: return "NSDecimalNumber"
+        case .double: return scalar ? "Double" : "NSNumber"
+        case .float: return scalar ? "Float" : "NSNumber"
+        case .string: return "String"
+        case .boolean: return scalar ? "Bool" : "NSNumber"
+        case .date: return scalar ? "TimeInterval" : "Date"
+        case .binaryData: return "Data"
+        case .uuid: return "UUID"
+        case .uri: return "URL"
+        case .transformable: return "NSObject"
+        }
+    }
 }
 
 struct CoreDataRelationship {

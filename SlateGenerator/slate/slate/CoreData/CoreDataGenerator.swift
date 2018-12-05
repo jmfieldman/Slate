@@ -267,6 +267,52 @@ class CoreDataSwiftGenerator {
     // ----- Core Data Entities -----
 
     static func generateCoreDataEntityProperties(entity: CoreDataEntity) -> String {
-        return ""
+        var properties = ""
+        for attribute in entity.attributes {
+            properties += template_CD_Entity_Property.replacingWithMap(
+                ["VARNAME": attribute.name,
+                 "OPTIONAL": (attribute.optional && !attribute.useScalar) ? "?" : "",
+                 "TYPE": attribute.type.swiftManagedType(scalar: attribute.useScalar)
+                ]
+            )
+        }
+        for substruct in entity.substructs {
+            properties += "\n"
+
+            if substruct.optional {
+                properties += template_CD_Entity_Property.replacingWithMap(
+                    ["VARNAME": substruct.varName + "_has",
+                     "OPTIONAL": "",
+                     "TYPE": "Bool"
+                    ]
+                )
+            }
+
+            for attribute in substruct.attributes {
+                properties += template_CD_Entity_Property.replacingWithMap(
+                    ["VARNAME": substruct.varName + "_" + attribute.name,
+                     "OPTIONAL": (attribute.optional && !attribute.useScalar) ? "?" : "",
+                     "TYPE": attribute.type.swiftManagedType(scalar: attribute.useScalar)
+                    ]
+                )
+            }
+        }
+        for relationship in entity.relationships {
+            properties += "\n"
+
+            var type = "NSSet"
+            if relationship.ordered { type = "NSOrderedSet" }
+            if !relationship.toMany {
+                type = entityToCDClass[relationship.destinationEntityName] ?? "---"
+            }
+
+            properties += template_CD_Entity_Property.replacingWithMap(
+                ["VARNAME": relationship.name,
+                 "OPTIONAL": (relationship.optional || relationship.toMany) ? "?" : "",
+                 "TYPE": type
+                ]
+            )
+        }
+        return properties
     }
 }
