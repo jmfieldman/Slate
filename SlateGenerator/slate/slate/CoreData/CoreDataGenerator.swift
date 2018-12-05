@@ -271,7 +271,7 @@ class CoreDataSwiftGenerator {
         for attribute in entity.attributes {
             properties += template_CD_Entity_Property.replacingWithMap(
                 ["VARNAME": attribute.name,
-                 "OPTIONAL": (attribute.optional && !attribute.useScalar) ? "?" : "",
+                 "OPTIONAL": ((attribute.optional || attribute.type.codeGenForceOptional) && !attribute.useScalar) ? "?" : "",
                  "TYPE": attribute.type.swiftManagedType(scalar: attribute.useScalar)
                 ]
             )
