@@ -262,7 +262,7 @@ extension {SLATECLASS}: Equatable {
 ///  * CDENTITYCLASS - Core Data entity class name
 ///  * CDENTITYNAME - Core Data entity name
 let template_CD_Entity: String = """
-// {FILENAME}.swift
+// {FILENAME}
 // ----- DO NOT MODIFY -----{COMMAND}
 
 import Foundation
