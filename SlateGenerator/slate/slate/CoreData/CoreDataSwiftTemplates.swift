@@ -85,6 +85,12 @@ public {OBJTYPE} {SLATECLASS}: SlateObject {
 
     // -- Attribute Declarations --
 {ATTRDECLARATIONS}
+    // -- Attribute Names --
+
+    public struct Attributes {
+{ATTRNAMES}
+    }
+
     /**
      Identifies the NSManagedObject type that backs this SlateObject
      */
@@ -142,7 +148,9 @@ let template_CD_Swift_SlateSubstructImpl: String = """
 
 """
 
-
+/// Inputs:
+///  * ATTR - The name of the attribute
+let template_CD_Swift_AttrName: String = "        public static let {ATTR} = \"{ATTR}\"\n"
 
 /// Inputs:
 ///  * ATTR - The name of the attribute
