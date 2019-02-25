@@ -119,8 +119,10 @@ class CoreDataSwiftGenerator {
     static func generateClassImpl(entity: CoreDataEntity, useClass: Bool, className: String) -> String {
         var declarations: String = ""
         var assignments: String = ""
+        var attributeNames: [String] = []
         
         for attr in entity.attributes {
+            attributeNames.append(attr.name)
             declarations += template_CD_Swift_AttrDeclaration.replacingWithMap(
                 ["ATTR": attr.name,
                  "TYPE": attr.type.immType,
@@ -158,6 +160,10 @@ class CoreDataSwiftGenerator {
                 ["ATTR": substruct.varName,
                  "TYPE": substructType]
             )
+            
+            for attr in substruct.attributes {
+                attributeNames.append(substruct.varName + "_" + attr.name)
+            }
         }
         
         return template_CD_Swift_SlateClassImpl.replacingWithMap(
@@ -166,6 +172,7 @@ class CoreDataSwiftGenerator {
              "COREDATACLASS": entity.codeClass,
              "ATTRASSIGNMENT": assignments,
              "ATTRDECLARATIONS": declarations,
+             "ATTRNAMES": attributeNames.sorted(by: <).reduce("") { $0 + template_CD_Swift_AttrName.replacingWithMap(["ATTR": $1]) },
              "SUBSTRUCTS": substruct]
         )
     }
