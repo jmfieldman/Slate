@@ -145,6 +145,10 @@ struct CoreDataAttribute {
     let useScalar: Bool
     let type: CoreDataAttrType
     let userdata: [String: String]
+
+    var exposed: Bool {
+        return userdata["exposed"] != "false"
+    }
 }
 
 struct CoreDataSubstruct {
