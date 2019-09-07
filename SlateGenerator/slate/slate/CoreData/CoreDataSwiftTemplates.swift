@@ -135,6 +135,10 @@ public {OBJTYPE} {SLATECLASS}: SlateObject {
 {SUBSTRUCTS}
 }
 
+extension {SLATECLASS}: SlateManagedObjectRelating {
+    public typealias ManagedObjectType = {COREDATACLASS}
+}
+
 
 """
 
