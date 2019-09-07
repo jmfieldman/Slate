@@ -156,6 +156,10 @@ struct CoreDataSubstruct {
     let varName: String
     let optional: Bool
     let attributes: [CoreDataAttribute]
+
+    var access: String {
+        return "public"
+    }
 }
 
 struct CoreDataEntity {

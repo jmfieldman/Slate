@@ -155,6 +155,7 @@ class CoreDataSwiftGenerator {
             declarations += template_CD_Swift_AttrDeclaration.replacingWithMap(
                 ["ATTR": substruct.varName,
                  "TYPE": substructType,
+                 "ACCESS": substruct.access,
                  "OPTIONAL": substruct.optional ? "?" : ""])
 
             let str = substruct.optional ? template_CD_Swift_AttrAssignmentForOptSubstruct : template_CD_Swift_AttrAssignmentForSubstruct
