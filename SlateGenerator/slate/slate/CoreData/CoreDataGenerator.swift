@@ -123,12 +123,12 @@ class CoreDataSwiftGenerator {
         
         for attr in entity.attributes {
             attributeNames.append(attr.name)
-            if attr.exposed {
-                declarations += template_CD_Swift_AttrDeclaration.replacingWithMap(
-                    ["ATTR": attr.name,
-                     "TYPE": attr.type.immType,
-                     "OPTIONAL": attr.optional ? "?" : ""])
-            }
+
+            declarations += template_CD_Swift_AttrDeclaration.replacingWithMap(
+                ["ATTR": attr.name,
+                 "TYPE": attr.type.immType,
+                 "ACCESS": attr.access,
+                 "OPTIONAL": attr.optional ? "?" : ""])
 
             let amConvertingOptToScalar = !attr.optional && !attr.useScalar && attr.type.needsOptConvIfNotScalar
             let useForce = (!attr.optional && attr.type.codeGenForceOptional) || amConvertingOptToScalar
@@ -191,12 +191,11 @@ class CoreDataSwiftGenerator {
                 return attr.optional
             }()
 
-            if attr.exposed {
-                declarations += template_CD_Swift_SubstructAttrDeclaration.replacingWithMap(
-                    ["ATTR": attr.name,
-                     "TYPE": attr.type.immType,
-                     "OPTIONAL": isOptionalForStruct ? "?" : ""])
-            }
+            declarations += template_CD_Swift_SubstructAttrDeclaration.replacingWithMap(
+                ["ATTR": attr.name,
+                 "TYPE": attr.type.immType,
+                 "ACCESS": attr.access,
+                 "OPTIONAL": isOptionalForStruct ? "?" : ""])
 
             let useForce = !isOptionalForStruct && (attr.type.codeGenForceOptional || attr.optional)
             let str = useForce ? template_CD_Swift_SubstructAttrForceAssignment : template_CD_Swift_SubstructAttrAssignment

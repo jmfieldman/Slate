@@ -146,8 +146,8 @@ struct CoreDataAttribute {
     let type: CoreDataAttrType
     let userdata: [String: String]
 
-    var exposed: Bool {
-        return userdata["exposed"] != "false"
+    var access: String {
+        return userdata["access"] ?? "public"
     }
 }
 
