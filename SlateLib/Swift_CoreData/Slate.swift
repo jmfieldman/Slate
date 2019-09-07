@@ -94,6 +94,14 @@ public protocol SlateObject {
     var slateID: SlateID { get }
 }
 
+/**
+ Conformance to this protocol allows a SlateStreamable to be used as a generic
+ and pass the managed object type down to ivars that need a related ManagedObject type.
+ */
+public protocol SlateManagedObjectRelating: SlateObject {
+    associatedtype ManagedObjectType: NSManagedObject
+}
+
 // MARK: - SlateChangeDictionaries
 
 /**
