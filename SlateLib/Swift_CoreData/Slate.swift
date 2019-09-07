@@ -95,11 +95,11 @@ public protocol SlateObject {
 }
 
 /**
- Conformance to this protocol allows a SlateStreamable to be used as a generic
+ Conformance to this protocol allows a SlateManagedObjectRelating to be used as a generic
  and pass the managed object type down to ivars that need a related ManagedObject type.
  */
 public protocol SlateManagedObjectRelating: SlateObject {
-    associatedtype ManagedObjectType: NSManagedObject
+    associatedtype ManagedObjectType: SlateObjectConvertible, NSManagedObject
 }
 
 // MARK: - SlateChangeDictionaries
