@@ -115,6 +115,21 @@ public {OBJTYPE} {SLATECLASS}: SlateObject {
 {ATTRASSIGNMENT}
     }
 
+    /**
+     Allow the creation of a Slate-exposed class/struct with all of its parameters.
+     Note that this is internal -- this is for use only in unit tests (using the
+     @testable import directive).  You should never create values with this
+     constructor in normal code.
+     */
+    internal init(
+        {INITPARAMS}
+    ) {
+        // Internally created objects have no real managed object ID
+        self.slateID = NSManagedObjectID()
+
+        {INITPARAMASSIGNMENTS}
+    }
+
     // -- Substruct Definitions
 
 {SUBSTRUCTS}
@@ -142,6 +157,18 @@ let template_CD_Swift_SlateSubstructImpl: String = """
 
             // Attribute assignment
 {ATTRASSIGNMENT}
+        }
+
+        /**
+         Allow the creation of a Slate-exposed class/struct with all of its parameters.
+         Note that this is internal -- this is for use only in unit tests (using the
+         @testable import directive).  You should never create values with this
+         constructor in normal code.
+        */
+        internal init(
+            {INITPARAMS}
+        ) {
+            {INITPARAMASSIGNMENTS}
         }
     }
 

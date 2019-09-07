@@ -120,6 +120,8 @@ class CoreDataSwiftGenerator {
         var declarations: String = ""
         var assignments: String = ""
         var attributeNames: [String] = []
+        var initParams: [String] = []
+        var initParamAssignments: [String] = []
         
         for attr in entity.attributes {
             attributeNames.append(attr.name)
@@ -144,6 +146,9 @@ class CoreDataSwiftGenerator {
                  "TYPE": attr.type.immType,
                  "CONV": conv,
                 ])
+
+            initParams += ["\(attr.name): \(attr.type.immType)\(attr.optional ? "?" : "")"]
+            initParamAssignments += ["self.\(attr.name) = \(attr.name)"]
         }
 
         let substruct = entity.substructs.reduce("") {
@@ -167,6 +172,9 @@ class CoreDataSwiftGenerator {
             for attr in substruct.attributes {
                 attributeNames.append(substruct.varName + "_" + attr.name)
             }
+
+            initParams += ["\(substruct.varName): \(substructType)\(substruct.optional ? "?" : "")"]
+            initParamAssignments += ["self.\(substruct.varName) = \(substruct.varName)"]
         }
         
         return template_CD_Swift_SlateClassImpl.replacingWithMap(
@@ -176,6 +184,8 @@ class CoreDataSwiftGenerator {
              "ATTRASSIGNMENT": assignments,
              "ATTRDECLARATIONS": declarations,
              "ATTRNAMES": attributeNames.sorted(by: <).reduce("") { $0 + template_CD_Swift_AttrName.replacingWithMap(["ATTR": $1]) },
+             "INITPARAMS": initParams.sorted(by: <).joined(separator: ",\n        "),
+             "INITPARAMASSIGNMENTS": initParamAssignments.sorted(by: <).joined(separator: "\n        "),
              "SUBSTRUCTS": substruct]
         )
     }
@@ -183,6 +193,8 @@ class CoreDataSwiftGenerator {
     static func generateSubstructImpl(substruct: CoreDataSubstruct, baseEntityClass: String) -> String {
         var declarations: String = ""
         var assignments: String = ""
+        var initParams: [String] = []
+        var initParamAssignments: [String] = []
 
         for attr in substruct.attributes {
             let isOptionalForStruct: Bool = {
@@ -219,13 +231,18 @@ class CoreDataSwiftGenerator {
                  "CONV": conv,
                  "DEF": def,
                  ])
+
+            initParams += ["\(attr.name): \(attr.type.immType)\(attr.optional ? "?" : "")"]
+            initParamAssignments += ["self.\(attr.name) = \(attr.name)"]
         }
 
         return template_CD_Swift_SlateSubstructImpl.replacingWithMap(
             ["SLATESUBSTRUCT": substruct.structName,
              "COREDATACLASS": baseEntityClass,
              "ATTRASSIGNMENT": assignments,
-             "ATTRDECLARATIONS": declarations]
+             "ATTRDECLARATIONS": declarations,
+             "INITPARAMS": initParams.sorted(by: <).joined(separator: ",\n            "),
+             "INITPARAMASSIGNMENTS": initParamAssignments.sorted(by: <).joined(separator: "\n            "),]
         )
     }
     
