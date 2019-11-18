@@ -138,7 +138,7 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
                 if bad { continue }
             }
 
-            let substruct = CoreDataSubstruct(structName: varname.capitalized,
+            let substruct = CoreDataSubstruct(structName: varname.capitalizingFirstLetter(),
                                               varName: varname,
                                               optional: isOptional,
                                               attributes: attrs.sorted { $0.name < $1.name })

@@ -27,6 +27,7 @@
 		357ED5DF20BCD00D00DA7FD7 /* Element.swift in Sources */ = {isa = PBXBuildFile; fileRef = 357ED5DA20BCD00D00DA7FD7 /* Element.swift */; };
 		357ED5E020BCD00D00DA7FD7 /* XML.swift in Sources */ = {isa = PBXBuildFile; fileRef = 357ED5DB20BCD00D00DA7FD7 /* XML.swift */; };
 		357ED5E120BCD00D00DA7FD7 /* Parser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 357ED5DC20BCD00D00DA7FD7 /* Parser.swift */; };
+		E16CED6A23835B4700ECCAA5 /* String+CapitalizeFirst.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16CED6923835B4700ECCAA5 /* String+CapitalizeFirst.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -63,6 +64,7 @@
 		357ED5DA20BCD00D00DA7FD7 /* Element.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Element.swift; sourceTree = "<group>"; };
 		357ED5DB20BCD00D00DA7FD7 /* XML.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = XML.swift; sourceTree = "<group>"; };
 		357ED5DC20BCD00D00DA7FD7 /* Parser.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Parser.swift; sourceTree = "<group>"; };
+		E16CED6923835B4700ECCAA5 /* String+CapitalizeFirst.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+CapitalizeFirst.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -110,6 +112,7 @@
 				357ED58920BCC7E900DA7FD7 /* External */,
 				357ED58220BCC6B700DA7FD7 /* main.swift */,
 				353AE98B20BDA55100B7E1F6 /* String+ReplaceMap.swift */,
+				E16CED6923835B4700ECCAA5 /* String+CapitalizeFirst.swift */,
 			);
 			path = slate;
 			sourceTree = "<group>";
@@ -218,6 +221,7 @@
 				357ED5DD20BCD00D00DA7FD7 /* XMLError.swift in Sources */,
 				357ED58320BCC6B700DA7FD7 /* main.swift in Sources */,
 				357ED59E20BCC94D00DA7FD7 /* Commands.swift in Sources */,
+				E16CED6A23835B4700ECCAA5 /* String+CapitalizeFirst.swift in Sources */,
 				353AE98820BDA3F100B7E1F6 /* CoreDataGenerator.swift in Sources */,
 				357ED5E020BCD00D00DA7FD7 /* XML.swift in Sources */,
 				357ED5A320BCC94D00DA7FD7 /* CommandRunner.swift in Sources */,
