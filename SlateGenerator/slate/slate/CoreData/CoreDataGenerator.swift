@@ -178,7 +178,7 @@ class CoreDataSwiftGenerator {
         }
         
         return template_CD_Swift_SlateClassImpl.replacingWithMap(
-            ["OBJTYPE": useClass ? "class" : "struct",
+            ["OBJTYPE": useClass ? "final class" : "struct",
              "SLATECLASS": className,
              "COREDATACLASS": entity.codeClass,
              "ATTRASSIGNMENT": assignments,
