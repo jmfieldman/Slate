@@ -434,7 +434,7 @@ public class Slate {
   // MARK: Listeners
 
   /// The array of listeners
-  private var listeners: [ObjectIdentifier: SlateAnnounceNode] = [:]
+  private var listeners: [String: SlateAnnounceNode] = [:]
 
   /// The listener array lock
   private let listenersLock = NSLock()
@@ -444,7 +444,7 @@ public class Slate {
    */
   public func addListener(_ listener: SlateMutationListener) {
     listenersLock.lock()
-    listeners[ObjectIdentifier(listener)] = SlateAnnounceNode(listener: listener)
+    listeners["\(ObjectIdentifier(listener))"] = SlateAnnounceNode(listener: listener)
     listenersLock.unlock()
   }
 
@@ -453,7 +453,7 @@ public class Slate {
    */
   public func removeListener(_ listener: SlateMutationListener) {
     listenersLock.lock()
-    listeners[ObjectIdentifier(listener)] = nil
+    listeners["\(ObjectIdentifier(listener))"] = nil
     listenersLock.unlock()
   }
 
@@ -464,7 +464,7 @@ public class Slate {
    */
   private func announce(_ mutationResult: SlateMutationResult) {
     listenersLock.lock()
-    var toRemove: [ObjectIdentifier] = []
+    var toRemove: [String] = []
     for (objId, node) in listeners {
       if let listener = node.listener {
         listener.slateMutationHandler(result: mutationResult)
@@ -880,8 +880,12 @@ public class _SlateManagedObjectContext: NSManagedObjectContext {
 /**
  This is a node that captures a weak reference to a SlateListener
  */
-private struct SlateAnnounceNode {
+private class SlateAnnounceNode {
   fileprivate weak var listener: SlateMutationListener?
+
+  init(listener: SlateMutationListener) {
+    self.listener = listener
+  }
 }
 
 // MARK: - SlateObjectConvertible
