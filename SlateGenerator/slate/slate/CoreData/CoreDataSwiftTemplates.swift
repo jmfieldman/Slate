@@ -91,6 +91,10 @@ public {OBJTYPE} {SLATECLASS}: SlateObject {
 {ATTRNAMES}
     }
 
+    public struct Relationships {
+{RELNAMES}
+    }
+
     /**
      Identifies the NSManagedObject type that backs this SlateObject
      */
@@ -180,6 +184,9 @@ let template_CD_Swift_SlateSubstructImpl: String = """
 """
 
 /// Inputs:
+///  * REL - The name of the relationship
+let template_CD_Swift_RelName: String = "        public static let {REL} = \"{REL}\"\n"
+
 ///  * ATTR - The name of the attribute
 let template_CD_Swift_AttrName: String = "        public static let {ATTR} = \"{ATTR}\"\n"
 

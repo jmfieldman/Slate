@@ -120,6 +120,7 @@ class CoreDataSwiftGenerator {
         var declarations: String = ""
         var assignments: String = ""
         var attributeNames: [String] = []
+        var relationshipNames: [String] = []
         var initParams: [String] = []
         var initParamAssignments: [String] = []
         
@@ -149,6 +150,10 @@ class CoreDataSwiftGenerator {
 
             initParams += ["\(attr.name): \(attr.type.immType)\(attr.optional ? "?" : "")"]
             initParamAssignments += ["self.\(attr.name) = \(attr.name)"]
+        }
+
+        for relationship in entity.relationships {
+          relationshipNames.append(relationship.name)
         }
 
         let substruct = entity.substructs.reduce("") {
@@ -184,6 +189,7 @@ class CoreDataSwiftGenerator {
              "ATTRASSIGNMENT": assignments,
              "ATTRDECLARATIONS": declarations,
              "ATTRNAMES": attributeNames.sorted(by: <).reduce("") { $0 + template_CD_Swift_AttrName.replacingWithMap(["ATTR": $1]) },
+             "RELNAMES": relationshipNames.sorted(by: <).reduce("") { $0 + template_CD_Swift_RelName.replacingWithMap(["REL": $1]) },
              "INITPARAMS": initParams.sorted(by: <).joined(separator: ",\n        "),
              "INITPARAMASSIGNMENTS": initParamAssignments.sorted(by: <).joined(separator: "\n        "),
              "SUBSTRUCTS": substruct]
