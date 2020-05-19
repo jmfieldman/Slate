@@ -1448,6 +1448,22 @@ public class SlateMOCFetchRequest<MO: NSManagedObject> {
   public func count() throws -> Int {
     return try moc.count(for: nsFetchRequest)
   }
+
+  /**
+   Performs a NSBatchDeleteRequest against the receiving query, and returns the number
+   of items deleted.
+   */
+  @discardableResult
+  public func delete() throws -> Int {
+    // This cast is guaranteed to succeed:
+    // nsFetchRequest is a NSFetchRequest<MO>, where MO: NSManagedObject, and NSManagedObject: NSFetchRequestResult
+    guard let request = nsFetchRequest as? NSFetchRequest<NSFetchRequestResult> else {
+      fatalError("NSFetchRequest cast failed -- should never happen")
+    }
+    let batchDeleteRequest = NSBatchDeleteRequest(fetchRequest: request)
+    let result = try moc.execute(batchDeleteRequest) as? NSBatchDeleteResult
+    return (result?.result as? [NSManagedObjectID])?.count ?? 0
+  }
 }
 
 public extension NSManagedObjectContext {
