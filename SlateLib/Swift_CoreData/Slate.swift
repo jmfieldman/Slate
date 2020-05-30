@@ -1461,8 +1461,14 @@ public class SlateMOCFetchRequest<MO: NSManagedObject> {
       fatalError("NSFetchRequest cast failed -- should never happen")
     }
     let batchDeleteRequest = NSBatchDeleteRequest(fetchRequest: request)
+    batchDeleteRequest.resultType = NSBatchDeleteRequestResultType.resultTypeObjectIDs
     let result = try moc.execute(batchDeleteRequest) as? NSBatchDeleteResult
-    return (result?.result as? [NSManagedObjectID])?.count ?? 0
+    let objectIDArray = result?.result as? [NSManagedObjectID]
+    if let objectIDArray = objectIDArray {
+      let changes = [NSDeletedObjectsKey : objectIDArray]
+      NSManagedObjectContext.mergeChanges(fromRemoteContextSave: changes, into: [moc])
+    }
+    return objectIDArray?.count ?? 0
   }
 }
 
