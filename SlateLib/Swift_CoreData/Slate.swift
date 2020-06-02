@@ -369,6 +369,14 @@ public class Slate {
           self.masterContext = _SlateManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
           self.masterContext?.persistentStoreCoordinator = self.persistentStoreCoordinator
           self.masterContext?.undoManager = nil
+
+          // When an NSBatchDelete executes and removes an entity that was previously fetched and updated
+          // inside a single transaction, we expect the deletion to take precedence in the merge conflict.
+          // Note that since transactions against the master context are synchronized, this type of
+          // "merge conflict" is the only one that can occur as a peculiarity of batched deletes executing
+          // directly against the persistent store.
+          self.masterContext?.mergePolicy = NSMergePolicy.mergeByPropertyStoreTrump
+
           self.masterContext?.performAndWait {
             // Guarantees that the master context is setup before activating
             // the access queue.
@@ -1465,7 +1473,7 @@ public class SlateMOCFetchRequest<MO: NSManagedObject> {
     let result = try moc.execute(batchDeleteRequest) as? NSBatchDeleteResult
     let objectIDArray = result?.result as? [NSManagedObjectID]
     if let objectIDArray = objectIDArray {
-      let changes = [NSDeletedObjectsKey : objectIDArray]
+      let changes = [NSDeletedObjectsKey: objectIDArray]
       NSManagedObjectContext.mergeChanges(fromRemoteContextSave: changes, into: [moc])
     }
     return objectIDArray?.count ?? 0
