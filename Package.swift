@@ -41,7 +41,7 @@ let package = Package(
         .product(name: "ArgumentParser", package: "swift-argument-parser"),
         .product(name: "SwiftyXMLParser", package: "SwiftyXMLParser"),
       ],
-      path: "SlateGenerator/Sources"
+      path: "SlateGenerator"
     ),
 
     // MARK: Libraries
@@ -49,7 +49,7 @@ let package = Package(
     .target(
       name: "Slate",
       dependencies: [],
-      path: "Slate/Sources"
+      path: "Slate"
     ),
   ]
 )
