@@ -34,8 +34,8 @@ struct SlateGenerator: ParsableCommand {
   @Option(name: .long, help: "Directory to write generated slate object files")
   var outputSlateObjectPath: String
 
-  @Option(name: .long, help: "Directory to write generated core data entity files")
-  var outputCoreDataEntityPath: String
+  @Option(name: .long, help: "Directory to write generated core data entity files; do not supply this if you are using the natively-generated Core Data entities.")
+  var outputCoreDataEntityPath: String = ""
 
   @Flag(name: .short, help: "Create specified output paths if they don't exist yet")
   var force: Bool = false
