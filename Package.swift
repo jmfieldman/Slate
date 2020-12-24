@@ -13,7 +13,7 @@ let package = Package(
 
     // MARK: Executables
 
-    /** Generates slate files from a Core Data MOMD file */
+    /** Generates slate files from a Core Data xcdatamodel file */
     .executable(name: "slategen", targets: ["SlateGenerator"]),    
 
     // MARK: Libraries

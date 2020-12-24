@@ -6,7 +6,93 @@
 //  Copyright © 2018 Jason Fieldman. All rights reserved.
 //
 
+import ArgumentParser
 import Foundation
+
+enum ErrorCode: Int32 {
+  case fileNotFound = 1
+  case pathNotFound = 2
+  case invalidArgument = 3
+}
+
+func printError(_ str: String) {
+  fputs(str + "\n", stderr)
+}
+
+struct SlateGenerator: ParsableCommand {
+  static let configuration = CommandConfiguration(
+    abstract: "Generates Slate model objects from a Core Data xcdatamodel file"
+  )
+
+  // MARK: - Arguments
+
+  @Option(name: .long, help: "Path to the Core Data xcdatamodel file")
+  var inputModel: String
+
+  @Option(name: .long, help: "Directory to write generated slate object files")
+  var outputSlateObjectPath: String
+
+  @Option(name: .long, help: "Directory to write generated core data entity files")
+  var outputCoreDataEntityPath: String
+
+  @Flag(name: .short, help: "Create specified output paths if they don't exist yet")
+  var force: Bool = false
+
+  @Flag(name: .short, help: "Enable verbose output")
+  var verbose: Bool = false
+
+  @Flag(name: .long, help: "Ouptut generates code using struct instead of class")
+  var useStruct: Bool = false
+
+  @Flag(name: .long, help: "All Int16, Int32, Int64 values will be cast to Int in Slate code")
+  var castInt: Bool = false
+
+  @Option(name: .long, help: "Transform for generated Slate object names; %@ is replaced by the data object name.")
+  var nameTransform: String = "%@"
+
+  @Option(name: .long, help: "This string is placed in the tranditional import section of each generated file.")
+  var imports: String = ""
+
+  // MARK: - Utility
+
+  func printVerbose(_ str: String) {
+    if verbose { print(str) }
+  }
+
+  func exit(_ code: ErrorCode) throws -> Never {
+    throw ExitCode(code.rawValue)
+  }
+
+  // MARK: - Run
+
+  func run() throws {
+    // MARK: - Environment Sanity Checking
+
+    let contentsPath = ((inputModel as NSString).expandingTildeInPath as NSString).appendingPathComponent("contents")
+    guard FileManager.default.fileExists(atPath: contentsPath) else {
+      printError("Could not find data model contents at \(contentsPath)")
+      try exit(.fileNotFound)
+    }
+
+    guard force || FileManager.default.fileExists(atPath: outputSlateObjectPath) else {
+      printError("Could not find output directory at \(outputSlateObjectPath)")
+      try exit(.pathNotFound)
+    }
+
+    guard force || FileManager.default.fileExists(atPath: outputCoreDataEntityPath) else {
+      printError("Could not find output directory at \(outputCoreDataEntityPath)")
+      try exit(.pathNotFound)
+    }
+
+    guard nameTransform.contains("%@") else {
+      printError("--name-transform must contain the %@ element")
+      try exit(.invalidArgument)
+    }
+
+  }
+}
+
+SlateGenerator.main()
 
 //var _useInt: Bool = false
 //var _embedCommand: Bool = false
