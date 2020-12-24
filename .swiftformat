@@ -1,0 +1,37 @@
+# file options
+--exclude Slate
+
+# format options
+--allman false
+--elseposition same-line
+--header ignore
+--patternlet hoist
+--indent 2
+--indentcase false
+--ifdef no-indent
+--xcodeindentation false
+--linebreaks lf
+--decimalgrouping 3,6
+--binarygrouping 4,8
+--octalgrouping 4,8
+--hexgrouping 4,8
+--fractiongrouping disabled
+--exponentgrouping disabled
+--hexliteralcase uppercase
+--exponentcase uppercase
+--ranges spaced
+--self init-only
+--selfrequired BKAssert,BKAssertFailure,BKAssertMainThread,BKAssertNotMainThread,BKCastOrAssert,BKLog
+--semicolons never
+--importgrouping alphabetized
+--operatorfunc spaced
+--commas always
+--trimwhitespace always
+--stripunusedargs closure-only
+--empty void
+--wraparguments before-first
+--wrapcollections before-first
+--closingparen balanced
+
+# rule options
+--disable redundantRawValues

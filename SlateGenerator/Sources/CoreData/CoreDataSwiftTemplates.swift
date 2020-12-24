@@ -75,7 +75,6 @@ extension {COREDATACLASS} {
 
 """
 
-
 /// Inputs:
 ///  * OBJTYPE - Either `class` or `struct`
 ///  * SLATECLASS - The Slate immutable class name
