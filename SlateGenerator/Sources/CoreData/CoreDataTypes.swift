@@ -24,11 +24,11 @@ enum CoreDataAttrType: String {
     case uri = "URI"
     case transformable = "Transformable"
     
-    var immType: String {
+    func immType(castInt: Bool) -> String {
         switch self {
-        case .integer16: return _useInt ? "Int" : "Int16"
-        case .integer32: return _useInt ? "Int" : "Int32"
-        case .integer64: return _useInt ? "Int" : "Int64"
+        case .integer16: return castInt ? "Int" : "Int16"
+        case .integer32: return castInt ? "Int" : "Int32"
+        case .integer64: return castInt ? "Int" : "Int64"
         case .decimal: return "Decimal"
         case .double: return "Double"
         case .float: return "Float"
@@ -93,11 +93,11 @@ enum CoreDataAttrType: String {
     }
 
     // Converts something like NSNumber to Double
-    var swiftValueConversion: String? {
+    func swiftValueConversion(castInt: Bool) -> String? {
         switch self {
-        case .integer16: return _useInt ? ".intValue" : ".int16Value"
-        case .integer32: return _useInt ? ".intValue" : ".int32Value"
-        case .integer64: return _useInt ? ".intValue" : ".int64Value"
+        case .integer16: return castInt ? ".intValue" : ".int16Value"
+        case .integer32: return castInt ? ".intValue" : ".int32Value"
+        case .integer64: return castInt ? ".intValue" : ".int64Value"
         case .decimal: return ".decimalValue"
         case .double: return ".doubleValue"
         case .float: return ".floatValue"

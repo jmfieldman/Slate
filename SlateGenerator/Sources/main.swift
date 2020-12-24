@@ -100,6 +100,7 @@ struct SlateGenerator: ParsableCommand {
       useStruct: useStruct,
       nameTransform: nameTransform,
       fileTransform: fileTransform,
+      castInt: castInt,
       outputPath: outputSlateObjectPath,
       entityPath: outputCoreDataEntityPath,
       imports: imports

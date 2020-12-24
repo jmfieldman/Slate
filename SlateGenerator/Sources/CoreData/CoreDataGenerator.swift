@@ -21,6 +21,7 @@ class CoreDataSwiftGenerator {
         useStruct: Bool,
         nameTransform: String,
         fileTransform: String,
+        castInt: Bool,
         outputPath: String,
         entityPath: String,
         imports: String)
@@ -45,7 +46,7 @@ class CoreDataSwiftGenerator {
                 fileAccumulator = generateHeader(filename: filename, imports: imports)
             }
             
-            fileAccumulator += entityCode(entity: entity, useStruct: useStruct, className: className)
+            fileAccumulator += entityCode(entity: entity, useStruct: useStruct, castInt: castInt, className: className)
             
             // Write to file if necessary
             if filePerClass {
@@ -92,6 +93,7 @@ class CoreDataSwiftGenerator {
     static func entityCode(
         entity: CoreDataEntity,
         useStruct: Bool,
+        castInt: Bool,
         className: String
     ) -> String {
         
@@ -105,14 +107,19 @@ class CoreDataSwiftGenerator {
              "COREDATAENTITYNAME": entity.entityName]
         )
 
-        let classImpl = generateClassImpl(entity: entity, useStruct: useStruct, className: className)
+        let classImpl = generateClassImpl(entity: entity, useStruct: useStruct, castInt: castInt, className: className)
         let relations = generateRelationships(entity: entity, useStruct: useStruct, className: className)
         let equatable = generateEquatable(entity: entity, className: className)
         
         return "\(convertible)\(moExtension)\(classImpl)\(relations)\(equatable)"
     }
 
-    static func generateClassImpl(entity: CoreDataEntity, useStruct: Bool, className: String) -> String {
+    static func generateClassImpl(
+        entity: CoreDataEntity,
+        useStruct: Bool,
+        castInt: Bool,
+        className: String
+    ) -> String {
         var declarations: String = ""
         var assignments: String = ""
         var attributeNames: [String] = []
@@ -125,7 +132,7 @@ class CoreDataSwiftGenerator {
 
             declarations += template_CD_Swift_AttrDeclaration.replacingWithMap(
                 ["ATTR": attr.name,
-                 "TYPE": attr.type.immType,
+                 "TYPE": attr.type.immType(castInt: castInt),
                  "ACCESS": attr.access,
                  "OPTIONAL": attr.optional ? "?" : ""])
 
@@ -133,18 +140,18 @@ class CoreDataSwiftGenerator {
             let useForce = (!attr.optional && attr.type.codeGenForceOptional) || amConvertingOptToScalar
             let str = useForce ? template_CD_Swift_AttrForceAssignment : template_CD_Swift_AttrAssignment
             var conv = ""
-            if let sconv = attr.type.swiftValueConversion, !attr.useScalar {
+            if let sconv = attr.type.swiftValueConversion(castInt: castInt), !attr.useScalar {
                 conv = ((attr.optional || useForce) ? "?" : "") + sconv
-            } else if _useInt && attr.type.isInt {
+            } else if castInt && attr.type.isInt {
                 conv = ((attr.optional  && !attr.useScalar) ? "?" : "") + ".slate_asInt"
             }
             assignments += str.replacingWithMap(
                 ["ATTR": attr.name,
-                 "TYPE": attr.type.immType,
+                 "TYPE": attr.type.immType(castInt: castInt),
                  "CONV": conv,
                 ])
 
-            initParams += ["\(attr.name): \(attr.type.immType)\(attr.optional ? "?" : "")"]
+            initParams += ["\(attr.name): \(attr.type.immType(castInt: castInt))\(attr.optional ? "?" : "")"]
             initParamAssignments += ["self.\(attr.name) = \(attr.name)"]
         }
 
@@ -153,7 +160,7 @@ class CoreDataSwiftGenerator {
         }
 
         let substruct = entity.substructs.reduce("") {
-            return $0 + generateSubstructImpl(substruct: $1, baseEntityClass: entity.codeClass)
+            return $0 + generateSubstructImpl(substruct: $1, baseEntityClass: entity.codeClass, castInt: castInt)
         }
 
         for substruct in entity.substructs {
@@ -192,7 +199,11 @@ class CoreDataSwiftGenerator {
         )
     }
 
-    static func generateSubstructImpl(substruct: CoreDataSubstruct, baseEntityClass: String) -> String {
+    static func generateSubstructImpl(
+        substruct: CoreDataSubstruct,
+        baseEntityClass: String,
+        castInt: Bool
+    ) -> String {
         var declarations: String = ""
         var assignments: String = ""
         var initParams: [String] = []
@@ -208,16 +219,16 @@ class CoreDataSwiftGenerator {
 
             declarations += template_CD_Swift_SubstructAttrDeclaration.replacingWithMap(
                 ["ATTR": attr.name,
-                 "TYPE": attr.type.immType,
+                 "TYPE": attr.type.immType(castInt: castInt),
                  "ACCESS": attr.access,
                  "OPTIONAL": isOptionalForStruct ? "?" : ""])
 
             let useForce = !isOptionalForStruct && (attr.type.codeGenForceOptional || attr.optional)
             let str = useForce ? template_CD_Swift_SubstructAttrForceAssignment : template_CD_Swift_SubstructAttrAssignment
             var conv = ""
-            if let sconv = attr.type.swiftValueConversion, !attr.useScalar {
+            if let sconv = attr.type.swiftValueConversion(castInt: castInt), !attr.useScalar {
                 conv = ((attr.optional) ? "?" : "") + sconv
-            } else if _useInt && attr.type.isInt {
+            } else if castInt && attr.type.isInt {
                 conv = ((attr.optional && !attr.useScalar) ? "?" : "") + ".slate_asInt"
             }
 
@@ -229,12 +240,12 @@ class CoreDataSwiftGenerator {
             assignments += str.replacingWithMap(
                 ["ATTR": attr.name,
                  "STRNAME": substruct.varName,
-                 "TYPE": attr.type.immType,
+                 "TYPE": attr.type.immType(castInt: castInt),
                  "CONV": conv,
                  "DEF": def,
                  ])
 
-            initParams += ["\(attr.name): \(attr.type.immType)\(attr.optional ? "?" : "")"]
+            initParams += ["\(attr.name): \(attr.type.immType(castInt: castInt))\(attr.optional ? "?" : "")"]
             initParamAssignments += ["self.\(attr.name) = \(attr.name)"]
         }
 
