@@ -80,12 +80,12 @@ struct SlateGenerator: ParsableCommand {
     }
 
     guard force || FileManager.default.fileExists(atPath: outputSlateObjectPath) else {
-      printError("Could not find output directory at \(outputSlateObjectPath)")
+      printError("Could not find slate object output directory at \(outputSlateObjectPath)")
       try exit(.pathNotFound)
     }
 
-    guard force || FileManager.default.fileExists(atPath: outputCoreDataEntityPath) else {
-      printError("Could not find output directory at \(outputCoreDataEntityPath)")
+    guard force || outputCoreDataEntityPath.count == 0 || FileManager.default.fileExists(atPath: outputCoreDataEntityPath) else {
+      printError("Could not find core data entity output directory at \(outputCoreDataEntityPath)")
       try exit(.pathNotFound)
     }
 
