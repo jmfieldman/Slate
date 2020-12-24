@@ -9,6 +9,8 @@
 import ArgumentParser
 import Foundation
 
+let kStringArgVar: String = "%@"
+
 enum ErrorCode: Int32 {
   case fileNotFound = 1
   case pathNotFound = 2
@@ -48,7 +50,10 @@ struct SlateGenerator: ParsableCommand {
   var castInt: Bool = false
 
   @Option(name: .long, help: "Transform for generated Slate object names; %@ is replaced by the data object name.")
-  var nameTransform: String = "%@"
+  var nameTransform: String = kStringArgVar
+
+  @Option(name: .long, help: "Transform for the generated file names; If the value does not contain %@ then all generated classes are put in one file.")
+  var fileTransform: String = kStringArgVar
 
   @Option(name: .long, help: "This string is placed in the tranditional import section of each generated file.")
   var imports: String = ""
@@ -89,6 +94,16 @@ struct SlateGenerator: ParsableCommand {
       try exit(.invalidArgument)
     }
 
+    let entities = ParseCoreData(contentsPath: contentsPath)
+    CoreDataSwiftGenerator.generateCoreData(
+      entities: entities,
+      useStruct: useStruct,
+      nameTransform: nameTransform,
+      fileTransform: fileTransform,
+      outputPath: outputSlateObjectPath,
+      entityPath: outputCoreDataEntityPath,
+      imports: imports
+    )
   }
 }
 

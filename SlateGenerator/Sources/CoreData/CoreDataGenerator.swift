@@ -8,8 +8,6 @@
 
 import Foundation
 
-private let kStringArgVar: String = "%@"
-
 class CoreDataSwiftGenerator {
 
     static var entityToSlateClass: [String: String] = [:]
@@ -20,34 +18,34 @@ class CoreDataSwiftGenerator {
      */
     static func generateCoreData(
         entities: [CoreDataEntity],
-        useClass: Bool,
-        classXform: String,
-        fileXform: String,
+        useStruct: Bool,
+        nameTransform: String,
+        fileTransform: String,
         outputPath: String,
         entityPath: String,
-        importModule: String)
+        imports: String)
     {
-        let filePerClass: Bool = fileXform.contains(kStringArgVar)
-        var fileAccumulator = generateHeader(filename: fileXform, importModule: importModule)
+        let filePerClass: Bool = fileTransform.contains(kStringArgVar)
+        var fileAccumulator = generateHeader(filename: fileTransform, imports: imports)
         
         // First pass create lookup dictionaries
         for entity in entities {
-            let className: String = classXform.replacingOccurrences(of: kStringArgVar, with: entity.entityName)
+            let className: String = nameTransform.replacingOccurrences(of: kStringArgVar, with: entity.entityName)
             
             entityToSlateClass[entity.entityName] = className
             entityToCDClass[entity.entityName] = entity.codeClass
         }
         
         for entity in entities {
-            let className: String = classXform.replacingOccurrences(of: kStringArgVar, with: entity.entityName)
-            let filename: String = fileXform.replacingOccurrences(of: kStringArgVar, with: entity.entityName)
+            let className: String = nameTransform.replacingOccurrences(of: kStringArgVar, with: entity.entityName)
+            let filename: String = fileTransform.replacingOccurrences(of: kStringArgVar, with: entity.entityName)
             
             // Start a new file accumulator if uses per-class file
             if filePerClass {
-                fileAccumulator = generateHeader(filename: filename, importModule: importModule)
+                fileAccumulator = generateHeader(filename: filename, imports: imports)
             }
             
-            fileAccumulator += entityCode(entity: entity, useClass: useClass, className: className)
+            fileAccumulator += entityCode(entity: entity, useStruct: useStruct, className: className)
             
             // Write to file if necessary
             if filePerClass {
@@ -75,15 +73,15 @@ class CoreDataSwiftGenerator {
         
         // Output single file if necessary
         if !filePerClass {
-            let filepath = (outputPath as NSString).appendingPathComponent("\(fileXform).swift")
+            let filepath = (outputPath as NSString).appendingPathComponent("\(fileTransform).swift")
             try! fileAccumulator.write(toFile: filepath, atomically: true, encoding: String.Encoding.utf8)
         }
     }
 
-    static func generateHeader(filename: String, importModule: String) -> String {
+    static func generateHeader(filename: String, imports: String) -> String {
         return template_CD_Swift_fileheader.replacingWithMap(
             ["FILENAME": filename,
-             "EXTRAIMPORT": (importModule != "") ? "\nimport \(importModule)" : "" ]
+             "EXTRAIMPORT": (imports != "") ? "\n\(imports)" : "" ]
         )
     }
     
@@ -93,7 +91,7 @@ class CoreDataSwiftGenerator {
     
     static func entityCode(
         entity: CoreDataEntity,
-        useClass: Bool,
+        useStruct: Bool,
         className: String
     ) -> String {
         
@@ -107,14 +105,14 @@ class CoreDataSwiftGenerator {
              "COREDATAENTITYNAME": entity.entityName]
         )
 
-        let classImpl = generateClassImpl(entity: entity, useClass: useClass, className: className)
-        let relations = generateRelationships(entity: entity, useClass: useClass, className: className)
+        let classImpl = generateClassImpl(entity: entity, useStruct: useStruct, className: className)
+        let relations = generateRelationships(entity: entity, useStruct: useStruct, className: className)
         let equatable = generateEquatable(entity: entity, className: className)
         
         return "\(convertible)\(moExtension)\(classImpl)\(relations)\(equatable)"
     }
 
-    static func generateClassImpl(entity: CoreDataEntity, useClass: Bool, className: String) -> String {
+    static func generateClassImpl(entity: CoreDataEntity, useStruct: Bool, className: String) -> String {
         var declarations: String = ""
         var assignments: String = ""
         var attributeNames: [String] = []
@@ -181,7 +179,7 @@ class CoreDataSwiftGenerator {
         }
         
         return template_CD_Swift_SlateClassImpl.replacingWithMap(
-            ["OBJTYPE": useClass ? "final class" : "struct",
+            ["OBJTYPE": useStruct ? "struct" : "final class",
              "SLATECLASS": className,
              "COREDATACLASS": entity.codeClass,
              "ATTRASSIGNMENT": assignments,
@@ -250,7 +248,7 @@ class CoreDataSwiftGenerator {
         )
     }
     
-    static func generateRelationships(entity: CoreDataEntity, useClass: Bool, className: String) -> String {
+    static func generateRelationships(entity: CoreDataEntity, useStruct: Bool, className: String) -> String {
         var relationships: String = ""
         for relationship in entity.relationships {
             if relationship.toMany {
@@ -271,7 +269,7 @@ class CoreDataSwiftGenerator {
         }
         
         return template_CD_Swift_SlateRelationshipResolver.replacingWithMap(
-            ["OBJQUAL": useClass ? ": " : " == ",
+            ["OBJQUAL": useStruct ? " == " : ": ",
              "SLATECLASS": className,
              "RELATIONSHIPS": relationships]
         )
