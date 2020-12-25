@@ -3,8 +3,10 @@ import XCTest
 import Slate
 
 class SlateTests: XCTestCase {
+  var slate = Slate()
+
   override func setUp() {
-    print("Hello")
+
   }
 
   func testA() {
@@ -12,7 +14,7 @@ class SlateTests: XCTestCase {
   }
 
   override func tearDown() {
-    print("Good byte")
+
   }
 }
 

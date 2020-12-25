@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="17511" systemVersion="19H2" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
-    <entity name="Author" representedClassName="Author" syncable="YES">
+    <entity name="Author" representedClassName="CoreDataAuthor" syncable="YES">
         <attribute name="name" attributeType="String"/>
         <relationship name="books" toMany="YES" deletionRule="Nullify" destinationEntity="Book" inverseName="author" inverseEntity="Book"/>
     </entity>
-    <entity name="Book" representedClassName="Book" syncable="YES">
+    <entity name="Book" representedClassName="CoreDataBook" syncable="YES">
         <attribute name="likeCount" optional="YES" attributeType="Integer 64" usesScalarValueType="YES"/>
         <attribute name="loading" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="title" attributeType="String"/>
         <relationship name="author" maxCount="1" deletionRule="Nullify" destinationEntity="Author" inverseName="books" inverseEntity="Author"/>
     </entity>
-    <entity name="Parent1" representedClassName="Parent1" syncable="YES">
+    <entity name="Parent1" representedClassName="CoreDataParent1" syncable="YES">
         <attribute name="child1_has" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
         <attribute name="child1_optString" optional="YES" attributeType="String"/>
         <attribute name="child1_propInt64scalar" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES">
@@ -36,7 +36,7 @@
         <attribute name="child2_optString" optional="YES" attributeType="String"/>
         <attribute name="id" attributeType="String"/>
     </entity>
-    <entity name="Test" representedClassName="Test" syncable="YES">
+    <entity name="Test" representedClassName="CoreDataTest" syncable="YES">
         <attribute name="binAttr" attributeType="Binary"/>
         <attribute name="boolAttr" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="dateAttr" attributeType="Date" usesScalarValueType="NO"/>
@@ -55,7 +55,7 @@
             <fetchRequest name="fetchedPropertyFetchRequest" entity="Test" predicateString="int16attr = 1"/>
         </fetchedProperty>
     </entity>
-    <entity name="Test2" representedClassName="Test2" syncable="YES">
+    <entity name="Test2" representedClassName="CoreDataTest2" syncable="YES">
         <relationship name="test" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Test" inverseName="test2s" inverseEntity="Test"/>
     </entity>
     <elements>

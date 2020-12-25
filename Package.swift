@@ -14,7 +14,10 @@ let package = Package(
     // MARK: Executables
 
     /** Generates slate files from a Core Data xcdatamodel file */
-    .executable(name: "slategen", targets: ["SlateGenerator"]),    
+    .executable(name: "slategen", targets: ["SlateGenerator"]),
+
+    /** Setup unit tests */
+    .executable(name: "test_setup", targets: ["TestSetup"]),
 
     // MARK: Libraries
 
@@ -42,6 +45,11 @@ let package = Package(
       path: "SlateGenerator"
     ),
 
+    .target(
+      name: "TestSetup",
+      path: "Tests/Setup"
+    ),
+
     // MARK: Libraries
 
     .target(
@@ -51,12 +59,6 @@ let package = Package(
     ),
 
     // MARK: Tests
-
-    .testTarget(
-      name: "SlateGeneratorTests",
-      dependencies: ["SlateGenerator"],
-      path: "Tests/GenerationTests"
-    ),
 
     .testTarget(
       name: "SlateTests",
