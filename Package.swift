@@ -23,9 +23,6 @@ let package = Package(
 
     /** The actual Slate library */
     .library(name: "Slate", targets: ["Slate"]),
-
-    /** The distributable components of the slate generator */
-    .library(name: "SlateGeneratorLib", targets: ["SlateGeneratorLib"])
   ],
 
   // MARK: - Dependencies
@@ -43,9 +40,9 @@ let package = Package(
     .target(
       name: "SlateGenerator",
       dependencies: [
-        "SlateGeneratorLib",
+        .product(name: "ArgumentParser", package: "swift-argument-parser"),
       ],
-      path: "SlateGenerator/Executable"
+      path: "SlateGenerator"
     ),
 
     .target(
@@ -59,14 +56,6 @@ let package = Package(
       name: "Slate",
       dependencies: [],
       path: "Slate"
-    ),
-
-    .target(
-      name: "SlateGeneratorLib",
-      dependencies: [
-        .product(name: "ArgumentParser", package: "swift-argument-parser"),
-      ],
-      path: "SlateGenerator/Library"
     ),
 
     // MARK: Tests

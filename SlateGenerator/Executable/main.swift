@@ -1,2 +1,0 @@
-import SlateGeneratorLib
-runSlateGenerator()
