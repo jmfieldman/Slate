@@ -37,6 +37,9 @@ playground.xcworkspace
 
 # Generated Test Files
 Tests/SlateTests/Generated
+Tests/SlateTests/Class/Generated
+Tests/SlateTests/Struct/Generated
+Tests/SlateTests/Single/Generated
 
 # Swift Package Manager
 #

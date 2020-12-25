@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="17511" systemVersion="19H2" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
-    <entity name="Author" representedClassName="CDAuthor" syncable="YES">
+    <entity name="Author" representedClassName="Author" syncable="YES">
         <attribute name="name" attributeType="String"/>
         <relationship name="books" toMany="YES" deletionRule="Nullify" destinationEntity="Book" inverseName="author" inverseEntity="Book"/>
     </entity>
-    <entity name="Book" representedClassName="CDBook" syncable="YES">
+    <entity name="Book" representedClassName="Book" syncable="YES">
         <attribute name="likeCount" optional="YES" attributeType="Integer 64" usesScalarValueType="YES"/>
         <attribute name="loading" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="title" attributeType="String"/>
