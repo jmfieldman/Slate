@@ -1,0 +1,2 @@
+import SlateGeneratorLib
+runSlateGenerator()
