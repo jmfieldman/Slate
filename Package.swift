@@ -22,7 +22,7 @@ let package = Package(
     // MARK: Libraries
 
     /** The actual Slate library */
-    .library(name: "Slate", targets: ["Slate"]),    
+    .library(name: "Slate", targets: ["Slate"]),
   ],
 
   // MARK: - Dependencies
