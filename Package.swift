@@ -26,7 +26,6 @@ let package = Package(
 
   dependencies: [
     .package(url: "https://github.com/apple/swift-argument-parser", from: "0.3.1"),
-    .package(url: "https://github.com/yahoojapan/SwiftyXMLParser.git", from: "5.3.0"),    
   ],
 
   // MARK: - Targets
@@ -39,7 +38,6 @@ let package = Package(
       name: "SlateGenerator",
       dependencies: [
         .product(name: "ArgumentParser", package: "swift-argument-parser"),
-        .product(name: "SwiftyXMLParser", package: "SwiftyXMLParser"),
       ],
       path: "SlateGenerator"
     ),

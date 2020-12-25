@@ -7,7 +7,6 @@
 //
 
 import Foundation
-import SwiftyXMLParser
 
 func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
   let contents = try! String(contentsOfFile: contentsPath)
