@@ -152,7 +152,7 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
       }
 
       let substruct = CoreDataSubstruct(
-        structName: varname.capitalized,
+        structName: varname.prefix(1).uppercased() + varname.dropFirst(),
         varName: varname,
         optional: isOptional,
         attributes: attrs.sorted { $0.name < $1.name }
