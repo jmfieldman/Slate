@@ -102,6 +102,11 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
       let structname = breakdown[0]
       let attrname = breakdown[1]
 
+      if attr.optional && attr.useScalar {
+        printError("Slate does not support optional scalars.  Please fix [\(attrname)] in entity [\(entityName)] by making it non-scalar.")
+        exit(10)
+      }
+
       let newAttr = CoreDataAttribute(
         name: attrname,
         optional: attr.optional,
@@ -121,8 +126,8 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
       let hasAttr = attrArr.first(where: { $0.name == "has" })
       if let hasAttr = hasAttr {
         if hasAttr.type != .boolean || hasAttr.optional == true || hasAttr.useScalar == false {
-          print("a substruct _has property must be a non-optional scalar boolean")
-          continue
+          printError("a substruct _has property must be a non-optional scalar boolean")
+          exit(10)
         }
       }
 
@@ -133,12 +138,17 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
       if isOptional {
         var bad = false
         for attr in attrs {
+          if attr.optional && attr.useScalar {
+            printError("Slate does not support optional scalars.  Please fix [\(varname + "_" + attr.name)] in entity [\(entityName)] by making it non-scalar.")
+            exit(10)
+          }
+
           if !attr.optional {
-            print("in entity \(entityName) substruct \(varname) is optional (_has exists) -- all substruct attributes must be labeled optional in core data but [\(varname + "_" + attr.name)] is not")
+            printError("in entity \(entityName) substruct \(varname) is optional (_has exists) -- all substruct attributes must be labeled optional in core data but [\(varname + "_" + attr.name)] is not")
             bad = true
           }
         }
-        if bad { continue }
+        if bad { exit(10) }
       }
 
       let substruct = CoreDataSubstruct(

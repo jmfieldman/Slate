@@ -144,8 +144,7 @@ class CoreDataSwiftGenerator {
           "OPTIONAL": attr.optional ? "?" : "",
         ])
 
-      let amConvertingOptToScalar = !attr.optional && !attr.useScalar && attr.type.needsOptConvIfNotScalar
-      let useForce = (!attr.optional && attr.type.codeGenForceOptional) || amConvertingOptToScalar
+      let useForce = !attr.optional && attr.type.codeGenForceOptional
       let str = useForce ? template_CD_Swift_AttrForceAssignment : template_CD_Swift_AttrAssignment
       var conv = ""
       if let sconv = attr.type.swiftValueConversion(castInt: castInt), !attr.useScalar {
@@ -263,7 +262,7 @@ class CoreDataSwiftGenerator {
           "DEF": def,
         ])
 
-      initParams += ["\(attr.name): \(attr.type.immType(castInt: castInt))\(attr.optional ? "?" : "")"]
+      initParams += ["\(attr.name): \(attr.type.immType(castInt: castInt))\(isOptionalForStruct ? "?" : "")"]
       initParamAssignments += ["self.\(attr.name) = \(attr.name)"]
     }
 
@@ -286,6 +285,7 @@ class CoreDataSwiftGenerator {
         relationships += template_CD_Swift_SlateRelationshipToMany.replacingWithMap(
           [
             "RELATIONSHIPNAME": relationship.name,
+            "SET": relationship.ordered ? "?.set" : " as? Set<AnyHashable>",
             "TARGETSLATECLASS": entityToSlateClass[relationship.destinationEntityName]!,
             "COREDATACLASS": entity.codeClass,
           ]

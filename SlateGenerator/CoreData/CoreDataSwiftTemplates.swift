@@ -258,7 +258,7 @@ let template_CD_Swift_SlateRelationshipToMany: String = """
             fatalError("Fatal casting error")
         }
 
-        guard let set = mo.{RELATIONSHIPNAME} as? Set<AnyHashable> else {
+        guard let set = mo.{RELATIONSHIPNAME}{SET} else {
             return []
         }
 
