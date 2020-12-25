@@ -49,5 +49,13 @@ let package = Package(
       dependencies: [],
       path: "Slate"
     ),
+
+    // MARK: Tests
+
+    .testTarget(
+      name: "SlateGeneratorTests",
+      dependencies: ["SlateGenerator"],
+      path: "Tests/GenerationTests"
+    )
   ]
 )

@@ -89,6 +89,13 @@ struct SlateGenerator: ParsableCommand {
       try exit(.pathNotFound)
     }
 
+    if force {
+      try? FileManager.default.createDirectory(atPath: outputSlateObjectPath, withIntermediateDirectories: true, attributes: nil)
+      if outputCoreDataEntityPath.count > 0 {
+        try? FileManager.default.createDirectory(atPath: outputCoreDataEntityPath, withIntermediateDirectories: true, attributes: nil)
+      }
+    }
+
     guard nameTransform.contains("%@") else {
       printError("--name-transform must contain the %@ element")
       try exit(.invalidArgument)

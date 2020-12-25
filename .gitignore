@@ -35,6 +35,9 @@ xcuserdata/
 timeline.xctimeline
 playground.xcworkspace
 
+# Generated Test Files
+Tests/SlateTests/Generated
+
 # Swift Package Manager
 #
 # Add this line if you want to avoid checking in source code from Swift Package Manager dependencies.
