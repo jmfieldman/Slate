@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="17511" systemVersion="19H2" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+    <entity name="Author" representedClassName="CoreDataAuthor" syncable="YES">
+        <attribute name="name" attributeType="String"/>
+        <relationship name="books" toMany="YES" deletionRule="Nullify" destinationEntity="Book" inverseName="author" inverseEntity="Book"/>
+    </entity>
+    <entity name="Book" representedClassName="CoreDataBook" syncable="YES">
+        <attribute name="likeCount" optional="YES" attributeType="Integer 64" usesScalarValueType="YES"/>
+        <attribute name="loading" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="title" attributeType="String"/>
+        <relationship name="author" maxCount="1" deletionRule="Nullify" destinationEntity="Author" inverseName="books" inverseEntity="Author"/>
+    </entity>
+    <entity name="Parent1" representedClassName="CoreDataParent1" syncable="YES">
+        <attribute name="child1_has" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="child1_optString" optional="YES" attributeType="String"/>
+        <attribute name="child1_propInt64scalar" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="NO">
+            <userInfo>
+                <entry key="default" value="0"/>
+                <entry key="optInStruct" value="false"/>
+            </userInfo>
+        </attribute>
+        <attribute name="child1_string" optional="YES" attributeType="String">
+            <userInfo>
+                <entry key="default" value="&quot;Test&quot;"/>
+                <entry key="optInStruct" value="false"/>
+            </userInfo>
+        </attribute>
+        <attribute name="child2_bool" optional="YES" attributeType="Boolean" usesScalarValueType="NO">
+            <userInfo>
+                <entry key="default" value="true"/>
+                <entry key="optInStruct" value="false"/>
+            </userInfo>
+        </attribute>
+        <attribute name="child2_int64scalar" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="child2_optBool" optional="YES" attributeType="Boolean" usesScalarValueType="NO"/>
+        <attribute name="child2_optString" optional="YES" attributeType="String"/>
+        <attribute name="id" attributeType="String"/>
+    </entity>
+    <entity name="Test" representedClassName="CoreDataTest" syncable="YES">
+        <attribute name="binAttr" attributeType="Binary"/>
+        <attribute name="boolAttr" attributeType="Boolean" usesScalarValueType="YES"/>
+        <attribute name="dateAttr" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="decAttr" optional="YES" attributeType="Decimal"/>
+        <attribute name="doubleAttr" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="floatAttr" attributeType="Float" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="int16attr" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="int32attr" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="NO"/>
+        <attribute name="int64atttr" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="stringAttr" attributeType="String"/>
+        <attribute name="transAttr" attributeType="Transformable"/>
+        <attribute name="uriAttr" attributeType="URI"/>
+        <attribute name="uuidAttr" attributeType="UUID" usesScalarValueType="NO"/>
+        <relationship name="test2s" toMany="YES" deletionRule="Nullify" ordered="YES" destinationEntity="Test2" inverseName="test" inverseEntity="Test2"/>
+        <fetchedProperty name="fetchedProperty1" optional="YES">
+            <fetchRequest name="fetchedPropertyFetchRequest" entity="Test" predicateString="int16attr = 1"/>
+        </fetchedProperty>
+    </entity>
+    <entity name="Test2" representedClassName="CoreDataTest2" syncable="YES">
+        <relationship name="test" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Test" inverseName="test2s" inverseEntity="Test"/>
+    </entity>
+    <elements>
+        <element name="Author" positionX="-54" positionY="0" width="128" height="73"/>
+        <element name="Book" positionX="-63" positionY="-18" width="128" height="103"/>
+        <element name="Parent1" positionX="-45" positionY="117" width="128" height="178"/>
+        <element name="Test" positionX="-54" positionY="18" width="128" height="281"/>
+        <element name="Test2" positionX="-45" positionY="108" width="128" height="58"/>
+    </elements>
+</model>

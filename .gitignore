@@ -35,13 +35,20 @@ xcuserdata/
 timeline.xctimeline
 playground.xcworkspace
 
+# Generated Test Files
+Tests/SlateTests/Generated
+Tests/SlateTests/Class/Generated
+Tests/SlateTests/Struct/Generated
+Tests/SlateTests/Single/Generated
+
 # Swift Package Manager
 #
 # Add this line if you want to avoid checking in source code from Swift Package Manager dependencies.
-# Packages/
-# Package.pins
-# Package.resolved
+Packages/
+Package.pins
+Package.resolved
 .build/
+.swiftpm/
 
 # CocoaPods
 #
