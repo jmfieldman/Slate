@@ -1,49 +1,86 @@
 ![Slate](/Misc/Banner/banner.png)
 
-![Swift 4.1](https://img.shields.io/badge/Swift-4.1-orange.svg?style=flat)
+![Swift 5.3](https://img.shields.io/badge/Swift-5.3-orange.svg?style=flat)
 
 # Immutable Data Models for Core Data
 
 Slate is middleware that sits on top of your Core Data object graph and provides:
 
 * Single-writer/multi-reader transactional access to the object graph.
-* **Immutable data models** with clean query DSL.
+* **Immutable data models** with a clean query DSL.
 
-Let's take a quick look at what this means.
+## By Example
+
+Take your typical Core Data NSManagedObjects:
 
 ```swift
-/* Typical Core Data NSManagedObject */
-class CDBook: NSManagedObject {
-    @NSManaged public var pageCount: Int64
+class CoreDataBook: NSManagedObject {
+  @NSManaged public var id: UUID
+  @NSManaged public var pageCount: Int64
 }
+```
 
-/* An immutable version */
-struct ImmBook {
-    let pageCount: Int
+Slate automatically generates immutable representations:
+
+```swift
+/* Auto-generated */
+struct Book {
+  let id: UUID
+  let pageCount: Int
 }
+```
 
-slate.queryAsync { context in
-    // Run queries on a Core Data object graph that return immutable, non-managed objects.
-    // Slate is responsible for the conversion between Core Data and the immutable types.
-    let books: [ImmBook] = try context[ImmBook.self].filter("pageCount > 100").fetch()
+Query from a read-only context that provides these immutable versions of your Core Data model:
 
-}.catch { error in
+```swift
+func fetchBooksWithAtLeast(pageCount: Int, completion: ([Book]) -> Void) {
+  slate.queryAsync { readContext in
+    // Run queries on a Core Data object graph proxy that returns immutable objects.
+    // Slate handles the conversion behind the scenes.
+    let books = try readContext[Book.self].filter("pageCount > \(pageCount)").fetch()
+    
+    // You can now pass `books` around wherever you want in a thread-safe manner.
+    // They are fully immutable and thread-safe.    
+    completion(books)
+
+  }.catch { error in
     // The optional trailing catch method allows you to batch all try-based calls inside
     // of the transaction (similar to PromiseKit)
     print(error)
+  }
 }
+```
 
-slate.mutateAsync { moc in
-    // Mutate managed objects in a single-writer MOC.  
-    // Insert/delete/updates are announced to all registered listeners on completion. 
-    if let cdBook = moc.object(with: someId) as? CDBook {
-        cdBook.pageCount = 200
+Continue to use NSManagedObjectContext for writes, but operate in a safe single-write/multi-read queue:
+
+```swift
+func updateBookPageCount(id: UUID, newPageCount: Int) {
+  slate.mutateAsync { moc in
+    // Mutate NSManagedObjects in a single-writer MOC. Insert/delete/updates are 
+    // announced to all registered listeners on completion of the mutation block. 
+    if let book = try moc[CoreDataBook.self].filter("id = %@", id).fetchOne() {
+      book.pageCount = newPageCount
     }
 
-    // The Any? return value is passed to listeners to help implement more intelligent
-    // dispatch logic.
-    return MutationType.changedPageCount
+    // An optional Any? return value is passed along to transaction listeners
+    // to help indicate the context of the transaction.
+    return ExampleEnum.updatePageCount(id: id)
+  }
 }
+```
+
+Listen to transactions:
+
+```swift
+class SomeClass: SlateMutationListener {
+  func slateMutationHandler(result: SlateMutationResult) {
+    // Handle Slate Mutation
+  }
+}
+
+...
+let myClass = SomeClass()
+slate.addListener(myClass)
 ```
 
 *Why would you want an immutable data model access pattern for your Core Data object graph?*
