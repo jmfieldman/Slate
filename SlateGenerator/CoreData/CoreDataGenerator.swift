@@ -323,6 +323,10 @@ class CoreDataSwiftGenerator {
       attrs += " &&\n               (lhs.\(attr.name) == rhs.\(attr.name))"
     }
 
+    for substruct in entity.substructs {
+      attrs += " &&\n               (lhs.\(substruct.varName) == rhs.\(substruct.varName))"
+    }
+
     return template_CD_Swift_SlateEquatable.replacingWithMap(
       [
         "SLATECLASS": className,

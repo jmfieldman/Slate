@@ -153,7 +153,7 @@ extension {SLATECLASS}: SlateManagedObjectRelating {
 ///  * ATTRASSIGNMENT - A series of attribute assignments for this class
 ///  * ATTRDECLARATIONS - A series of attribute declarations
 let template_CD_Swift_SlateSubstructImpl: String = """
-    public struct {SLATESUBSTRUCT} {
+    public struct {SLATESUBSTRUCT}: Equatable {
 
         // -- Attribute Declarations --
 {ATTRDECLARATIONS}
