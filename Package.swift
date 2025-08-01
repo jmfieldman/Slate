@@ -4,66 +4,64 @@
 import PackageDescription
 
 let package = Package(
-  name: "Slate",
-  platforms: [.iOS(.v10), .macOS(.v10_12), .tvOS(.v10), .watchOS(.v3)],
+    name: "Slate",
+    platforms: [.iOS(.v10), .macOS(.v10_12), .tvOS(.v10), .watchOS(.v3)],
 
-  // MARK: - Products
+    // MARK: - Products
 
-  products: [
+    products: [
+        // MARK: Executables
 
-    // MARK: Executables
+        /** Generates slate files from a Core Data xcdatamodel file */
+        .executable(name: "slategen", targets: ["SlateGenerator"]),
 
-    /** Generates slate files from a Core Data xcdatamodel file */
-    .executable(name: "slategen", targets: ["SlateGenerator"]),
+        /** Setup unit tests */
+        .executable(name: "test_setup", targets: ["TestSetup"]),
 
-    /** Setup unit tests */
-    .executable(name: "test_setup", targets: ["TestSetup"]),
+        // MARK: Libraries
 
-    // MARK: Libraries
+        /** The actual Slate library */
+        .library(name: "Slate", targets: ["Slate"]),
+    ],
 
-    /** The actual Slate library */
-    .library(name: "Slate", targets: ["Slate"]),
-  ],
+    // MARK: - Dependencies
 
-  // MARK: - Dependencies
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-argument-parser", from: "0.3.1"),
+    ],
 
-  dependencies: [
-    .package(url: "https://github.com/apple/swift-argument-parser", from: "0.3.1"),
-  ],
+    // MARK: - Targets
 
-  // MARK: - Targets
+    targets: [
+        // MARK: Executables
 
-  targets: [
+        .target(
+            name: "SlateGenerator",
+            dependencies: [
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            path: "SlateGenerator"
+        ),
 
-    // MARK: Executables
+        .target(
+            name: "TestSetup",
+            path: "Tests/Setup"
+        ),
 
-    .target(
-      name: "SlateGenerator",
-      dependencies: [
-        .product(name: "ArgumentParser", package: "swift-argument-parser"),
-      ],
-      path: "SlateGenerator"
-    ),
+        // MARK: Libraries
 
-    .target(
-      name: "TestSetup",
-      path: "Tests/Setup"
-    ),
+        .target(
+            name: "Slate",
+            dependencies: [],
+            path: "Slate"
+        ),
 
-    // MARK: Libraries
+        // MARK: Tests
 
-    .target(
-      name: "Slate",
-      dependencies: [],
-      path: "Slate"
-    ),
-
-    // MARK: Tests
-
-    .testTarget(
-      name: "SlateTests",
-      dependencies: ["SlateGenerator", "Slate"],
-      path: "Tests/SlateTests"
-    ),
-  ]
+        .testTarget(
+            name: "SlateTests",
+            dependencies: ["SlateGenerator", "Slate"],
+            path: "Tests/SlateTests"
+        ),
+    ]
 )

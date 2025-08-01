@@ -1,9 +1,6 @@
 //
 //  CoreDataSwiftTemplates.swift
-//  slate
-//
-//  Created by Jason Fieldman on 5/30/18.
-//  Copyright © 2018 Jason Fieldman. All rights reserved.
+//  Copyright © 2018 Jason Fieldman.
 //
 
 import Foundation

@@ -1,20 +1,18 @@
+//
+//  SlateTests.swift
+//  Copyright © 2020 Jason Fieldman.
+//
+
 import Foundation
-import XCTest
 import Slate
+import XCTest
 
 class SlateTests: XCTestCase {
-  var slate = Slate()
+    var slate = Slate()
 
-  override func setUp() {
+    override func setUp() {}
 
-  }
+    func testA() {}
 
-  func testA() {
-    
-  }
-
-  override func tearDown() {
-
-  }
+    override func tearDown() {}
 }
-

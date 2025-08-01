@@ -30,10 +30,10 @@ extension XML {
         open var text: String?
         open var attributes = [String: String]()
         open var childElements = [Element]()
-        
+
         // for println
         open weak var parentElement: Element?
-        
+
         public init(name: String) {
             self.name = name
         }

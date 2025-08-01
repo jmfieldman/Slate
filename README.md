@@ -1,13 +1,13 @@
 ![Slate](/Misc/Banner/banner.png)
 
-![Swift 5.3](https://img.shields.io/badge/Swift-5.3-orange.svg?style=flat)
-
 # Immutable Data Models for Core Data
 
 Slate is middleware that sits on top of your Core Data object graph and provides:
 
 * Single-writer/multi-reader transactional access to the object graph.
 * **Immutable data models** with a clean query DSL.
+
+> Note: If you're looking for an earlier version of Slate pre-2025, check out the `0.0.2` tag.
 
 ## By Example
 
@@ -24,7 +24,7 @@ Slate automatically generates immutable representations:
 
 ```swift
 /* Auto-generated */
-struct Book {
+final class Book {
   let id: UUID
   let pageCount: Int
 }
@@ -141,11 +141,4 @@ You can simply drop ```Slate.swift``` in your app, or make a separate framework 
 
 This is a separate application for generating the immutable versions of your Core Data models.  It reads your xcdatamodel XML file
 and outputs the required class/structs.  Check the README in the SlateGenerator directory for details and usage.
-
-
-#### [UpdatableListNode](UpdatableListNode)
-
-This is a simple protocol that can help generate the update/delete/move/reload indexes to update one list into another.
-This is used primarily in the UITableView/UICollectionView ```performBatchUpdates``` method, and is provided since
-```NSFetchedResultsController``` cannot be used in conjunction with Slate.
 

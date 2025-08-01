@@ -1,3 +1,8 @@
+//
+//  main.swift
+//  Copyright © 2020 Jason Fieldman.
+//
+
 import Foundation
 
 private let kModelPath = "Tests/DataModel/SlateTests.xcdatamodel"
@@ -9,7 +14,7 @@ task.arguments = ["-c", "swift run slategen --input-model \(kModelPath) --output
 task.launch()
 task.waitUntilExit()
 if task.terminationStatus != 0 {
-  print("Test setup completed with error code \(task.terminationStatus)")
+    print("Test setup completed with error code \(task.terminationStatus)")
 } else {
-  print("Test setup completed successfully")
+    print("Test setup completed successfully")
 }
