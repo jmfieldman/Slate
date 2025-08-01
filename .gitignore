@@ -4,6 +4,7 @@
 
 .DS_Store
 xcshareddata
+.vscode
 
 ## Build generated
 build/
