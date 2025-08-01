@@ -32,28 +32,6 @@ public enum SlateError: Error {
  */
 public typealias SlateID = NSManagedObjectID
 
-// MARK: - SlateListener
-
-/**
- Any object may register itself as a SlateMutationListener.  It will receive
- the results of any call to a Slate mutation method.
- */
-public protocol SlateMutationListener: AnyObject {
-    /**
-     When a Slate instance is mutated, it will call `slateMutationHandler` on
-     all registed listeners.
-
-     In order to guarantee that the listeners can read from the context before subsequent
-     mutations can occur (for state consistency with the inserted/deleted/updated results),
-     the Slate instance will issue these announcements synchronously inside its R/W access
-     queue in the same block that the mutation occurred.  In essence, the listener
-     implementations of `slateMutationHandler` are extensions of the sync mutation block
-     with access to a query context into that transaction.  (All other reads are blocked until
-     all `slateMutationHandler` calls return.)
-     */
-    func slateMutationHandler(result: SlateMutationResult)
-}
-
 // MARK: - SlateObject
 
 /**
@@ -101,101 +79,6 @@ public struct SlateChangeDictionaries<T: SlateObject> {
  block is complete.)  See `Slate.abort`
  */
 public class __SlateAbort {}
-
-// MARK: - SlateMutationResult
-
-/**
- Contains all metadata for the result of a single Slate mutation block.  This result
- is sent to all listeners of the Slate instance per mutation.
- */
-public class SlateMutationResult {
-    /**
-     The Slate instance that was mutated
-     */
-    public let slate: Slate
-
-    /**
-     A query context that listeners can use to run follow-up queries before a
-     subsequent write block is issued (in case there is additional data the listener
-     must read out from a consistent view of the model.)  This context blocks other reads.
-     */
-    public let queryContext: SlateQueryContext
-
-    /**
-     Contains the return value of the mutation block.  This acts as a
-     traditional void pointer that allows higher-level user code to pass
-     an arbitrary value from the mutation block on to the listeners.
-     */
-    public let mutationBlockResult: Any?
-
-    /**
-     All update results from the block.  This is derived from the mutation MOC
-     and converted into immutable SlateObject instances.  Accessed through the
-     `changes` function that returns type-safe results
-     */
-    private let internalUpdateMap: [AnyHashable: [SlateID: Any]]
-
-    /**
-     All delete results from the block.  This is derived from the mutation MOC
-     and converted into immutable SlateObject instances.  Accessed through the
-     `changes` function that returns type-safe results
-     */
-    private let internalDeleteMap: [AnyHashable: [SlateID: Any]]
-
-    /**
-     All insert results from the block.  This is derived from the mutation MOC
-     and converted into immutable SlateObject instances.  Accessed through the
-     `changes` function that returns type-safe results
-     */
-    private let internalInsertMap: [AnyHashable: [SlateID: Any]]
-
-    /**
-     This is a cache of the generated internal change dictionaries that are
-     created lazily as they are accessed (to prevent second instantiations).
-     */
-    private var internalChangeDictionaryCache: [AnyHashable: Any] = [:]
-
-    /**
-     Initializing the SlateMutationResult can only be done from this implementation.
-     */
-    fileprivate init(
-        slate: Slate,
-        blockResult: Any?,
-        queryContext: SlateQueryContext,
-        updateMap: [AnyHashable: [SlateID: Any]],
-        deleteMap: [AnyHashable: [SlateID: Any]],
-        insertMap: [AnyHashable: [SlateID: Any]]
-    ) {
-        self.slate = slate
-        self.mutationBlockResult = blockResult
-        self.queryContext = queryContext
-        self.internalUpdateMap = updateMap
-        self.internalDeleteMap = deleteMap
-        self.internalInsertMap = insertMap
-    }
-
-    /**
-     Returns type-safe changes for the specified SlateObject type.
-     */
-    public func changes<T: SlateObject>(_ objectClass: T.Type) -> SlateChangeDictionaries<T> {
-        let hashKey = "\(objectClass)"
-
-        // Return cached value
-        if let cached = internalChangeDictionaryCache[hashKey] as? SlateChangeDictionaries<T> {
-            return cached
-        }
-
-        // Otherwise generate and cache
-        let changeDic = SlateChangeDictionaries<T>(
-            inserted: (internalInsertMap[hashKey] as? [SlateID: T]) ?? [:],
-            deleted: (internalDeleteMap[hashKey] as? [SlateID: T]) ?? [:],
-            updated: (internalUpdateMap[hashKey] as? [SlateID: T]) ?? [:]
-        )
-
-        internalChangeDictionaryCache[hashKey] = changeDic
-        return changeDic
-    }
-}
 
 // MARK: - Slate
 
@@ -420,53 +303,6 @@ public class Slate {
         return slateObj
     }
 
-    // MARK: Listeners
-
-    /// The array of listeners
-    private var listeners: [String: SlateAnnounceNode] = [:]
-
-    /// The listener array lock
-    private let listenersLock = NSLock()
-
-    /**
-     Attach an object as a listener to the slate
-     */
-    public func addListener(_ listener: SlateMutationListener) {
-        listenersLock.lock()
-        listeners["\(ObjectIdentifier(listener))"] = SlateAnnounceNode(listener: listener)
-        listenersLock.unlock()
-    }
-
-    /**
-     Remove an object as a listener to the slate
-     */
-    public func removeListener(_ listener: SlateMutationListener) {
-        listenersLock.lock()
-        listeners["\(ObjectIdentifier(listener))"] = nil
-        listenersLock.unlock()
-    }
-
-    /**
-     This private announce function is called to announce mutation results to
-     all listeners.  Any listener node whose weak reference is nil will be removed
-     automatically (listeners do not have to explicitly remove themselves during deinit).
-     */
-    private func announce(_ mutationResult: SlateMutationResult) {
-        listenersLock.lock()
-        var toRemove: [String] = []
-        for (objId, node) in listeners {
-            if let listener = node.listener {
-                listener.slateMutationHandler(result: mutationResult)
-            } else {
-                toRemove.append(objId)
-            }
-        }
-        for objId in toRemove {
-            listeners.removeValue(forKey: objId)
-        }
-        listenersLock.unlock()
-    }
-
     // MARK: Query
 
     /**
@@ -621,27 +457,6 @@ public class Slate {
                     catchBlock.error = error
                     return
                 }
-
-                // Create a query context for the handler
-                let queryContext = SlateQueryContext(slate: self, managedObjectContext: masterContext)
-                let oldQueryContext = Thread.current.setInsideQueryContext(queryContext)
-
-                // Generate the mutation result
-                let mutationResult = SlateMutationResult(
-                    slate: self,
-                    blockResult: userBlockResponse,
-                    queryContext: queryContext,
-                    updateMap: updateMap,
-                    deleteMap: deleteMap,
-                    insertMap: insertMap
-                )
-
-                // The announcement is made within the perform queue of the
-                // masterContext (since it is being used for reads in the query context)
-                self.announce(mutationResult)
-
-                // Reset query context
-                Thread.current.setInsideQueryContext(oldQueryContext)
             }
         }
 
@@ -710,27 +525,6 @@ public class Slate {
                     catchBlock.error = error
                     return
                 }
-
-                // Create a query context for the handler
-                let queryContext = SlateQueryContext(slate: self, managedObjectContext: masterContext)
-                let oldQueryContext = Thread.current.setInsideQueryContext(queryContext)
-
-                // Generate the mutation result
-                let mutationResult = SlateMutationResult(
-                    slate: self,
-                    blockResult: userBlockResponse,
-                    queryContext: queryContext,
-                    updateMap: updateMap,
-                    deleteMap: deleteMap,
-                    insertMap: insertMap
-                )
-
-                // The announcement is made within the perform queue of the
-                // masterContext (since it is being used for reads in the query context)
-                self.announce(mutationResult)
-
-                // Reset query context
-                Thread.current.setInsideQueryContext(oldQueryContext)
             }
         }
 
