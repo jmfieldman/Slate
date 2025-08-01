@@ -759,10 +759,10 @@ public class _SlateCatchBlock {
     /// thread safe access to the internal error
     fileprivate var error: Error? {
         get {
-            errorLock.get { internalError }
+            errorLock.withLock { internalError }
         }
         set {
-            errorLock.do {
+            errorLock.withLock {
                 internalError = newValue
                 self.resolveErrorBlock()
             }
@@ -787,7 +787,7 @@ public class _SlateCatchBlock {
 
     /// Prevent uncaught errors
     deinit {
-        errorLock.do {
+        errorLock.withLock {
             if let err = internalError {
                 if !executed {
                     _SlateCatchBlock.defaultCatchBlock(err)
@@ -800,7 +800,7 @@ public class _SlateCatchBlock {
      Register a catch block to run if there is an error assigned
      */
     public func `catch`(on queue: DispatchQueue? = nil, _ catchBlock: @escaping (Error) -> Void) {
-        errorLock.do {
+        errorLock.withLock {
             self.queue = queue
             self.catchBlock = catchBlock
             self.resolveErrorBlock()
@@ -892,23 +892,6 @@ public protocol SlateObjectConvertible: NSFetchRequestResult {
 
     /// Get the objectID of the NSManagedObject that implements this protocol
     var objectID: NSManagedObjectID { get }
-}
-
-// MARK: - Private Lock Helper
-
-private extension NSLock {
-    func `do`(_ block: () -> Void) {
-        lock()
-        block()
-        unlock()
-    }
-
-    func get<T>(_ block: () -> T) -> T {
-        lock()
-        let t = block()
-        unlock()
-        return t
-    }
 }
 
 // MARK: - Thread Keys
