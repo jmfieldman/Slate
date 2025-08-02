@@ -59,14 +59,12 @@ public final class CoreDataSwiftGenerator {
             for entity in entities {
                 let filename = "\(entity.codeClass).swift"
                 let properties = generateCoreDataEntityProperties(entity: entity)
-                let file = template_CD_Entity.replacingWithMap(
-                    [
+                let file = template_CD_Entity.replacingWithMap([
                         "FILENAME": filename,
                         "CDENTITYCLASS": entity.codeClass,
                         "CDENTITYNAME": entity.entityName,
                         "PROPERTIES": properties,
-                    ]
-                )
+                ])
 
                 let filepath = (entityPath as NSString).appendingPathComponent(filename)
                 try! file.write(toFile: filepath, atomically: true, encoding: String.Encoding.utf8)
@@ -81,12 +79,10 @@ public final class CoreDataSwiftGenerator {
     }
 
     static func generateHeader(filename: String, imports: String) -> String {
-        template_CD_Swift_fileheader.replacingWithMap(
-            [
+        template_CD_Swift_fileheader.replacingWithMap([
                 "FILENAME": filename,
                 "EXTRAIMPORT": (imports != "") ? "\n\(imports)" : "",
-            ]
-        )
+            ])
     }
 
     static var commandline: String {
@@ -99,19 +95,15 @@ public final class CoreDataSwiftGenerator {
         castInt: Bool,
         className: String
     ) -> String {
-        let convertible = template_CD_Swift_SlateObjectConvertible.replacingWithMap(
-            [
+        let convertible = template_CD_Swift_SlateObjectConvertible.replacingWithMap(            [
                 "COREDATACLASS": entity.codeClass,
                 "SLATECLASS": className,
-            ]
-        )
+            ]        )
 
-        let moExtension = template_CD_Swift_ManagedObjectExtension.replacingWithMap(
-            [
+        let moExtension = template_CD_Swift_ManagedObjectExtension.replacingWithMap(            [
                 "COREDATACLASS": entity.codeClass,
                 "COREDATAENTITYNAME": entity.entityName,
-            ]
-        )
+            ]        )
 
         let classImpl = generateClassImpl(entity: entity, useStruct: useStruct, castInt: castInt, className: className)
         let relations = generateRelationships(entity: entity, useStruct: useStruct, className: className)
@@ -136,8 +128,7 @@ public final class CoreDataSwiftGenerator {
         for attr in entity.attributes {
             attributeNames.append(attr.name)
 
-            declarations += template_CD_Swift_AttrDeclaration.replacingWithMap(
-                [
+            declarations += template_CD_Swift_AttrDeclaration.replacingWithMap(                [
                     "ATTR": attr.name,
                     "TYPE": attr.type.immType(castInt: castInt),
                     "ACCESS": attr.access,
@@ -152,8 +143,7 @@ public final class CoreDataSwiftGenerator {
             } else if castInt, attr.type.isInt {
                 conv = ((attr.optional && !attr.useScalar) ? "?" : "") + ".slate_asInt"
             }
-            assignments += str.replacingWithMap(
-                [
+            assignments += str.replacingWithMap(                [
                     "ATTR": attr.name,
                     "TYPE": attr.type.immType(castInt: castInt),
                     "CONV": conv,
@@ -173,8 +163,7 @@ public final class CoreDataSwiftGenerator {
 
         for substruct in entity.substructs {
             let substructType = className + "." + substruct.structName
-            declarations += template_CD_Swift_AttrDeclaration.replacingWithMap(
-                [
+            declarations += template_CD_Swift_AttrDeclaration.replacingWithMap(                [
                     "ATTR": substruct.varName,
                     "TYPE": substructType,
                     "ACCESS": substruct.access,
@@ -182,12 +171,10 @@ public final class CoreDataSwiftGenerator {
                 ])
 
             let str = substruct.optional ? template_CD_Swift_AttrAssignmentForOptSubstruct : template_CD_Swift_AttrAssignmentForSubstruct
-            assignments += str.replacingWithMap(
-                [
+            assignments += str.replacingWithMap(                [
                     "ATTR": substruct.varName,
                     "TYPE": substructType,
-                ]
-            )
+                ]            )
 
             for attr in substruct.attributes {
                 attributeNames.append(substruct.varName + "_" + attr.name)
@@ -197,8 +184,7 @@ public final class CoreDataSwiftGenerator {
             initParamAssignments += ["self.\(substruct.varName) = \(substruct.varName)"]
         }
 
-        return template_CD_Swift_SlateClassImpl.replacingWithMap(
-            [
+        return template_CD_Swift_SlateClassImpl.replacingWithMap(            [
                 "OBJTYPE": useStruct ? "struct" : "final class",
                 "SLATECLASS": className,
                 "COREDATACLASS": entity.codeClass,
@@ -209,8 +195,7 @@ public final class CoreDataSwiftGenerator {
                 "INITPARAMS": initParams.sorted(by: <).joined(separator: ",\n        "),
                 "INITPARAMASSIGNMENTS": initParamAssignments.sorted(by: <).joined(separator: "\n        "),
                 "SUBSTRUCTS": substruct,
-            ]
-        )
+            ]        )
     }
 
     static func generateSubstructImpl(
@@ -231,8 +216,7 @@ public final class CoreDataSwiftGenerator {
                 return attr.optional
             }()
 
-            declarations += template_CD_Swift_SubstructAttrDeclaration.replacingWithMap(
-                [
+            declarations += template_CD_Swift_SubstructAttrDeclaration.replacingWithMap(                [
                     "ATTR": attr.name,
                     "TYPE": attr.type.immType(castInt: castInt),
                     "ACCESS": attr.access,
@@ -253,8 +237,7 @@ public final class CoreDataSwiftGenerator {
                 print("substruct property \(baseEntityClass).\(substruct.varName + "_" + attr.name) is forced non-optional but does not have a default userInfo key")
             }
 
-            assignments += str.replacingWithMap(
-                [
+            assignments += str.replacingWithMap(                [
                     "ATTR": attr.name,
                     "STRNAME": substruct.varName,
                     "TYPE": attr.type.immType(castInt: castInt),
@@ -266,50 +249,42 @@ public final class CoreDataSwiftGenerator {
             initParamAssignments += ["self.\(attr.name) = \(attr.name)"]
         }
 
-        return template_CD_Swift_SlateSubstructImpl.replacingWithMap(
-            [
+        return template_CD_Swift_SlateSubstructImpl.replacingWithMap(            [
                 "SLATESUBSTRUCT": substruct.structName,
                 "COREDATACLASS": baseEntityClass,
                 "ATTRASSIGNMENT": assignments,
                 "ATTRDECLARATIONS": declarations,
                 "INITPARAMS": initParams.sorted(by: <).joined(separator: ",\n            "),
                 "INITPARAMASSIGNMENTS": initParamAssignments.sorted(by: <).joined(separator: "\n            "),
-            ]
-        )
+            ]        )
     }
 
     static func generateRelationships(entity: CoreDataEntity, useStruct: Bool, className: String) -> String {
         var relationships = ""
         for relationship in entity.relationships {
             if relationship.toMany {
-                relationships += template_CD_Swift_SlateRelationshipToMany.replacingWithMap(
-                    [
+                relationships += template_CD_Swift_SlateRelationshipToMany.replacingWithMap(                    [
                         "RELATIONSHIPNAME": relationship.name,
                         "SET": relationship.ordered ? "?.set" : " as? Set<AnyHashable>",
                         "TARGETSLATECLASS": entityToSlateClass[relationship.destinationEntityName]!,
                         "COREDATACLASS": entity.codeClass,
-                    ]
-                )
+                    ]                )
             } else {
-                relationships += template_CD_Swift_SlateRelationshipToOne.replacingWithMap(
-                    [
+                relationships += template_CD_Swift_SlateRelationshipToOne.replacingWithMap(                    [
                         "RELATIONSHIPNAME": relationship.name,
                         "TARGETSLATECLASS": entityToSlateClass[relationship.destinationEntityName]!,
                         "COREDATACLASS": entity.codeClass,
                         "OPTIONAL": relationship.optional ? "?" : "",
                         "NONOPTIONAL": relationship.optional ? "" : "!",
-                    ]
-                )
+                    ]                )
             }
         }
 
-        return template_CD_Swift_SlateRelationshipResolver.replacingWithMap(
-            [
+        return template_CD_Swift_SlateRelationshipResolver.replacingWithMap(            [
                 "OBJQUAL": useStruct ? " == " : ": ",
                 "SLATECLASS": className,
                 "RELATIONSHIPS": relationships,
-            ]
-        )
+            ]        )
     }
 
     static func generateEquatable(entity: CoreDataEntity, className: String) -> String {
@@ -327,12 +302,10 @@ public final class CoreDataSwiftGenerator {
             attrs += " &&\n               (lhs.\(substruct.varName) == rhs.\(substruct.varName))"
         }
 
-        return template_CD_Swift_SlateEquatable.replacingWithMap(
-            [
+        return template_CD_Swift_SlateEquatable.replacingWithMap(            [
                 "SLATECLASS": className,
                 "ATTRS": attrs,
-            ]
-        )
+            ]        )
     }
 
     // ----- Core Data Entities -----
@@ -340,35 +313,29 @@ public final class CoreDataSwiftGenerator {
     static func generateCoreDataEntityProperties(entity: CoreDataEntity) -> String {
         var properties = ""
         for attribute in entity.attributes {
-            properties += template_CD_Entity_Property.replacingWithMap(
-                [
+            properties += template_CD_Entity_Property.replacingWithMap(                [
                     "VARNAME": attribute.name,
                     "OPTIONAL": ((attribute.optional || attribute.type.codeGenForceOptional) && !attribute.useScalar) ? "?" : "",
                     "TYPE": attribute.type.swiftManagedType(scalar: attribute.useScalar),
-                ]
-            )
+                ]            )
         }
         for substruct in entity.substructs {
             properties += "\n"
 
             if substruct.optional {
-                properties += template_CD_Entity_Property.replacingWithMap(
-                    [
+                properties += template_CD_Entity_Property.replacingWithMap(                    [
                         "VARNAME": substruct.varName + "_has",
                         "OPTIONAL": "",
                         "TYPE": "Bool",
-                    ]
-                )
+                    ]                )
             }
 
             for attribute in substruct.attributes {
-                properties += template_CD_Entity_Property.replacingWithMap(
-                    [
+                properties += template_CD_Entity_Property.replacingWithMap(                    [
                         "VARNAME": substruct.varName + "_" + attribute.name,
                         "OPTIONAL": (attribute.optional && !attribute.useScalar) ? "?" : "",
                         "TYPE": attribute.type.swiftManagedType(scalar: attribute.useScalar),
-                    ]
-                )
+                    ]                )
             }
         }
         for relationship in entity.relationships {
@@ -380,13 +347,11 @@ public final class CoreDataSwiftGenerator {
                 type = entityToCDClass[relationship.destinationEntityName] ?? "---"
             }
 
-            properties += template_CD_Entity_Property.replacingWithMap(
-                [
+            properties += template_CD_Entity_Property.replacingWithMap(                [
                     "VARNAME": relationship.name,
                     "OPTIONAL": (relationship.optional || relationship.toMany) ? "?" : "",
                     "TYPE": type,
-                ]
-            )
+                ]            )
         }
         return properties
     }
