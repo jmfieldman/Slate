@@ -103,22 +103,12 @@ public enum CoreDataSwiftGenerator {
         castInt: Bool,
         className: String
     ) -> String {
-        let convertible = template_CD_Swift_SlateObjectConvertible.replacingWithMap([
-            "COREDATACLASS": entity.codeClass,
-            "SLATECLASS": className,
-        ])
-
-        let moExtension = template_CD_Swift_ManagedObjectExtension.replacingWithMap([
-            "COREDATACLASS": entity.codeClass,
-            "COREDATAENTITYNAME": entity.entityName,
-        ])
-
         let classImpl = generateClassImpl(entity: entity, useStruct: useStruct, castInt: castInt, className: className)
         let relations = generateRelationships(entity: entity, useStruct: useStruct, className: className)
         let provider = generatePropertyProviderProtocol(entity: entity, className: className)
         let equatable = generateEquatable(entity: entity, className: className)
 
-        return "\(convertible)\(moExtension)\(classImpl)\(relations)\(provider)\(equatable)"
+        return "\(classImpl)\(relations)\(provider)\(equatable)"
     }
 
     static func generateClassImpl(

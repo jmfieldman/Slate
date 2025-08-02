@@ -15,21 +15,19 @@ public final class CoreDataTest2: NSManagedObject, SlateTest2.ManagedPropertyPro
     }
 
     @nonobjc static func create(in moc: NSManagedObjectContext) -> CoreDataTest2? {
-        guard let entity = NSEntityDescription.entity(forEntityName: "Test2", in: moc) else {
-            return nil
+        NSEntityDescription.entity(forEntityName: "Test2", in: moc).flatMap {
+            CoreDataTest2(entity: $0, insertInto: moc)
         }
-
-        return CoreDataTest2(entity: entity, insertInto: moc)
     }
 
     @NSManaged public var test: CoreDataTest?
 }
 
-public extension CoreDataTest2: SlateObjectConvertible {
+extension CoreDataTest2: SlateObjectConvertible {
     /**
      Instantiates an immutable Slate class from the receiving Core Data class.
      */
-    var slateObject: SlateObject {
+    public var slateObject: SlateObject {
         SlateTest2(managedObject: self)
     }
 }

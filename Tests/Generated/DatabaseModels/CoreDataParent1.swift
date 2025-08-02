@@ -15,11 +15,9 @@ public final class CoreDataParent1: NSManagedObject, SlateParent1.ManagedPropert
     }
 
     @nonobjc static func create(in moc: NSManagedObjectContext) -> CoreDataParent1? {
-        guard let entity = NSEntityDescription.entity(forEntityName: "Parent1", in: moc) else {
-            return nil
+        NSEntityDescription.entity(forEntityName: "Parent1", in: moc).flatMap {
+            CoreDataParent1(entity: $0, insertInto: moc)
         }
-
-        return CoreDataParent1(entity: entity, insertInto: moc)
     }
 
     @NSManaged public var id: String?
@@ -35,11 +33,11 @@ public final class CoreDataParent1: NSManagedObject, SlateParent1.ManagedPropert
     @NSManaged public var child2_optString: String?
 }
 
-public extension CoreDataParent1: SlateObjectConvertible {
+extension CoreDataParent1: SlateObjectConvertible {
     /**
      Instantiates an immutable Slate class from the receiving Core Data class.
      */
-    var slateObject: SlateObject {
+    public var slateObject: SlateObject {
         SlateParent1(managedObject: self)
     }
 }

@@ -20,29 +20,7 @@ private extension Int64 {
     var slate_asInt: Int { Int(self) }
 }
 
-extension CoreDataParent1: SlateObjectConvertible {
-    /**
-     Instantiates an immutable Slate class from the receiving Core Data class.
-     */
-    public var slateObject: SlateObject {
-        SlateParent1(managedObject: self)
-    }
-}
-
-public extension CoreDataParent1 {
-    /**
-     Helper method that instantiates a CoreDataParent1 in the specified context.
-     */
-    static func create(in moc: NSManagedObjectContext) -> CoreDataParent1? {
-        guard let entity = NSEntityDescription.entity(forEntityName: "Parent1", in: moc) else {
-            return nil
-        }
-
-        return CoreDataParent1(entity: entity, insertInto: moc)
-    }
-}
-
-public final class SlateParent1: SlateObject {
+public final class SlateParent1 {
     // -- Attribute Declarations --
     public let id: String
     public let child1: SlateParent1.Child1?
@@ -62,11 +40,6 @@ public final class SlateParent1: SlateObject {
     }
 
     public struct Relationships {}
-
-    /**
-     Identifies the NSManagedObject type that backs this SlateObject
-     */
-    public static var __slate_managedObjectType: NSManagedObject.Type = CoreDataParent1.self
 
     /**
       Each immutable data model object should have an associated SlateID (in the

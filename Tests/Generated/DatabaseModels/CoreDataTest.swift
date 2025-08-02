@@ -15,11 +15,9 @@ public final class CoreDataTest: NSManagedObject, SlateTest.ManagedPropertyProvi
     }
 
     @nonobjc static func create(in moc: NSManagedObjectContext) -> CoreDataTest? {
-        guard let entity = NSEntityDescription.entity(forEntityName: "Test", in: moc) else {
-            return nil
+        NSEntityDescription.entity(forEntityName: "Test", in: moc).flatMap {
+            CoreDataTest(entity: $0, insertInto: moc)
         }
-
-        return CoreDataTest(entity: entity, insertInto: moc)
     }
 
     @NSManaged public var binAttr: Data?
@@ -39,11 +37,11 @@ public final class CoreDataTest: NSManagedObject, SlateTest.ManagedPropertyProvi
     @NSManaged public var test2s: NSOrderedSet?
 }
 
-public extension CoreDataTest: SlateObjectConvertible {
+extension CoreDataTest: SlateObjectConvertible {
     /**
      Instantiates an immutable Slate class from the receiving Core Data class.
      */
-    var slateObject: SlateObject {
+    public var slateObject: SlateObject {
         SlateTest(managedObject: self)
     }
 }

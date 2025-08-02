@@ -15,11 +15,9 @@ public final class CoreDataBook: NSManagedObject, SlateBook.ManagedPropertyProvi
     }
 
     @nonobjc static func create(in moc: NSManagedObjectContext) -> CoreDataBook? {
-        guard let entity = NSEntityDescription.entity(forEntityName: "Book", in: moc) else {
-            return nil
+        NSEntityDescription.entity(forEntityName: "Book", in: moc).flatMap {
+            CoreDataBook(entity: $0, insertInto: moc)
         }
-
-        return CoreDataBook(entity: entity, insertInto: moc)
     }
 
     @NSManaged public var likeCount: Int64
@@ -29,11 +27,11 @@ public final class CoreDataBook: NSManagedObject, SlateBook.ManagedPropertyProvi
     @NSManaged public var author: CoreDataAuthor
 }
 
-public extension CoreDataBook: SlateObjectConvertible {
+extension CoreDataBook: SlateObjectConvertible {
     /**
      Instantiates an immutable Slate class from the receiving Core Data class.
      */
-    var slateObject: SlateObject {
+    public var slateObject: SlateObject {
         SlateBook(managedObject: self)
     }
 }

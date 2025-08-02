@@ -20,29 +20,7 @@ private extension Int64 {
     var slate_asInt: Int { Int(self) }
 }
 
-extension CoreDataTest: SlateObjectConvertible {
-    /**
-     Instantiates an immutable Slate class from the receiving Core Data class.
-     */
-    public var slateObject: SlateObject {
-        SlateTest(managedObject: self)
-    }
-}
-
-public extension CoreDataTest {
-    /**
-     Helper method that instantiates a CoreDataTest in the specified context.
-     */
-    static func create(in moc: NSManagedObjectContext) -> CoreDataTest? {
-        guard let entity = NSEntityDescription.entity(forEntityName: "Test", in: moc) else {
-            return nil
-        }
-
-        return CoreDataTest(entity: entity, insertInto: moc)
-    }
-}
-
-public final class SlateTest: SlateObject {
+public final class SlateTest {
     // -- Attribute Declarations --
     public let binAttr: Data
     public let boolAttr: Bool
@@ -79,11 +57,6 @@ public final class SlateTest: SlateObject {
     public enum Relationships {
         public static let test2s = "test2s"
     }
-
-    /**
-     Identifies the NSManagedObject type that backs this SlateObject
-     */
-    public static var __slate_managedObjectType: NSManagedObject.Type = CoreDataTest.self
 
     /**
       Each immutable data model object should have an associated SlateID (in the

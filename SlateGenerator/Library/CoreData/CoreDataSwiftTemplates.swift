@@ -35,51 +35,13 @@ private extension Int64 {
 """
 
 /// Inputs:
-///  * COREDATACLASS - The Core Data class name
-///  * SLATECLASS - The Slate class name
-let template_CD_Swift_SlateObjectConvertible: String = """
-extension {COREDATACLASS}: SlateObjectConvertible {
-
-    /**
-     Instantiates an immutable Slate class from the receiving Core Data class.
-     */
-    public var slateObject: SlateObject {
-        return {SLATECLASS}(managedObject: self)
-    }
-}
-
-
-"""
-
-/// Inputs:
-///  * COREDATACLASS - The Core Data class name
-///  * COREDATAENTITYNAME - The name of the corresponding Core Data entity
-let template_CD_Swift_ManagedObjectExtension: String = """
-extension {COREDATACLASS} {
-
-    /**
-     Helper method that instantiates a {COREDATACLASS} in the specified context.
-     */
-    public static func create(in moc: NSManagedObjectContext) -> {COREDATACLASS}? {
-        guard let entity = NSEntityDescription.entity(forEntityName: "{COREDATAENTITYNAME}", in: moc) else {
-            return nil
-        }
-
-        return {COREDATACLASS}(entity: entity, insertInto: moc)
-    }
-}
-
-
-"""
-
-/// Inputs:
 ///  * OBJTYPE - Either `class` or `struct`
 ///  * SLATECLASS - The Slate immutable class name
 ///  * COREDATACLASS - The backing Core Data class name
 ///  * ATTRASSIGNMENT - A series of attribute assignments for this class
 ///  * ATTRDECLARATIONS - A series of attribute declarations
 let template_CD_Swift_SlateClassImpl: String = """
-public {OBJTYPE} {SLATECLASS}: SlateObject {
+public {OBJTYPE} {SLATECLASS} {
 
     // -- Attribute Declarations --
 {ATTRDECLARATIONS}
@@ -92,11 +54,6 @@ public {OBJTYPE} {SLATECLASS}: SlateObject {
     public struct Relationships {
 {RELNAMES}
     }
-
-    /**
-     Identifies the NSManagedObject type that backs this SlateObject
-     */
-    public static var __slate_managedObjectType: NSManagedObject.Type = {COREDATACLASS}.self
 
     /**
      Each immutable data model object should have an associated SlateID (in the
@@ -326,21 +283,19 @@ public final class {CDENTITYCLASS}: NSManagedObject, {SLATECLASS}.ManagedPropert
     }
 
     @nonobjc static func create(in moc: NSManagedObjectContext) -> {CDENTITYCLASS}? {
-        guard let entity = NSEntityDescription.entity(forEntityName: "{CDENTITYNAME}", in: moc) else {
-            return nil
+        NSEntityDescription.entity(forEntityName: "{CDENTITYNAME}", in: moc).flatMap {
+            {CDENTITYCLASS}(entity: $0, insertInto: moc)
         }
-
-        return {CDENTITYCLASS}(entity: entity, insertInto: moc)
     }
 
 {PROPERTIES}
 }
 
-public extension {CDENTITYCLASS}: SlateObjectConvertible {
+extension {CDENTITYCLASS}: SlateObjectConvertible {
     /**
      Instantiates an immutable Slate class from the receiving Core Data class.
      */
-    var slateObject: SlateObject {
+    public var slateObject: SlateObject {
         {SLATECLASS}(managedObject: self)
     }
 }

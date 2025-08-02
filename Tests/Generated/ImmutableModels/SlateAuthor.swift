@@ -20,29 +20,7 @@ private extension Int64 {
     var slate_asInt: Int { Int(self) }
 }
 
-extension CoreDataAuthor: SlateObjectConvertible {
-    /**
-     Instantiates an immutable Slate class from the receiving Core Data class.
-     */
-    public var slateObject: SlateObject {
-        SlateAuthor(managedObject: self)
-    }
-}
-
-public extension CoreDataAuthor {
-    /**
-     Helper method that instantiates a CoreDataAuthor in the specified context.
-     */
-    static func create(in moc: NSManagedObjectContext) -> CoreDataAuthor? {
-        guard let entity = NSEntityDescription.entity(forEntityName: "Author", in: moc) else {
-            return nil
-        }
-
-        return CoreDataAuthor(entity: entity, insertInto: moc)
-    }
-}
-
-public final class SlateAuthor: SlateObject {
+public final class SlateAuthor {
     // -- Attribute Declarations --
     public let name: String
 
@@ -55,11 +33,6 @@ public final class SlateAuthor: SlateObject {
     public enum Relationships {
         public static let books = "books"
     }
-
-    /**
-     Identifies the NSManagedObject type that backs this SlateObject
-     */
-    public static var __slate_managedObjectType: NSManagedObject.Type = CoreDataAuthor.self
 
     /**
       Each immutable data model object should have an associated SlateID (in the
