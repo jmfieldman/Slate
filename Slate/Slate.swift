@@ -11,12 +11,18 @@ import Foundation
 /// The thread key for the current SlateQueryContext
 private let kThreadKeySlateQueryContext = "kThreadKeySlateQueryContext"
 
-// MARK: - SlateError
+// MARK: - SlateConfigError
 
-public enum SlateError: Error {
+public enum SlateConfigError: Error {
     case alreadyConfigured
     case storageURLRequired
     case storageURLAlreadyInUse
+    case coreDataError(Error)
+}
+
+// MARK: - SlateError
+
+public enum SlateError: Error {
     case queryOutsideScope
     case queryInvalidCast
 }
@@ -57,18 +63,6 @@ public protocol SlateObject {
  */
 public protocol SlateManagedObjectRelating: SlateObject {
     associatedtype ManagedObjectType: SlateObjectConvertible, NSManagedObject
-}
-
-// MARK: - SlateChangeDictionaries
-
-/**
- Contains dictionaries of all changes for a single SlateObject type that occurred in
- a mutation block.
- */
-public struct SlateChangeDictionaries<T: SlateObject> {
-    public let inserted: [SlateID: T]
-    public let deleted: [SlateID: T]
-    public let updated: [SlateID: T]
 }
 
 // MARK: - __SlateAbort
@@ -185,25 +179,25 @@ public final class Slate {
     public func configure(
         managedObjectModel: NSManagedObjectModel,
         persistentStoreDescription: NSPersistentStoreDescription,
-        completionHandler: @escaping (NSPersistentStoreDescription, Error?) -> Void
+        completionHandler: @escaping (NSPersistentStoreDescription, SlateConfigError?) -> Void
     ) {
         configQueue.async {
             guard !self.configured else {
-                completionHandler(persistentStoreDescription, SlateError.alreadyConfigured)
+                completionHandler(persistentStoreDescription, SlateConfigError.alreadyConfigured)
                 return
             }
 
             // Validate the storeURL for disk-based persistent stores.
             if persistentStoreDescription.type != NSInMemoryStoreType {
                 guard let storeURL = persistentStoreDescription.url else {
-                    completionHandler(persistentStoreDescription, SlateError.storageURLRequired)
+                    completionHandler(persistentStoreDescription, SlateConfigError.storageURLRequired)
                     return
                 }
 
                 Slate.storeUrlCheckLock.lock()
                 if Slate.storeUrlSet.contains(storeURL) {
                     Slate.storeUrlCheckLock.unlock()
-                    completionHandler(persistentStoreDescription, SlateError.storageURLAlreadyInUse)
+                    completionHandler(persistentStoreDescription, SlateConfigError.storageURLAlreadyInUse)
                     return
                 }
                 Slate.storeUrlCheckLock.unlock()
@@ -251,7 +245,7 @@ public final class Slate {
                 }
 
                 // Call our parent completion handler
-                completionHandler(desc, error)
+                completionHandler(desc, error.flatMap { .coreDataError($0) })
             }
         }
     }
