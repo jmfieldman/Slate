@@ -17,7 +17,7 @@ func printError(_ str: String) {
     fputs(str + "\n", stderr)
 }
 
-struct SlateGenerator: ParsableCommand {
+struct GenCoreData: ParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Generates Slate model objects from a Core Data xcdatamodel file"
     )
@@ -115,7 +115,7 @@ struct SlateGenerator: ParsableCommand {
     static var configuration = CommandConfiguration(
         abstract: "Contains commands for the Slate package.",
         subcommands: [
-            SlateGenerator.self,
+            GenCoreData.self,
         ]
     )
 }
