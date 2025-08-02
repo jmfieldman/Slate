@@ -51,9 +51,6 @@ struct GenCoreData: ParsableCommand {
     @Option(name: .long, help: "Transform for the generated file names; If the value does not contain %@ then all generated classes are put in one file.")
     var fileTransform: String = kStringArgVar
 
-    @Option(name: .long, help: "Comma-separated list of modules to import for generated immutable files.")
-    var immutableFileImports: String = ""
-
     @Option(name: .long, help: "Comma-separated list of modules to import for generated database files.")
     var coreDataFileImports: String = ""
 
@@ -106,7 +103,6 @@ struct GenCoreData: ParsableCommand {
             castInt: castInt,
             outputPath: outputSlateObjectPath,
             entityPath: outputCoreDataEntityPath,
-            immutableFileImports: immutableFileImports,
             coreDataFileImports: coreDataFileImports
         )
     }

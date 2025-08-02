@@ -14,7 +14,6 @@ setuptests:
 		-f --cast-int \
 		--name-transform Slate%@ \
 		--file-transform Slate%@ \
-		--immutable-file-imports "Slate" \
 		--core-data-file-imports "Slate, ImmutableModels"
 	@mint run swiftformat --config .swiftformat Tests/Generated
 

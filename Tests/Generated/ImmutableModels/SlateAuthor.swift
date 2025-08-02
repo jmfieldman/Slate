@@ -5,7 +5,6 @@
 
 import CoreData
 import Foundation
-import Slate
 
 /** These extensions are available if conversion to basic integer is required */
 private extension Int16 {
@@ -39,7 +38,7 @@ public final class SlateAuthor {
       core data case, the NSManagedObjectID.  This is a cross-mutation identifier
       for the object.
      */
-    public let slateID: SlateID
+    public let slateID: NSManagedObjectID
 
     /**
      Instantiation is public so that Slate instances can create immutable objects
@@ -48,7 +47,7 @@ public final class SlateAuthor {
     public init(managedObject: ManagedPropertyProviding) {
         // Immutable objects should only be created inside Slate contexts
         // (by the Slate engine)
-        guard Slate.isThreadInsideQuery else {
+        guard Thread.current.threadDictionary["kThreadKeySlateQueryContext"] != nil else {
             fatalError("It is a programming error to instantiate an immutable Slate object from outside of a Slate query context.")
         }
 

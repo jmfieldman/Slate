@@ -22,12 +22,11 @@ public enum CoreDataSwiftGenerator {
         castInt: Bool,
         outputPath: String,
         entityPath: String,
-        immutableFileImports: String,
         coreDataFileImports: String
     ) {
         let entities = ParseCoreData(contentsPath: contentsPath)
         let filePerClass: Bool = fileTransform.contains(kStringArgVar)
-        var fileAccumulator = generateHeader(filename: fileTransform, imports: immutableFileImports)
+        var fileAccumulator = generateHeader(filename: fileTransform)
 
         // First pass create lookup dictionaries
         for entity in entities {
@@ -43,7 +42,7 @@ public enum CoreDataSwiftGenerator {
 
             // Start a new file accumulator if uses per-class file
             if filePerClass {
-                fileAccumulator = generateHeader(filename: filename, imports: immutableFileImports)
+                fileAccumulator = generateHeader(filename: filename)
             }
 
             fileAccumulator += entityCode(entity: entity, useStruct: useStruct, castInt: castInt, className: className)
@@ -83,10 +82,9 @@ public enum CoreDataSwiftGenerator {
         }
     }
 
-    static func generateHeader(filename: String, imports: String) -> String {
+    static func generateHeader(filename: String) -> String {
         template_CD_Swift_fileheader.replacingWithMap([
             "FILENAME": filename,
-            "EXTRAIMPORT": importHeaderString(imports: imports),
         ])
     }
 
