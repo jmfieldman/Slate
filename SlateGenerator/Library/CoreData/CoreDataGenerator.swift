@@ -59,12 +59,14 @@ public enum CoreDataSwiftGenerator {
         let coreDataImportString = importHeaderString(imports: coreDataFileImports)
         for entity in entities {
             let filename = "\(entity.codeClass).swift"
+            let slateClassName: String = nameTransform.replacingOccurrences(of: kStringArgVar, with: entity.entityName)
             let properties = generateCoreDataEntityProperties(entity: entity)
             let file = template_CD_Entity.replacingWithMap([
                 "FILENAME": filename,
                 "CDIMPORTS": coreDataImportString,
                 "CDENTITYCLASS": entity.codeClass,
                 "CDENTITYNAME": entity.entityName,
+                "SLATECLASS": slateClassName,
                 "PROPERTIES": properties,
             ])
 

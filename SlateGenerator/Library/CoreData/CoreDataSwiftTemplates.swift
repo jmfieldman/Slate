@@ -308,6 +308,7 @@ extension {SLATECLASS}: Equatable {
 ///  * PROPERTIES - Core Data properties of the class
 ///  * CDENTITYCLASS - Core Data entity class name
 ///  * CDENTITYNAME - Core Data entity name
+///  * SLATECLASS - Slate Immutable class name
 let template_CD_Entity: String = """
 // {FILENAME}
 //
@@ -319,12 +320,33 @@ import Foundation
 import CoreData{CDIMPORTS}
 
 @objc({CDENTITYCLASS})
-public final class {CDENTITYCLASS}: NSManagedObject {
+public final class {CDENTITYCLASS}: NSManagedObject, {SLATECLASS}.ManagedPropertyProviding {
     @nonobjc public class func fetchRequest() -> NSFetchRequest<{CDENTITYCLASS}> {
         return NSFetchRequest<{CDENTITYCLASS}>(entityName: "{CDENTITYNAME}")
     }
 
+    @nonobjc static func create(in moc: NSManagedObjectContext) -> {CDENTITYCLASS}? {
+        guard let entity = NSEntityDescription.entity(forEntityName: "{CDENTITYNAME}", in: moc) else {
+            return nil
+        }
+
+        return {CDENTITYCLASS}(entity: entity, insertInto: moc)
+    }
+
 {PROPERTIES}
+}
+
+public extension {CDENTITYCLASS}: SlateObjectConvertible {
+    /**
+     Instantiates an immutable Slate class from the receiving Core Data class.
+     */
+    var slateObject: SlateObject {
+        {SLATECLASS}(managedObject: self)
+    }
+}
+
+extension {SLATECLASS}: SlateObject {
+    public static var __slate_managedObjectType: NSManagedObject.Type = {CDENTITYCLASS}.self
 }
 
 """

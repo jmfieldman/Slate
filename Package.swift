@@ -69,12 +69,17 @@ let package = Package(
 
         .target(
             name: "DatabaseModels",
-            dependencies: [],
+            dependencies: [
+                "ImmutableModels",
+                "Slate",
+            ],
             path: "Tests/Generated/DatabaseModels"
         ),
         .target(
             name: "ImmutableModels",
-            dependencies: [],
+            dependencies: [
+                "Slate",
+            ],
             path: "Tests/Generated/ImmutableModels"
         ),
     ]

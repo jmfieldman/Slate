@@ -4,7 +4,6 @@
 //
 
 import CoreData
-import DatabaseModels
 import Foundation
 import Slate
 
@@ -74,7 +73,7 @@ public final class SlateTest2: SlateObject {
         // Immutable objects should only be created inside Slate contexts
         // (by the Slate engine)
         guard Slate.isThreadInsideQuery else {
-            fatalError("It is a programming error to instantiate an immutable Slate objects from outside of a Slate query context.")
+            fatalError("It is a programming error to instantiate an immutable Slate object from outside of a Slate query context.")
         }
 
         // All objects inherit the objectID

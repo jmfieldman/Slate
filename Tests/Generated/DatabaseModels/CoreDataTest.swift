@@ -5,12 +5,21 @@
 
 import CoreData
 import Foundation
+import ImmutableModels
 import Slate
 
 @objc(CoreDataTest)
-public final class CoreDataTest: NSManagedObject {
+public final class CoreDataTest: NSManagedObject, SlateTest.ManagedPropertyProviding {
     @nonobjc public class func fetchRequest() -> NSFetchRequest<CoreDataTest> {
         NSFetchRequest<CoreDataTest>(entityName: "Test")
+    }
+
+    @nonobjc static func create(in moc: NSManagedObjectContext) -> CoreDataTest? {
+        guard let entity = NSEntityDescription.entity(forEntityName: "Test", in: moc) else {
+            return nil
+        }
+
+        return CoreDataTest(entity: entity, insertInto: moc)
     }
 
     @NSManaged public var binAttr: Data?
@@ -28,4 +37,17 @@ public final class CoreDataTest: NSManagedObject {
     @NSManaged public var uuidAttr: UUID?
 
     @NSManaged public var test2s: NSOrderedSet?
+}
+
+public extension CoreDataTest: SlateObjectConvertible {
+    /**
+     Instantiates an immutable Slate class from the receiving Core Data class.
+     */
+    var slateObject: SlateObject {
+        SlateTest(managedObject: self)
+    }
+}
+
+extension SlateTest: SlateObject {
+    public static var __slate_managedObjectType: NSManagedObject.Type = CoreDataTest.self
 }
