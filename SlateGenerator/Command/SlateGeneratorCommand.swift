@@ -30,8 +30,8 @@ struct GenCoreData: ParsableCommand {
     @Option(name: .long, help: "Directory to write generated slate object files")
     var outputSlateObjectPath: String
 
-    @Option(name: .long, help: "Directory to write generated core data entity files; do not supply this if you are using the natively-generated Core Data entities.")
-    var outputCoreDataEntityPath: String = ""
+    @Option(name: .long, help: "Directory to write generated core data entity files")
+    var outputCoreDataEntityPath: String
 
     @Flag(name: .short, help: "Create specified output paths if they don't exist yet")
     var force: Bool = false
@@ -51,8 +51,11 @@ struct GenCoreData: ParsableCommand {
     @Option(name: .long, help: "Transform for the generated file names; If the value does not contain %@ then all generated classes are put in one file.")
     var fileTransform: String = kStringArgVar
 
-    @Option(name: .long, help: "This string is placed in the tranditional import section of each generated file.")
-    var imports: String = ""
+    @Option(name: .long, help: "Comma-separated list of modules to import for generated immutable files.")
+    var immutableFileImports: String = ""
+
+    @Option(name: .long, help: "Comma-separated list of modules to import for generated database files.")
+    var coreDataFileImports: String = ""
 
     // MARK: - Utility
 
@@ -80,20 +83,18 @@ struct GenCoreData: ParsableCommand {
             try exit(.pathNotFound)
         }
 
-        guard force || outputCoreDataEntityPath.count == 0 || FileManager.default.fileExists(atPath: outputCoreDataEntityPath) else {
+        guard force || FileManager.default.fileExists(atPath: outputCoreDataEntityPath) else {
             printError("Could not find core data entity output directory at \(outputCoreDataEntityPath)")
             try exit(.pathNotFound)
         }
 
         if force {
-            try? FileManager.default.createDirectory(atPath: outputSlateObjectPath, withIntermediateDirectories: true, attributes: nil)
-            if outputCoreDataEntityPath.count > 0 {
-                try? FileManager.default.createDirectory(atPath: outputCoreDataEntityPath, withIntermediateDirectories: true, attributes: nil)
-            }
+            try FileManager.default.createDirectory(atPath: outputSlateObjectPath, withIntermediateDirectories: true, attributes: nil)
+            try FileManager.default.createDirectory(atPath: outputCoreDataEntityPath, withIntermediateDirectories: true, attributes: nil)
         }
 
-        guard nameTransform.contains("%@") else {
-            printError("--name-transform must contain the %@ element")
+        guard nameTransform.contains(kStringArgVar) else {
+            printError("--name-transform must contain the \(kStringArgVar) element")
             try exit(.invalidArgument)
         }
 
@@ -105,7 +106,8 @@ struct GenCoreData: ParsableCommand {
             castInt: castInt,
             outputPath: outputSlateObjectPath,
             entityPath: outputCoreDataEntityPath,
-            imports: imports
+            immutableFileImports: immutableFileImports,
+            coreDataFileImports: coreDataFileImports
         )
     }
 }

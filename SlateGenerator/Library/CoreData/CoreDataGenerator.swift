@@ -22,11 +22,12 @@ public enum CoreDataSwiftGenerator {
         castInt: Bool,
         outputPath: String,
         entityPath: String,
-        imports: String
+        immutableFileImports: String,
+        coreDataFileImports: String
     ) {
         let entities = ParseCoreData(contentsPath: contentsPath)
         let filePerClass: Bool = fileTransform.contains(kStringArgVar)
-        var fileAccumulator = generateHeader(filename: fileTransform, imports: imports)
+        var fileAccumulator = generateHeader(filename: fileTransform, imports: immutableFileImports)
 
         // First pass create lookup dictionaries
         for entity in entities {
@@ -42,7 +43,7 @@ public enum CoreDataSwiftGenerator {
 
             // Start a new file accumulator if uses per-class file
             if filePerClass {
-                fileAccumulator = generateHeader(filename: filename, imports: imports)
+                fileAccumulator = generateHeader(filename: filename, imports: immutableFileImports)
             }
 
             fileAccumulator += entityCode(entity: entity, useStruct: useStruct, castInt: castInt, className: className)
@@ -55,20 +56,20 @@ public enum CoreDataSwiftGenerator {
         }
 
         // Output Core Data entity files if necessary
-        if entityPath.count > 0 {
-            for entity in entities {
-                let filename = "\(entity.codeClass).swift"
-                let properties = generateCoreDataEntityProperties(entity: entity)
-                let file = template_CD_Entity.replacingWithMap([
-                    "FILENAME": filename,
-                    "CDENTITYCLASS": entity.codeClass,
-                    "CDENTITYNAME": entity.entityName,
-                    "PROPERTIES": properties,
-                ])
+        let coreDataImportString = importHeaderString(imports: coreDataFileImports)
+        for entity in entities {
+            let filename = "\(entity.codeClass).swift"
+            let properties = generateCoreDataEntityProperties(entity: entity)
+            let file = template_CD_Entity.replacingWithMap([
+                "FILENAME": filename,
+                "CDIMPORTS": coreDataImportString,
+                "CDENTITYCLASS": entity.codeClass,
+                "CDENTITYNAME": entity.entityName,
+                "PROPERTIES": properties,
+            ])
 
-                let filepath = (entityPath as NSString).appendingPathComponent(filename)
-                try! file.write(toFile: filepath, atomically: true, encoding: String.Encoding.utf8)
-            }
+            let filepath = (entityPath as NSString).appendingPathComponent(filename)
+            try! file.write(toFile: filepath, atomically: true, encoding: String.Encoding.utf8)
         }
 
         // Output single file if necessary
@@ -81,8 +82,13 @@ public enum CoreDataSwiftGenerator {
     static func generateHeader(filename: String, imports: String) -> String {
         template_CD_Swift_fileheader.replacingWithMap([
             "FILENAME": filename,
-            "EXTRAIMPORT": (imports != "") ? "\n\(imports)" : "",
+            "EXTRAIMPORT": importHeaderString(imports: imports),
         ])
+    }
+
+    static func importHeaderString(imports: String) -> String {
+        let importArray: [String] = imports.count > 0 ? imports.components(separatedBy: ",").map { "import \($0.trimmingCharacters(in: .whitespaces))" } : []
+        return (importArray.count > 0) ? "\n\(importArray.joined(separator: "\n"))" : ""
     }
 
     static var commandline: String {

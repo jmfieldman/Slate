@@ -6,7 +6,7 @@ bootstrap:
 format:
 	@mint run swiftformat --config .swiftformat .
 
-testsetup:
+setuptests:
 	@swift run slategen gen-core-data \
 		--input-model Tests/DataModel/SlateTests.xcdatamodel \
 		--output-slate-object-path Tests/Generated/ImmutableModels \
@@ -14,7 +14,9 @@ testsetup:
 		-f --cast-int \
 		--name-transform Slate%@ \
 		--file-transform Slate%@ \
-		--imports "import Slate; import DatabaseModels"
+		--immutable-file-imports "Slate, DatabaseModels" \
+		--core-data-file-imports "Slate"
 
 .PHONY: bootstrap \
-	format
+	format \
+	setuptests

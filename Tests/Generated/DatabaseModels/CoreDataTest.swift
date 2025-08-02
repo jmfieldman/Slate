@@ -5,6 +5,7 @@
 
 import CoreData
 import Foundation
+import Slate
 
 @objc(CoreDataTest)
 public final class CoreDataTest: NSManagedObject {

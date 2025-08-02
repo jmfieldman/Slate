@@ -5,6 +5,7 @@
 
 import CoreData
 import Foundation
+import Slate
 
 @objc(CoreDataParent1)
 public final class CoreDataParent1: NSManagedObject {

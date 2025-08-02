@@ -312,7 +312,7 @@ let template_CD_Entity: String = """
 // ----- DO NOT MODIFY -----
 
 import Foundation
-import CoreData
+import CoreData{CDIMPORTS}
 
 @objc({CDENTITYCLASS})
 public final class {CDENTITYCLASS}: NSManagedObject {

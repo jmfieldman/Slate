@@ -5,6 +5,7 @@
 
 import CoreData
 import Foundation
+import Slate
 
 @objc(CoreDataBook)
 public final class CoreDataBook: NSManagedObject {
