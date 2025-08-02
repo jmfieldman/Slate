@@ -5,8 +5,7 @@
 
 import ArgumentParser
 import Foundation
-
-let kStringArgVar: String = "%@"
+import SlateGeneratorLib
 
 enum ErrorCode: Int32 {
     case fileNotFound = 1
@@ -98,9 +97,8 @@ struct SlateGenerator: ParsableCommand {
             try exit(.invalidArgument)
         }
 
-        let entities = ParseCoreData(contentsPath: contentsPath)
         CoreDataSwiftGenerator.generateCoreData(
-            entities: entities,
+            contentsPath: contentsPath,
             useStruct: useStruct,
             nameTransform: nameTransform,
             fileTransform: fileTransform,
@@ -112,4 +110,35 @@ struct SlateGenerator: ParsableCommand {
     }
 }
 
-SlateGenerator.main()
+/// The main command collection for the command line tool.
+@main struct Slate: AsyncParsableCommand {
+    static var configuration = CommandConfiguration(
+        abstract: "Contains commands for the Slate package.",
+        subcommands: [
+            SlateGenerator.self,
+        ]
+    )
+}
+
+/// Common options for ParsableCommands
+public struct CommonOptions: ParsableArguments {
+    @Flag(name: [.long], help: "Print verbose output")
+    public var verbose: Bool = false
+
+    @Flag(name: [.long], help: "Quiet all normal output")
+    public var quiet: Bool = false
+
+    @Flag(name: [.long], help: "Print debug output (higher than verbose)")
+    public var debug: Bool = false
+
+    public init() {}
+}
+
+public extension CommonOptions {
+    var verbosity: Verbosity {
+        if debug { return .debug }
+        if verbose { return .verbose }
+        if quiet { return .quiet }
+        return .normal
+    }
+}

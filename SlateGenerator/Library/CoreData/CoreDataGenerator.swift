@@ -5,15 +5,17 @@
 
 import Foundation
 
-class CoreDataSwiftGenerator {
+public let kStringArgVar: String = "%@"
+
+public final class CoreDataSwiftGenerator {
     static var entityToSlateClass: [String: String] = [:]
     static var entityToCDClass: [String: String] = [:]
 
     /**
      Master entrance point to the file generation
      */
-    static func generateCoreData(
-        entities: [CoreDataEntity],
+    public static func generateCoreData(
+        contentsPath: String,
         useStruct: Bool,
         nameTransform: String,
         fileTransform: String,
@@ -22,6 +24,7 @@ class CoreDataSwiftGenerator {
         entityPath: String,
         imports: String
     ) {
+        let entities = ParseCoreData(contentsPath: contentsPath)
         let filePerClass: Bool = fileTransform.contains(kStringArgVar)
         var fileAccumulator = generateHeader(filename: fileTransform, imports: imports)
 

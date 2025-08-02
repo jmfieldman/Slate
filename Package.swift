@@ -1,11 +1,11 @@
-// swift-tools-version:5.2
+// swift-tools-version:5.9
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
 
 let package = Package(
     name: "Slate",
-    platforms: [.iOS(.v10), .macOS(.v10_12), .tvOS(.v10), .watchOS(.v3)],
+    platforms: [.iOS(.v17), .macOS(.v12), .tvOS(.v17), .watchOS(.v6)],
 
     // MARK: - Products
 
@@ -15,9 +15,7 @@ let package = Package(
         /** Generates slate files from a Core Data xcdatamodel file */
         .executable(name: "slategen", targets: ["SlateGenerator"]),
 
-        /** Setup unit tests */
-        .executable(name: "test_setup", targets: ["TestSetup"]),
-
+        
         // MARK: Libraries
 
         /** The actual Slate library */
@@ -27,7 +25,7 @@ let package = Package(
     // MARK: - Dependencies
 
     dependencies: [
-        .package(url: "https://github.com/apple/swift-argument-parser", from: "0.3.1"),
+        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.6.1"),
     ],
 
     // MARK: - Targets
@@ -35,17 +33,13 @@ let package = Package(
     targets: [
         // MARK: Executables
 
-        .target(
+        .executableTarget(
             name: "SlateGenerator",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                "SlateGeneratorLib",
             ],
-            path: "SlateGenerator"
-        ),
-
-        .target(
-            name: "TestSetup",
-            path: "Tests/Setup"
+            path: "SlateGenerator/Command"
         ),
 
         // MARK: Libraries
@@ -55,12 +49,18 @@ let package = Package(
             dependencies: [],
             path: "Slate"
         ),
+        
+        .target(
+            name: "SlateGeneratorLib",
+            dependencies: [],
+            path: "SlateGenerator/Library"
+        ),
 
         // MARK: Tests
 
         .testTarget(
             name: "SlateTests",
-            dependencies: ["SlateGenerator", "Slate"],
+            dependencies: ["Slate"],
             path: "Tests/SlateTests"
         ),
     ]

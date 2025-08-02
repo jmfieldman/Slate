@@ -12,19 +12,19 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
     let model = xml["model", "entity"]
 
     guard let entities = model.all else {
-        print("Could not find model>entities in xcdatamodel")
+        vprint(.error, "Could not find model>entities in xcdatamodel")
         exit(1)
     }
 
     var coreDataEntities: [CoreDataEntity] = []
     for entity in entities {
         guard let entityName = entity.attributes["name"] else {
-            print("Error getting name attribute of entity")
+            vprint(.error, "Error getting name attribute of entity")
             exit(2)
         }
 
         guard let representedClass = entity.attributes["representedClassName"] else {
-            print("Error getting name attribute of entity")
+            vprint(.error, "Error getting name attribute of entity")
             exit(2)
         }
 
@@ -38,17 +38,17 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
             }
 
             guard let name = attribute.attributes["name"] else {
-                print("attribute does not have name")
+                vprint(.error, "attribute does not have name")
                 continue
             }
 
             guard let attrTypeStr = attribute.attributes["attributeType"] else {
-                print("attribute does not attributeType")
+                vprint(.error, "attribute does not attributeType")
                 continue
             }
 
             guard let attrType = CoreDataAttrType(rawValue: attrTypeStr) else {
-                print("Unrecognized attributeType \(attrTypeStr)")
+                vprint(.error, "Unrecognized attributeType \(attrTypeStr)")
                 continue
             }
 
@@ -92,7 +92,7 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
         for attr in prestructAttrs {
             let breakdown = attr.name.components(separatedBy: "_")
             if breakdown.count != 2 {
-                print("cannot parse substruct attribute \(attr.name) with more than 2 components")
+                vprint(.error, "cannot parse substruct attribute \(attr.name) with more than 2 components")
                 continue
             }
 
@@ -100,7 +100,7 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
             let attrname = breakdown[1]
 
             if attr.optional, attr.useScalar {
-                printError("Slate does not support optional scalars.  Please fix [\(attrname)] in entity [\(entityName)] by making it non-scalar.")
+                vprint(.error, "Slate does not support optional scalars.  Please fix [\(attrname)] in entity [\(entityName)] by making it non-scalar.")
                 exit(10)
             }
 
@@ -123,7 +123,7 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
             let hasAttr = attrArr.first(where: { $0.name == "has" })
             if let hasAttr {
                 if hasAttr.type != .boolean || hasAttr.optional == true || hasAttr.useScalar == false {
-                    printError("a substruct _has property must be a non-optional scalar boolean")
+                    vprint(.error, "a substruct _has property must be a non-optional scalar boolean")
                     exit(10)
                 }
             }
@@ -136,12 +136,12 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
                 var bad = false
                 for attr in attrs {
                     if attr.optional, attr.useScalar {
-                        printError("Slate does not support optional scalars.  Please fix [\(varname + "_" + attr.name)] in entity [\(entityName)] by making it non-scalar.")
+                        vprint(.error, "Slate does not support optional scalars.  Please fix [\(varname + "_" + attr.name)] in entity [\(entityName)] by making it non-scalar.")
                         exit(10)
                     }
 
                     if !attr.optional {
-                        printError("in entity \(entityName) substruct \(varname) is optional (_has exists) -- all substruct attributes must be labeled optional in core data but [\(varname + "_" + attr.name)] is not")
+                        vprint(.error, "in entity \(entityName) substruct \(varname) is optional (_has exists) -- all substruct attributes must be labeled optional in core data but [\(varname + "_" + attr.name)] is not")
                         bad = true
                     }
                 }
@@ -166,12 +166,12 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
             }
 
             guard let name = relationship.attributes["name"] else {
-                print("attribute does not have name")
+                vprint(.error, "attribute does not have name")
                 continue
             }
 
             guard let destEntName = relationship.attributes["inverseEntity"] else {
-                print("relationship has no inverse entity name")
+                vprint(.error, "relationship [\(name)] has no inverse entity name")
                 continue
             }
 
