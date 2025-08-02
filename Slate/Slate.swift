@@ -270,8 +270,8 @@ public final class Slate {
      */
     private func updateImmutableObjectCache(
         updates: [SlateID: Any],
-        deletes: [SlateID: Any],
-        inserts: [SlateID: Any]
+        inserts: [SlateID: Any],
+        deletes: [SlateID]
     ) {
         os_unfair_lock_lock(&immutableObjectCacheLock)
         defer {
@@ -288,7 +288,7 @@ public final class Slate {
             immutableObjectCache[objId] = obj
         }
 
-        for objId in deletes.keys {
+        for objId in deletes {
             immutableObjectCache[objId] = nil
         }
     }
@@ -437,12 +437,14 @@ public final class Slate {
                     userBlockResponse = try block(masterContext)
                 } catch {
                     catchBlock.error = error
+                    masterContext.reset()
                     return
                 }
 
                 // Bail on abort
                 guard (userBlockResponse as? __SlateAbort) !== Slate.abort else {
-                    return masterContext.reset()
+                    masterContext.reset()
+                    return
                 }
 
                 // Attempt to save the context
@@ -453,8 +455,8 @@ public final class Slate {
                     // so that we are cached for any fetched results controllers
                     self.updateImmutableObjectCache(
                         updates: Slate.toSlateMap(masterContext.updatedObjects),
-                        deletes: Slate.toSlateMap(masterContext.deletedObjects),
-                        inserts: Slate.toSlateMap(masterContext.insertedObjects)
+                        inserts: Slate.toSlateMap(masterContext.insertedObjects),
+                        deletes: masterContext.deletedObjects.map(\.objectID),
                     )
 
                     try masterContext.safeSave()
@@ -501,12 +503,14 @@ public final class Slate {
                     userBlockResponse = try block(masterContext)
                 } catch {
                     catchBlock.error = error
+                    masterContext.reset()
                     return
                 }
 
                 // Bail on abort
                 guard (userBlockResponse as? __SlateAbort) !== Slate.abort else {
-                    return masterContext.reset()
+                    masterContext.reset()
+                    return
                 }
 
                 // Attempt to save the context
@@ -517,8 +521,8 @@ public final class Slate {
                     // so that we are cached for any fetched results controllers
                     self.updateImmutableObjectCache(
                         updates: Slate.toSlateMap(masterContext.updatedObjects),
-                        deletes: Slate.toSlateMap(masterContext.deletedObjects),
-                        inserts: Slate.toSlateMap(masterContext.insertedObjects)
+                        inserts: Slate.toSlateMap(masterContext.insertedObjects),
+                        deletes: masterContext.deletedObjects.map(\.objectID)
                     )
 
                     try masterContext.safeSave()
