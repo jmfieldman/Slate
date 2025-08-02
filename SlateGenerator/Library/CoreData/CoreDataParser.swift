@@ -190,10 +190,25 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
             )
         }
 
+        // UserInfo of the top-level entity
+        var useStruct = false
+        for userInfo in entity.childElements {
+            guard userInfo.name == "userInfo" else {
+                continue
+            }
+
+            for child in userInfo.childElements {
+                if child.attributes["key"] == "struct", child.attributes["value"]?.lowercased() == "true" {
+                    useStruct = true
+                }
+            }
+        }
+
         coreDataEntities.append(
             CoreDataEntity(
                 entityName: entityName,
                 codeClass: representedClass,
+                useStruct: useStruct,
                 attributes: attributes.sorted { $0.name < $1.name },
                 relationships: relationships.sorted { $0.name < $1.name },
                 substructs: substructs.sorted { $0.structName < $1.structName }

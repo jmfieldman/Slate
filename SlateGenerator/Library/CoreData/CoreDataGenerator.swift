@@ -16,7 +16,6 @@ public enum CoreDataSwiftGenerator {
      */
     public static func generateCoreData(
         contentsPath: String,
-        useStruct: Bool,
         nameTransform: String,
         fileTransform: String,
         castInt: Bool,
@@ -45,7 +44,7 @@ public enum CoreDataSwiftGenerator {
                 fileAccumulator = generateHeader(filename: filename)
             }
 
-            fileAccumulator += entityCode(entity: entity, useStruct: useStruct, castInt: castInt, className: className)
+            fileAccumulator += entityCode(entity: entity, castInt: castInt, className: className)
 
             // Write to file if necessary
             if filePerClass {
@@ -60,7 +59,7 @@ public enum CoreDataSwiftGenerator {
             let filename = "\(entity.codeClass).swift"
             let slateClassName: String = nameTransform.replacingOccurrences(of: kStringArgVar, with: entity.entityName)
             let properties = generateCoreDataEntityProperties(entity: entity)
-            let relations = generateRelationships(entity: entity, useStruct: useStruct, className: slateClassName)
+            let relations = generateRelationships(entity: entity, className: slateClassName)
             let file = template_CD_Entity.replacingWithMap([
                 "FILENAME": filename,
                 "CDIMPORTS": coreDataImportString,
@@ -99,11 +98,10 @@ public enum CoreDataSwiftGenerator {
 
     static func entityCode(
         entity: CoreDataEntity,
-        useStruct: Bool,
         castInt: Bool,
         className: String
     ) -> String {
-        let classImpl = generateClassImpl(entity: entity, useStruct: useStruct, castInt: castInt, className: className)
+        let classImpl = generateClassImpl(entity: entity, castInt: castInt, className: className)
         let provider = generatePropertyProviderProtocol(entity: entity, className: className)
         let equatable = generateEquatable(entity: entity, className: className)
 
@@ -112,7 +110,6 @@ public enum CoreDataSwiftGenerator {
 
     static func generateClassImpl(
         entity: CoreDataEntity,
-        useStruct: Bool,
         castInt: Bool,
         className: String
     ) -> String {
@@ -183,7 +180,7 @@ public enum CoreDataSwiftGenerator {
         }
 
         return template_CD_Swift_SlateClassImpl.replacingWithMap([
-            "OBJTYPE": useStruct ? "struct" : "final class",
+            "OBJTYPE": entity.useStruct ? "struct" : "final class",
             "SLATECLASS": className,
             "COREDATACLASS": entity.codeClass,
             "ATTRASSIGNMENT": assignments,
@@ -257,7 +254,7 @@ public enum CoreDataSwiftGenerator {
         ])
     }
 
-    static func generateRelationships(entity: CoreDataEntity, useStruct: Bool, className: String) -> String {
+    static func generateRelationships(entity: CoreDataEntity, className: String) -> String {
         var relationships = ""
         for relationship in entity.relationships {
             if relationship.toMany {
@@ -279,7 +276,7 @@ public enum CoreDataSwiftGenerator {
         }
 
         return template_CD_Swift_SlateRelationshipResolver.replacingWithMap([
-            "OBJQUAL": useStruct ? " == " : ": ",
+            "OBJQUAL": entity.useStruct ? " == " : ": ",
             "SLATECLASS": className,
             "RELATIONSHIPS": relationships,
         ])

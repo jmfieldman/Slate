@@ -161,6 +161,7 @@ struct CoreDataSubstruct {
 struct CoreDataEntity {
     let entityName: String
     let codeClass: String
+    let useStruct: Bool
     let attributes: [CoreDataAttribute]
     let relationships: [CoreDataRelationship]
     let substructs: [CoreDataSubstruct]

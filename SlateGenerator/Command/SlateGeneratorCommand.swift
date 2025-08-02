@@ -39,9 +39,6 @@ struct GenCoreData: ParsableCommand {
     @Flag(name: .short, help: "Enable verbose output")
     var verbose: Bool = false
 
-    @Flag(name: .long, help: "Ouptut generates code using struct instead of class")
-    var useStruct: Bool = false
-
     @Flag(name: .long, help: "All Int16, Int32, Int64 values will be cast to Int in Slate code")
     var castInt: Bool = false
 
@@ -97,7 +94,6 @@ struct GenCoreData: ParsableCommand {
 
         CoreDataSwiftGenerator.generateCoreData(
             contentsPath: contentsPath,
-            useStruct: useStruct,
             nameTransform: nameTransform,
             fileTransform: fileTransform,
             castInt: castInt,

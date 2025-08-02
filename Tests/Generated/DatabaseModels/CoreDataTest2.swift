@@ -20,6 +20,8 @@ public final class CoreDataTest2: NSManagedObject, SlateTest2.ManagedPropertyPro
         }
     }
 
+    @NSManaged public var qnty: Int64
+
     @NSManaged public var test: CoreDataTest?
 }
 
@@ -40,7 +42,7 @@ extension SlateTest2: SlateManagedObjectRelating {
     public typealias ManagedObjectType = CoreDataTest2
 }
 
-public extension SlateRelationshipResolver where SO: SlateTest2 {
+public extension SlateRelationshipResolver where SO == SlateTest2 {
     var test: SlateTest? {
         guard let mo = managedObject as? CoreDataTest2 else {
             fatalError("Fatal casting error")

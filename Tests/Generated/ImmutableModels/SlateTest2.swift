@@ -6,12 +6,15 @@
 import CoreData
 import Foundation
 
-public final class SlateTest2 {
+public struct SlateTest2 {
     // -- Attribute Declarations --
+    public let qnty: Int
 
     // -- Attribute Names --
 
-    public struct Attributes {}
+    public enum Attributes {
+        public static let qnty = "qnty"
+    }
 
     public enum Relationships {
         public static let test = "test"
@@ -39,6 +42,7 @@ public final class SlateTest2 {
         self.slateID = managedObject.objectID
 
         // Attribute assignment
+        self.qnty = Int(managedObject.qnty)
     }
 
     /**
@@ -48,20 +52,26 @@ public final class SlateTest2 {
      constructor in normal code.
      */
     init(
+        qnty: Int
     ) {
         // Internally created objects have no real managed object ID
         self.slateID = NSManagedObjectID()
+
+        self.qnty = qnty
     }
 
     // -- Substruct Definitions
 }
 
 public extension SlateTest2 {
-    protocol ManagedPropertyProviding: NSManagedObject {}
+    protocol ManagedPropertyProviding: NSManagedObject {
+        var qnty: Int64 { get }
+    }
 }
 
 extension SlateTest2: Equatable {
     public static func == (lhs: SlateTest2, rhs: SlateTest2) -> Bool {
-        lhs.slateID == rhs.slateID
+        (lhs.slateID == rhs.slateID) &&
+            (lhs.qnty == rhs.qnty)
     }
 }
