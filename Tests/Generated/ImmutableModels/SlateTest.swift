@@ -6,7 +6,7 @@
 import CoreData
 import Foundation
 
-public final class SlateTest {
+public final class SlateTest: Sendable {
     // -- Attribute Declarations --
     public let binAttr: Data
     public let boolAttr: Bool

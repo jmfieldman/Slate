@@ -6,7 +6,7 @@
 import CoreData
 import Foundation
 
-public final class SlateBook {
+public final class SlateBook: Sendable {
     // -- Attribute Declarations --
     public let likeCount: Int?
     public let loading: Bool?

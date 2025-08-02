@@ -27,7 +27,7 @@ import CoreData
 ///  * ATTRASSIGNMENT - A series of attribute assignments for this class
 ///  * ATTRDECLARATIONS - A series of attribute declarations
 let template_CD_Swift_SlateClassImpl: String = """
-public {OBJTYPE} {SLATECLASS} {
+public {OBJTYPE} {SLATECLASS}: Sendable {
 
     // -- Attribute Declarations --
 {ATTRDECLARATIONS}

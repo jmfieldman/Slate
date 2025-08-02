@@ -6,7 +6,7 @@
 import CoreData
 import Foundation
 
-public final class SlateParent1 {
+public final class SlateParent1: Sendable {
     // -- Attribute Declarations --
     public let id: String
     public let child1: SlateParent1.Child1?

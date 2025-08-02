@@ -6,7 +6,7 @@
 import CoreData
 import Foundation
 
-public struct SlateTest2 {
+public struct SlateTest2: Sendable {
     // -- Attribute Declarations --
     public let qnty: Int
 

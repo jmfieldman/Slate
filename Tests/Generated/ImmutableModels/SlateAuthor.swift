@@ -6,7 +6,7 @@
 import CoreData
 import Foundation
 
-public final class SlateAuthor {
+public final class SlateAuthor: Sendable {
     // -- Attribute Declarations --
     public let name: String
 
