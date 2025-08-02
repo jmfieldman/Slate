@@ -22,9 +22,11 @@ public enum SlateConfigError: Error {
 
 // MARK: - SlateError
 
-public enum SlateError: Error {
+public enum SlateTransactionError: Error {
     case queryOutsideScope
     case queryInvalidCast
+    case coreDataError(Error)
+    case aborted(Error?)
 }
 
 // MARK: - SlateID
@@ -183,21 +185,21 @@ public final class Slate {
     ) {
         configQueue.async {
             guard !self.configured else {
-                completionHandler(persistentStoreDescription, SlateConfigError.alreadyConfigured)
+                completionHandler(persistentStoreDescription, .alreadyConfigured)
                 return
             }
 
             // Validate the storeURL for disk-based persistent stores.
             if persistentStoreDescription.type != NSInMemoryStoreType {
                 guard let storeURL = persistentStoreDescription.url else {
-                    completionHandler(persistentStoreDescription, SlateConfigError.storageURLRequired)
+                    completionHandler(persistentStoreDescription, .storageURLRequired)
                     return
                 }
 
                 Slate.storeUrlCheckLock.lock()
                 if Slate.storeUrlSet.contains(storeURL) {
                     Slate.storeUrlCheckLock.unlock()
-                    completionHandler(persistentStoreDescription, SlateConfigError.storageURLAlreadyInUse)
+                    completionHandler(persistentStoreDescription, .storageURLAlreadyInUse)
                     return
                 }
                 Slate.storeUrlCheckLock.unlock()
@@ -978,28 +980,34 @@ public final class SlateQueryRequest<SO: SlateObject> {
      Executes the fetch on the current context.  You cannot execute a fetch from
      any scope other than the query scope it was created in.
      */
-    public func fetch() throws -> [SO] {
+    public func fetch() throws(SlateTransactionError) -> [SO] {
         guard let currentContext = Thread.current.containingQueryContext() else {
-            throw SlateError.queryOutsideScope
+            throw .queryOutsideScope
         }
 
         guard currentContext === slateQueryContext else {
-            throw SlateError.queryOutsideScope
+            throw .queryOutsideScope
         }
 
         // The slate we are in
         let slate = currentContext.slate
 
         // The fetch result is now an array of our NSManagedObjects for the SO type
-        let fetchResult = try currentContext.managedObjectContext.fetch(nsFetchRequest)
-        guard let slatableResult = fetchResult as? [SlateObjectConvertible] else {
-            throw SlateError.queryInvalidCast
+        let fetchResult: [NSFetchRequestResult]
+        do {
+            fetchResult = try currentContext.managedObjectContext.fetch(nsFetchRequest)
+        } catch {
+            throw .coreDataError(error)
         }
 
-        let immResults: [SO] = try slatableResult.map { slatableObject in
+        guard let slatableResult = fetchResult as? [SlateObjectConvertible] else {
+            throw .queryInvalidCast
+        }
+
+        let immResults: [SO] = try slatableResult.map { slatableObject throws(SlateTransactionError) in
             let slateObject = slate.cachedObjectOrCreate(id: slatableObject.objectID, make: { slatableObject.slateObject })
             guard let immObj = slateObject as? SO else {
-                throw SlateError.queryInvalidCast
+                throw .queryInvalidCast
             }
 
             return immObj
@@ -1012,7 +1020,7 @@ public final class SlateQueryRequest<SO: SlateObject> {
      Executes the fetch on the current context.  You cannot execute a fetch from
      any scope other than the query scope it was created in.
      */
-    public func fetchOne() throws -> SO? {
+    public func fetchOne() throws(SlateTransactionError) -> SO? {
         let prevLimit = nsFetchRequest.fetchLimit
         nsFetchRequest.fetchLimit = 1
         let result: SO? = try fetch().first
@@ -1025,16 +1033,20 @@ public final class SlateQueryRequest<SO: SlateObject> {
      counting objects, this method is much faster than performing a normal fetch and counting
      the objects in the full response array.
      */
-    public func count() throws -> Int {
+    public func count() throws(SlateTransactionError) -> Int {
         guard let currentContext = Thread.current.containingQueryContext() else {
-            throw SlateError.queryOutsideScope
+            throw .queryOutsideScope
         }
 
         guard currentContext === slateQueryContext else {
-            throw SlateError.queryOutsideScope
+            throw .queryOutsideScope
         }
 
-        return try currentContext.managedObjectContext.count(for: nsFetchRequest)
+        do {
+            return try currentContext.managedObjectContext.count(for: nsFetchRequest)
+        } catch {
+            throw .coreDataError(error)
+        }
     }
 }
 
@@ -1242,15 +1254,15 @@ public extension NSManagedObjectContext {
 }
 
 public extension Slate {
-    func convert<SO: SlateObject>(managedObjects: [some NSManagedObject]) throws -> [SO] {
+    func convert<SO: SlateObject>(managedObjects: [some NSManagedObject]) throws(SlateTransactionError) -> [SO] {
         guard let slatableResult = managedObjects as? [SlateObjectConvertible] else {
-            throw SlateError.queryInvalidCast
+            throw .queryInvalidCast
         }
 
-        let immResults: [SO] = try slatableResult.map { slatableObject in
+        let immResults: [SO] = try slatableResult.map { slatableObject throws(SlateTransactionError) in
             let slateObject = self.cachedObjectOrCreate(id: slatableObject.objectID, make: { slatableObject.slateObject })
             guard let immObj = slateObject as? SO else {
-                throw SlateError.queryInvalidCast
+                throw .queryInvalidCast
             }
 
             return immObj
