@@ -315,7 +315,7 @@ import Foundation
 import CoreData
 
 @objc({CDENTITYCLASS})
-public class {CDENTITYCLASS}: NSManagedObject {
+public final class {CDENTITYCLASS}: NSManagedObject {
     @nonobjc public class func fetchRequest() -> NSFetchRequest<{CDENTITYCLASS}> {
         return NSFetchRequest<{CDENTITYCLASS}>(entityName: "{CDENTITYNAME}")
     }

@@ -7,7 +7,7 @@ import CoreData
 import Foundation
 
 @objc(CoreDataTest)
-public class CoreDataTest: NSManagedObject {
+public final class CoreDataTest: NSManagedObject {
     @nonobjc public class func fetchRequest() -> NSFetchRequest<CoreDataTest> {
         NSFetchRequest<CoreDataTest>(entityName: "Test")
     }

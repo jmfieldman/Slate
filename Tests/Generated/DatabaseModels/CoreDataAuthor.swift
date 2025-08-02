@@ -7,7 +7,7 @@ import CoreData
 import Foundation
 
 @objc(CoreDataAuthor)
-public class CoreDataAuthor: NSManagedObject {
+public final class CoreDataAuthor: NSManagedObject {
     @nonobjc public class func fetchRequest() -> NSFetchRequest<CoreDataAuthor> {
         NSFetchRequest<CoreDataAuthor>(entityName: "Author")
     }

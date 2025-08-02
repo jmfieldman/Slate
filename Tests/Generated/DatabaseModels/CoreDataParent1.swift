@@ -7,7 +7,7 @@ import CoreData
 import Foundation
 
 @objc(CoreDataParent1)
-public class CoreDataParent1: NSManagedObject {
+public final class CoreDataParent1: NSManagedObject {
     @nonobjc public class func fetchRequest() -> NSFetchRequest<CoreDataParent1> {
         NSFetchRequest<CoreDataParent1>(entityName: "Parent1")
     }

@@ -7,7 +7,7 @@ import CoreData
 import Foundation
 
 @objc(CoreDataBook)
-public class CoreDataBook: NSManagedObject {
+public final class CoreDataBook: NSManagedObject {
     @nonobjc public class func fetchRequest() -> NSFetchRequest<CoreDataBook> {
         NSFetchRequest<CoreDataBook>(entityName: "Book")
     }
