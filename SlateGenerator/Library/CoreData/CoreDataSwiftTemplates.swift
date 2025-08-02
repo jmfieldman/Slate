@@ -18,20 +18,6 @@ let template_CD_Swift_fileheader: String = """
 import Foundation
 import CoreData
 
-/** These extensions are available if conversion to basic integer is required */
-private extension Int16 {
-    var slate_asInt: Int { return Int(self) }
-}
-
-private extension Int32 {
-    var slate_asInt: Int { return Int(self) }
-}
-
-private extension Int64 {
-    var slate_asInt: Int { return Int(self) }
-}
-
-
 """
 
 /// Inputs:
@@ -154,6 +140,14 @@ let template_CD_Swift_AttrAssignment: String = "        self.{ATTR} = managedObj
 
 /// Inputs:
 ///  * ATTR - The name of the attribute
+let template_CD_Swift_AttrIntAssignment: String = "        self.{ATTR} = Int(managedObject.{ATTR})\n"
+
+/// Inputs:
+///  * ATTR - The name of the attribute
+let template_CD_Swift_AttrIntOptAssignment: String = "        self.{ATTR} = managedObject.{ATTR}.flatMap { Int($0) }\n"
+
+/// Inputs:
+///  * ATTR - The name of the attribute
 ///  * TYPE - The type of the managed object
 let template_CD_Swift_AttrForceAssignment: String = "        self.{ATTR} = { let t: {TYPE}? = managedObject.{ATTR}{CONV}; return t! }()\n"
 
@@ -172,6 +166,16 @@ let template_CD_Swift_AttrAssignmentForOptSubstruct: String = "        self.{ATT
 ///  * ATTR - The name of the attribute
 ///  * CONV - The conversion to the proper swift type
 let template_CD_Swift_SubstructAttrAssignment: String = "            self.{ATTR} = managedObject.{STRNAME}_{ATTR}{CONV}\n"
+
+/// Inputs:
+///  * STRNAME - The managed property's struct prefix
+///  * ATTR - The name of the attribute
+let template_CD_Swift_SubstructAttrIntAssignment: String = "            self.{ATTR} = Int(managedObject.{STRNAME}_{ATTR})\n"
+
+/// Inputs:
+///  * STRNAME - The managed property's struct prefix
+///  * ATTR - The name of the attribute
+let template_CD_Swift_SubstructAttrIntOptAssignment: String = "            self.{ATTR} = managedObject.{STRNAME}_{ATTR}.flatMap { Int($0) }\n"
 
 /// Inputs:
 ///  * STRNAME - The managed property's struct prefix

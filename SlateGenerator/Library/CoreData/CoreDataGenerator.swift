@@ -134,12 +134,12 @@ public enum CoreDataSwiftGenerator {
             ])
 
             let useForce = !attr.optional && attr.type.codeGenForceOptional
-            let str = useForce ? template_CD_Swift_AttrForceAssignment : template_CD_Swift_AttrAssignment
+            var str = useForce ? template_CD_Swift_AttrForceAssignment : template_CD_Swift_AttrAssignment
             var conv = ""
             if let sconv = attr.type.swiftValueConversion(castInt: castInt), !attr.useScalar {
                 conv = ((attr.optional || useForce) ? "?" : "") + sconv
             } else if castInt, attr.type.isInt {
-                conv = ((attr.optional && !attr.useScalar) ? "?" : "") + ".slate_asInt"
+                str = (attr.optional && !attr.useScalar) ? template_CD_Swift_AttrIntOptAssignment : template_CD_Swift_AttrIntAssignment
             }
             assignments += str.replacingWithMap([
                 "ATTR": attr.name,
@@ -222,12 +222,12 @@ public enum CoreDataSwiftGenerator {
             ])
 
             let useForce = !isOptionalForStruct && (attr.type.codeGenForceOptional || attr.optional)
-            let str = useForce ? template_CD_Swift_SubstructAttrForceAssignment : template_CD_Swift_SubstructAttrAssignment
+            var str = useForce ? template_CD_Swift_SubstructAttrForceAssignment : template_CD_Swift_SubstructAttrAssignment
             var conv = ""
             if let sconv = attr.type.swiftValueConversion(castInt: castInt), !attr.useScalar {
                 conv = (attr.optional ? "?" : "") + sconv
             } else if castInt, attr.type.isInt {
-                conv = ((attr.optional && !attr.useScalar) ? "?" : "") + ".slate_asInt"
+                str = (attr.optional && !attr.useScalar) ? template_CD_Swift_SubstructAttrIntOptAssignment : template_CD_Swift_SubstructAttrIntAssignment
             }
 
             let def: String = attr.userdata["default"] ?? ""

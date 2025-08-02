@@ -6,19 +6,6 @@
 import CoreData
 import Foundation
 
-/** These extensions are available if conversion to basic integer is required */
-private extension Int16 {
-    var slate_asInt: Int { Int(self) }
-}
-
-private extension Int32 {
-    var slate_asInt: Int { Int(self) }
-}
-
-private extension Int64 {
-    var slate_asInt: Int { Int(self) }
-}
-
 public final class SlateAuthor {
     // -- Attribute Declarations --
     public let name: String

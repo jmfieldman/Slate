@@ -6,19 +6,6 @@
 import CoreData
 import Foundation
 
-/** These extensions are available if conversion to basic integer is required */
-private extension Int16 {
-    var slate_asInt: Int { Int(self) }
-}
-
-private extension Int32 {
-    var slate_asInt: Int { Int(self) }
-}
-
-private extension Int64 {
-    var slate_asInt: Int { Int(self) }
-}
-
 public final class SlateBook {
     // -- Attribute Declarations --
     public let likeCount: Int?
@@ -59,7 +46,7 @@ public final class SlateBook {
         self.slateID = managedObject.objectID
 
         // Attribute assignment
-        self.likeCount = managedObject.likeCount.slate_asInt
+        self.likeCount = Int(managedObject.likeCount)
         self.loading = managedObject.loading
         self.title = { let t: String? = managedObject.title
             return t!

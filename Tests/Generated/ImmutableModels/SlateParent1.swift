@@ -6,19 +6,6 @@
 import CoreData
 import Foundation
 
-/** These extensions are available if conversion to basic integer is required */
-private extension Int16 {
-    var slate_asInt: Int { Int(self) }
-}
-
-private extension Int32 {
-    var slate_asInt: Int { Int(self) }
-}
-
-private extension Int64 {
-    var slate_asInt: Int { Int(self) }
-}
-
 public final class SlateParent1 {
     // -- Attribute Declarations --
     public let id: String
@@ -144,7 +131,7 @@ public final class SlateParent1 {
             self.bool = { let t: Bool? = managedObject.child2_bool?.boolValue
                 return t ?? true
             }()
-            self.int64scalar = managedObject.child2_int64scalar.slate_asInt
+            self.int64scalar = Int(managedObject.child2_int64scalar)
             self.optBool = managedObject.child2_optBool?.boolValue
             self.optString = managedObject.child2_optString
         }

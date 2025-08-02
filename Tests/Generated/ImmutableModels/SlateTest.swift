@@ -6,19 +6,6 @@
 import CoreData
 import Foundation
 
-/** These extensions are available if conversion to basic integer is required */
-private extension Int16 {
-    var slate_asInt: Int { Int(self) }
-}
-
-private extension Int32 {
-    var slate_asInt: Int { Int(self) }
-}
-
-private extension Int64 {
-    var slate_asInt: Int { Int(self) }
-}
-
 public final class SlateTest {
     // -- Attribute Declarations --
     public let binAttr: Data
@@ -89,9 +76,9 @@ public final class SlateTest {
         self.decAttr = managedObject.decAttr?.decimalValue
         self.doubleAttr = managedObject.doubleAttr
         self.floatAttr = managedObject.floatAttr
-        self.int16attr = managedObject.int16attr.slate_asInt
+        self.int16attr = Int(managedObject.int16attr)
         self.int32attr = managedObject.int32attr.intValue
-        self.int64atttr = managedObject.int64atttr.slate_asInt
+        self.int64atttr = Int(managedObject.int64atttr)
         self.stringAttr = { let t: String? = managedObject.stringAttr
             return t!
         }()
