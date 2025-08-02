@@ -79,10 +79,6 @@ public final class SlateAuthor {
     // -- Substruct Definitions
 }
 
-extension SlateAuthor: SlateManagedObjectRelating {
-    public typealias ManagedObjectType = CoreDataAuthor
-}
-
 public extension SlateRelationshipResolver where SO: SlateAuthor {
     var books: [SlateBook] {
         guard let mo = managedObject as? CoreDataAuthor else {

@@ -35,3 +35,7 @@ extension CoreDataTest2: SlateObjectConvertible {
 extension SlateTest2: SlateObject {
     public static var __slate_managedObjectType: NSManagedObject.Type = CoreDataTest2.self
 }
+
+extension SlateTest2: SlateManagedObjectRelating {
+    public typealias ManagedObjectType = CoreDataTest2
+}

@@ -70,10 +70,6 @@ public final class SlateTest2 {
     // -- Substruct Definitions
 }
 
-extension SlateTest2: SlateManagedObjectRelating {
-    public typealias ManagedObjectType = CoreDataTest2
-}
-
 public extension SlateRelationshipResolver where SO: SlateTest2 {
     var test: SlateTest? {
         guard let mo = managedObject as? CoreDataTest2 else {

@@ -45,3 +45,7 @@ extension CoreDataParent1: SlateObjectConvertible {
 extension SlateParent1: SlateObject {
     public static var __slate_managedObjectType: NSManagedObject.Type = CoreDataParent1.self
 }
+
+extension SlateParent1: SlateManagedObjectRelating {
+    public typealias ManagedObjectType = CoreDataParent1
+}

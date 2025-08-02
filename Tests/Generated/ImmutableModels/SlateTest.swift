@@ -149,10 +149,6 @@ public final class SlateTest {
     // -- Substruct Definitions
 }
 
-extension SlateTest: SlateManagedObjectRelating {
-    public typealias ManagedObjectType = CoreDataTest
-}
-
 public extension SlateRelationshipResolver where SO: SlateTest {
     var test2s: [SlateTest2] {
         guard let mo = managedObject as? CoreDataTest else {

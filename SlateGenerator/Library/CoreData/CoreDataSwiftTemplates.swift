@@ -100,10 +100,6 @@ public {OBJTYPE} {SLATECLASS} {
 {SUBSTRUCTS}
 }
 
-extension {SLATECLASS}: SlateManagedObjectRelating {
-    public typealias ManagedObjectType = {COREDATACLASS}
-}
-
 
 """
 
@@ -303,6 +299,11 @@ extension {CDENTITYCLASS}: SlateObjectConvertible {
 extension {SLATECLASS}: SlateObject {
     public static var __slate_managedObjectType: NSManagedObject.Type = {CDENTITYCLASS}.self
 }
+
+extension {SLATECLASS}: SlateManagedObjectRelating {
+    public typealias ManagedObjectType = {CDENTITYCLASS}
+}
+
 
 """
 

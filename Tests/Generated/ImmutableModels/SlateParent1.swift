@@ -170,10 +170,6 @@ public final class SlateParent1 {
     }
 }
 
-extension SlateParent1: SlateManagedObjectRelating {
-    public typealias ManagedObjectType = CoreDataParent1
-}
-
 public extension SlateRelationshipResolver where SO: SlateParent1 {}
 
 public extension SlateParent1 {

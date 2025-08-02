@@ -37,3 +37,7 @@ extension CoreDataAuthor: SlateObjectConvertible {
 extension SlateAuthor: SlateObject {
     public static var __slate_managedObjectType: NSManagedObject.Type = CoreDataAuthor.self
 }
+
+extension SlateAuthor: SlateManagedObjectRelating {
+    public typealias ManagedObjectType = CoreDataAuthor
+}
