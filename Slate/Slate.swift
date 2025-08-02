@@ -78,7 +78,7 @@ public struct SlateChangeDictionaries<T: SlateObject> {
  (i.e. Slate will NOT run the `save` method on the MOC after the mutation
  block is complete.)  See `Slate.abort`
  */
-public class __SlateAbort {}
+public final class __SlateAbort {}
 
 // MARK: - Slate
 
@@ -107,7 +107,7 @@ public class __SlateAbort {}
  consistent representation of the object graph that will not be modified in the
  middle of multiple query operations.
  */
-public class Slate {
+public final class Slate {
     // MARK: Private Properties
 
     /// The NSManagedObjectModel associated with this Slate
@@ -260,30 +260,37 @@ public class Slate {
 
     /// The immutable object cache -- Cannot use NSCache because it does not support
     /// Swift structs as values
-    private var immObjectCache: [SlateID: Any] = [:]
+    private var immutableObjectCache: [SlateID: Any] = [:]
 
     /// Fast locking mechanism for immObjectCache
-    private var immObjectCacheLock = os_unfair_lock_s()
+    private var immutableObjectCacheLock = os_unfair_lock_s()
 
     /**
      Run bulk immutable object cache updates inside lock
      */
-    private func updateImmObjectCache(with updates: [[SlateID: Any]], deletes: [[SlateID: Any]]) {
-        os_unfair_lock_lock(&immObjectCacheLock)
-        for dictionary in updates {
-            for (objId, obj) in dictionary {
-                if immObjectCache[objId] != nil {
-                    immObjectCache[objId] = obj
-                }
+    private func updateImmutableObjectCache(
+        updates: [SlateID: Any],
+        deletes: [SlateID: Any],
+        inserts: [SlateID: Any]
+    ) {
+        os_unfair_lock_lock(&immutableObjectCacheLock)
+        defer {
+            os_unfair_lock_unlock(&immutableObjectCacheLock)
+        }
+        
+        for (objId, obj) in updates {
+            if immutableObjectCache[objId] != nil {
+                immutableObjectCache[objId] = obj
             }
         }
-
-        for dictionary in deletes {
-            for objId in dictionary.keys {
-                immObjectCache[objId] = nil
-            }
+        
+        for (objId, obj) in inserts {
+            immutableObjectCache[objId] = obj
         }
-        os_unfair_lock_unlock(&immObjectCacheLock)
+        
+        for objId in deletes.keys {
+            immutableObjectCache[objId] = nil
+        }
     }
 
     /**
@@ -291,15 +298,17 @@ public class Slate {
      the make block to create the SlateObject, cache it, and return it.
      */
     fileprivate func cachedObjectOrCreate(id: SlateID, make: () -> SlateObject) -> SlateObject {
-        os_unfair_lock_lock(&immObjectCacheLock)
-        if let slateObj = immObjectCache[id] as? SlateObject {
-            os_unfair_lock_unlock(&immObjectCacheLock)
+        os_unfair_lock_lock(&immutableObjectCacheLock)
+        defer {
+            os_unfair_lock_unlock(&immutableObjectCacheLock)
+        }
+        
+        if let slateObj = immutableObjectCache[id] as? SlateObject {
             return slateObj
         }
 
         let slateObj = make()
-        immObjectCache[id] = slateObj
-        os_unfair_lock_unlock(&immObjectCacheLock)
+        immutableObjectCache[id] = slateObj
         return slateObj
     }
 
@@ -436,21 +445,17 @@ public class Slate {
                     return masterContext.reset()
                 }
 
-                // Construct the state change maps (MUST DO BEFORE SAVING)
-                var updateMap: [AnyHashable: [SlateID: Any]]!
-                var deleteMap: [AnyHashable: [SlateID: Any]]!
-                var insertMap: [AnyHashable: [SlateID: Any]]!
-
                 // Attempt to save the context
                 do {
                     try masterContext.obtainPermanentIDs(for: [NSManagedObject](masterContext.insertedObjects))
-                    updateMap = Slate.toSlateChangeMap(masterContext.updatedObjects)
-                    deleteMap = Slate.toSlateChangeMap(masterContext.deletedObjects)
-                    insertMap = Slate.toSlateChangeMap(masterContext.insertedObjects)
 
                     // Update cache (after getting objects but before saving
                     // so that we are cached for any fetched results controllers
-                    self.updateImmObjectCache(with: Array(updateMap.values), deletes: Array(deleteMap.values))
+                    self.updateImmutableObjectCache(
+                        updates: Slate.toSlateMap(masterContext.updatedObjects),
+                        deletes: Slate.toSlateMap(masterContext.deletedObjects),
+                        inserts: Slate.toSlateMap(masterContext.insertedObjects)
+                    )
 
                     try masterContext.safeSave()
                 } catch {
@@ -504,21 +509,17 @@ public class Slate {
                     return masterContext.reset()
                 }
 
-                // Construct the state change maps (MUST DO BEFORE SAVING)
-                var updateMap: [AnyHashable: [SlateID: Any]]!
-                var deleteMap: [AnyHashable: [SlateID: Any]]!
-                var insertMap: [AnyHashable: [SlateID: Any]]!
-
                 // Attempt to save the context
                 do {
                     try masterContext.obtainPermanentIDs(for: [NSManagedObject](masterContext.insertedObjects))
-                    updateMap = Slate.toSlateChangeMap(masterContext.updatedObjects)
-                    deleteMap = Slate.toSlateChangeMap(masterContext.deletedObjects)
-                    insertMap = Slate.toSlateChangeMap(masterContext.insertedObjects)
-
+                    
                     // Update cache (after getting objects but before saving
                     // so that we are cached for any fetched results controllers
-                    self.updateImmObjectCache(with: Array(updateMap.values), deletes: Array(deleteMap.values))
+                    self.updateImmutableObjectCache(
+                        updates: Slate.toSlateMap(masterContext.updatedObjects),
+                        deletes: Slate.toSlateMap(masterContext.deletedObjects),
+                        inserts: Slate.toSlateMap(masterContext.insertedObjects)
+                    )
 
                     try masterContext.safeSave()
                 } catch {
@@ -543,7 +544,7 @@ public class Slate {
  Provides a mechanism to attach a catch statement to a mutation/query scope.  Should
  not be used directly by callers.
  */
-public class _SlateCatchBlock {
+public final class _SlateCatchBlock {
     /// Lock providing synchronous access to internal properties
     private let errorLock = NSLock()
 
@@ -637,7 +638,7 @@ public class _SlateCatchBlock {
  level code is not calling `save` on the MOC.  Only the Slate should call
  `save` on the MOC internally when the mutation block completes.
  */
-public class _SlateManagedObjectContext: NSManagedObjectContext {
+public final class _SlateManagedObjectContext: NSManagedObjectContext {
     /// Are we in an internal save call?
     fileprivate var inSafeSave: Bool = false
 
@@ -655,19 +656,6 @@ public class _SlateManagedObjectContext: NSManagedObjectContext {
             fatalError("You cannot explicitly call save on a Slate MOC")
         }
         try super.save()
-    }
-}
-
-// MARK: - SlateAnnounceNode
-
-/**
- This is a node that captures a weak reference to a SlateListener
- */
-private class SlateAnnounceNode {
-    fileprivate weak var listener: SlateMutationListener?
-
-    init(listener: SlateMutationListener) {
-        self.listener = listener
     }
 }
 
@@ -727,7 +715,7 @@ public extension Slate {
  consistent representation of the object graph that will not be modified in the
  middle of multiple query operations.
  */
-public class SlateQueryContext {
+public final class SlateQueryContext {
     /// The parent Slate
     fileprivate let slate: Slate
 
@@ -797,7 +785,7 @@ public class SlateQueryContext {
  way that object queries are: as a snapshot inside of the query context they are queried
  in.
  */
-public class SlateRelationshipResolver<SO: SlateObject> {
+public final class SlateRelationshipResolver<SO: SlateObject> {
     let context: SlateQueryContext
     let slateObject: SO
 
@@ -840,24 +828,21 @@ public class SlateRelationshipResolver<SO: SlateObject> {
 
 private extension Slate {
     /**
-     This method takes a sets of NSManangedObject and
-     maps them to a dictionary structure that can be imported into
-     the mutation results as change maps.
+     This method takes a set of NSManangedObject and
+     maps them to a dictionary structure.
 
      This method only operates on NSManagedObjects that implement the
      SlateObjectConvertible protocol.
      */
-    static func toSlateChangeMap(_ managedObjects: Set<NSManagedObject>) -> [AnyHashable: [SlateID: Any]] {
-        var response: [AnyHashable: [SlateID: Any]] = [:]
-        let defaultDic = [SlateID: Any](minimumCapacity: managedObjects.count)
+    static func toSlateMap(_ managedObjects: Set<NSManagedObject>) -> [SlateID: Any] {
+        var response = [SlateID: Any](minimumCapacity: managedObjects.count)
 
         for mo in managedObjects {
             guard let slateObj = (mo as? SlateObjectConvertible)?.slateObject else {
                 continue
             }
-
-            let hashKey = "\(type(of: slateObj))"
-            response[hashKey, default: defaultDic][slateObj.slateID] = slateObj
+            
+            response[slateObj.slateID] = slateObj
         }
 
         return response
@@ -874,7 +859,7 @@ private extension Slate {
  It is a fatalError to attempt to fetch outside of a block.  The fetch will know which
  context it is being called from.
  */
-public class SlateQueryRequest<SO: SlateObject> {
+public final class SlateQueryRequest<SO: SlateObject> {
     /// The backing NSFetchRequest that will power this fetch
     private let nsFetchRequest: NSFetchRequest<NSFetchRequestResult>
 
@@ -966,7 +951,7 @@ public class SlateQueryRequest<SO: SlateObject> {
         if nsFetchRequest.sortDescriptors == nil {
             nsFetchRequest.sortDescriptors = [descriptor]
         } else {
-            nsFetchRequest.sortDescriptors!.append(descriptor)
+            nsFetchRequest.sortDescriptors?.append(descriptor)
         }
         return self
     }
@@ -1059,7 +1044,7 @@ public class SlateQueryRequest<SO: SlateObject> {
  The SlateMOCFetchRequest provides a wrapping around the standard NSFetchRequest in order to
  buildable query interface.
  */
-public class SlateMOCFetchRequest<MO: NSManagedObject> {
+public final class SlateMOCFetchRequest<MO: NSManagedObject> {
     /// The backing NSFetchRequest that will power this fetch
     fileprivate let nsFetchRequest: NSFetchRequest<MO>
 
