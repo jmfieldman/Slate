@@ -89,16 +89,6 @@ public final class SlateBook {
     // -- Substruct Definitions
 }
 
-public extension SlateRelationshipResolver where SO: SlateBook {
-    var author: SlateAuthor {
-        guard let mo = managedObject as? CoreDataBook else {
-            fatalError("Fatal casting error")
-        }
-
-        return convert(mo.author) as! SlateAuthor
-    }
-}
-
 public extension SlateBook {
     protocol ManagedPropertyProviding: NSManagedObject {
         var likeCount: Int64 { get }

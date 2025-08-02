@@ -49,3 +49,5 @@ extension SlateParent1: SlateObject {
 extension SlateParent1: SlateManagedObjectRelating {
     public typealias ManagedObjectType = CoreDataParent1
 }
+
+public extension SlateRelationshipResolver where SO: SlateParent1 {}

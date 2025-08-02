@@ -53,3 +53,17 @@ extension SlateTest: SlateObject {
 extension SlateTest: SlateManagedObjectRelating {
     public typealias ManagedObjectType = CoreDataTest
 }
+
+public extension SlateRelationshipResolver where SO: SlateTest {
+    var test2s: [SlateTest2] {
+        guard let mo = managedObject as? CoreDataTest else {
+            fatalError("Fatal casting error")
+        }
+
+        guard let set = mo.test2s?.set else {
+            return []
+        }
+
+        return convert(set) as! [SlateTest2]
+    }
+}

@@ -61,6 +61,7 @@ public enum CoreDataSwiftGenerator {
             let filename = "\(entity.codeClass).swift"
             let slateClassName: String = nameTransform.replacingOccurrences(of: kStringArgVar, with: entity.entityName)
             let properties = generateCoreDataEntityProperties(entity: entity)
+            let relations = generateRelationships(entity: entity, useStruct: useStruct, className: slateClassName)
             let file = template_CD_Entity.replacingWithMap([
                 "FILENAME": filename,
                 "CDIMPORTS": coreDataImportString,
@@ -68,6 +69,7 @@ public enum CoreDataSwiftGenerator {
                 "CDENTITYNAME": entity.entityName,
                 "SLATECLASS": slateClassName,
                 "PROPERTIES": properties,
+                "RELATIONS": relations,
             ])
 
             let filepath = (entityPath as NSString).appendingPathComponent(filename)
@@ -104,11 +106,10 @@ public enum CoreDataSwiftGenerator {
         className: String
     ) -> String {
         let classImpl = generateClassImpl(entity: entity, useStruct: useStruct, castInt: castInt, className: className)
-        let relations = generateRelationships(entity: entity, useStruct: useStruct, className: className)
         let provider = generatePropertyProviderProtocol(entity: entity, className: className)
         let equatable = generateEquatable(entity: entity, className: className)
 
-        return "\(classImpl)\(relations)\(provider)\(equatable)"
+        return "\(classImpl)\(provider)\(equatable)"
     }
 
     static func generateClassImpl(

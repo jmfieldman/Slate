@@ -43,3 +43,13 @@ extension SlateBook: SlateObject {
 extension SlateBook: SlateManagedObjectRelating {
     public typealias ManagedObjectType = CoreDataBook
 }
+
+public extension SlateRelationshipResolver where SO: SlateBook {
+    var author: SlateAuthor {
+        guard let mo = managedObject as? CoreDataBook else {
+            fatalError("Fatal casting error")
+        }
+
+        return convert(mo.author) as! SlateAuthor
+    }
+}

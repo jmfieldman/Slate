@@ -193,56 +193,6 @@ let template_CD_Swift_AttrDeclaration: String = "    {ACCESS} let {ATTR}: {TYPE}
 let template_CD_Swift_SubstructAttrDeclaration: String = "        {ACCESS} let {ATTR}: {TYPE}{OPTIONAL}\n"
 
 /// Inputs:
-///  * OBJQUAL - The SO qualifier string; `: ` for class or ` == ` for struct
-///  * SLATECLASS - The name of the immutable slate class
-///  * RELATIONSHIPS - The listing of relationship lookups
-let template_CD_Swift_SlateRelationshipResolver: String = """
-public extension SlateRelationshipResolver where SO{OBJQUAL}{SLATECLASS} {
-{RELATIONSHIPS}
-}
-
-
-"""
-
-/// Inputs:
-///  * RELATIONSHIPNAME - The attribute/name of the relationship
-///  * TARGETSLATECLASS - The name of the immutable slate class of the relationship target
-///  * COREDATACLASS - The name of the Core Data class of the relationship target
-let template_CD_Swift_SlateRelationshipToMany: String = """
-    var {RELATIONSHIPNAME}: [{TARGETSLATECLASS}] {
-        guard let mo = self.managedObject as? {COREDATACLASS} else {
-            fatalError("Fatal casting error")
-        }
-
-        guard let set = mo.{RELATIONSHIPNAME}{SET} else {
-            return []
-        }
-
-        return self.convert(set) as! [{TARGETSLATECLASS}]
-    }
-
-
-"""
-
-/// Inputs:
-///  * RELATIONSHIPNAME - The attribute/name of the relationship
-///  * TARGETSLATECLASS - The name of the immutable slate class of the relationship target
-///  * COREDATACLASS - The name of the Core Data class of the relationship target
-///  * OPTIONAL - Should be `?` if the toOne is optional
-///  * NONOPTIONAL - Should be `!` if the toOne is required
-let template_CD_Swift_SlateRelationshipToOne: String = """
-    var {RELATIONSHIPNAME}: {TARGETSLATECLASS}{OPTIONAL} {
-        guard let mo = self.managedObject as? {COREDATACLASS} else {
-            fatalError("Fatal casting error")
-        }
-
-        return self.convert(mo.{RELATIONSHIPNAME}) as{NONOPTIONAL}{OPTIONAL} {TARGETSLATECLASS}
-    }
-
-
-"""
-
-/// Inputs:
 ///  * SLATECLASS - The name of the immutable slate class
 ///  * ATTRS - Equatable attributes
 let template_CD_Swift_SlateEquatable: String = """
@@ -303,6 +253,57 @@ extension {SLATECLASS}: SlateObject {
 extension {SLATECLASS}: SlateManagedObjectRelating {
     public typealias ManagedObjectType = {CDENTITYCLASS}
 }
+
+{RELATIONS}
+
+"""
+
+/// Inputs:
+///  * OBJQUAL - The SO qualifier string; `: ` for class or ` == ` for struct
+///  * SLATECLASS - The name of the immutable slate class
+///  * RELATIONSHIPS - The listing of relationship lookups
+let template_CD_Swift_SlateRelationshipResolver: String = """
+public extension SlateRelationshipResolver where SO{OBJQUAL}{SLATECLASS} {
+{RELATIONSHIPS}
+}
+
+
+"""
+
+/// Inputs:
+///  * RELATIONSHIPNAME - The attribute/name of the relationship
+///  * TARGETSLATECLASS - The name of the immutable slate class of the relationship target
+///  * COREDATACLASS - The name of the Core Data class of the relationship target
+let template_CD_Swift_SlateRelationshipToMany: String = """
+    var {RELATIONSHIPNAME}: [{TARGETSLATECLASS}] {
+        guard let mo = self.managedObject as? {COREDATACLASS} else {
+            fatalError("Fatal casting error")
+        }
+
+        guard let set = mo.{RELATIONSHIPNAME}{SET} else {
+            return []
+        }
+
+        return self.convert(set) as! [{TARGETSLATECLASS}]
+    }
+
+
+"""
+
+/// Inputs:
+///  * RELATIONSHIPNAME - The attribute/name of the relationship
+///  * TARGETSLATECLASS - The name of the immutable slate class of the relationship target
+///  * COREDATACLASS - The name of the Core Data class of the relationship target
+///  * OPTIONAL - Should be `?` if the toOne is optional
+///  * NONOPTIONAL - Should be `!` if the toOne is required
+let template_CD_Swift_SlateRelationshipToOne: String = """
+    var {RELATIONSHIPNAME}: {TARGETSLATECLASS}{OPTIONAL} {
+        guard let mo = self.managedObject as? {COREDATACLASS} else {
+            fatalError("Fatal casting error")
+        }
+
+        return self.convert(mo.{RELATIONSHIPNAME}) as{NONOPTIONAL}{OPTIONAL} {TARGETSLATECLASS}
+    }
 
 
 """

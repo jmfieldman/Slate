@@ -170,8 +170,6 @@ public final class SlateParent1 {
     }
 }
 
-public extension SlateRelationshipResolver where SO: SlateParent1 {}
-
 public extension SlateParent1 {
     protocol ManagedPropertyProviding: NSManagedObject {
         var id: String? { get }

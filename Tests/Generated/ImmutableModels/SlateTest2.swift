@@ -70,16 +70,6 @@ public final class SlateTest2 {
     // -- Substruct Definitions
 }
 
-public extension SlateRelationshipResolver where SO: SlateTest2 {
-    var test: SlateTest? {
-        guard let mo = managedObject as? CoreDataTest2 else {
-            fatalError("Fatal casting error")
-        }
-
-        return convert(mo.test) as? SlateTest
-    }
-}
-
 public extension SlateTest2 {
     protocol ManagedPropertyProviding: NSManagedObject {}
 }

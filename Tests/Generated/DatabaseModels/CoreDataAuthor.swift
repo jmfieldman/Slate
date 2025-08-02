@@ -41,3 +41,17 @@ extension SlateAuthor: SlateObject {
 extension SlateAuthor: SlateManagedObjectRelating {
     public typealias ManagedObjectType = CoreDataAuthor
 }
+
+public extension SlateRelationshipResolver where SO: SlateAuthor {
+    var books: [SlateBook] {
+        guard let mo = managedObject as? CoreDataAuthor else {
+            fatalError("Fatal casting error")
+        }
+
+        guard let set = mo.books as? Set<AnyHashable> else {
+            return []
+        }
+
+        return convert(set) as! [SlateBook]
+    }
+}
