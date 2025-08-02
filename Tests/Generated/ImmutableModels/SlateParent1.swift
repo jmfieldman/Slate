@@ -77,10 +77,16 @@ public final class SlateParent1: SlateObject {
     public let slateID: SlateID
 
     /**
-     Instantiation is private to this file; Slate objects should only be instantiated
-     by accessing the `slateObject` property of the corresponding managed object.
+     Instantiation is public so that Slate instances can create immutable objects
+     from corresponding managed objects. You should never manually construct this in code.
      */
-    fileprivate init(managedObject: CoreDataParent1) {
+    public init(managedObject: ManagedPropertyProviding) {
+        // Immutable objects should only be created inside Slate contexts
+        // (by the Slate engine)
+        guard Slate.isThreadInsideQuery else {
+            fatalError("It is a programming error to instantiate an immutable Slate objects from outside of a Slate query context.")
+        }
+
         // All objects inherit the objectID
         self.slateID = managedObject.objectID
 
@@ -123,7 +129,7 @@ public final class SlateParent1: SlateObject {
          Instantiation is private to this file; Substructs should only be instantiated
          by their parent Slate object.
          */
-        fileprivate init(managedObject: CoreDataParent1) {
+        fileprivate init(managedObject: ManagedPropertyProviding) {
             // Attribute assignment
             self.optString = managedObject.child1_optString
             self.propInt64scalar = { let t: Int? = managedObject.child1_propInt64scalar?.intValue
@@ -162,7 +168,7 @@ public final class SlateParent1: SlateObject {
          Instantiation is private to this file; Substructs should only be instantiated
          by their parent Slate object.
          */
-        fileprivate init(managedObject: CoreDataParent1) {
+        fileprivate init(managedObject: ManagedPropertyProviding) {
             // Attribute assignment
             self.bool = { let t: Bool? = managedObject.child2_bool?.boolValue
                 return t ?? true
@@ -197,6 +203,22 @@ extension SlateParent1: SlateManagedObjectRelating {
 }
 
 public extension SlateRelationshipResolver where SO: SlateParent1 {}
+
+public extension SlateParent1 {
+    protocol ManagedPropertyProviding: NSManagedObject {
+        var id: String? { get }
+
+        var child1_has: Bool { get }
+        var child1_optString: String? { get }
+        var child1_propInt64scalar: NSNumber? { get }
+        var child1_string: String? { get }
+
+        var child2_bool: NSNumber? { get }
+        var child2_int64scalar: Int64 { get }
+        var child2_optBool: NSNumber? { get }
+        var child2_optString: String? { get }
+    }
+}
 
 extension SlateParent1: Equatable {
     public static func == (lhs: SlateParent1, rhs: SlateParent1) -> Bool {

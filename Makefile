@@ -16,6 +16,7 @@ setuptests:
 		--file-transform Slate%@ \
 		--immutable-file-imports "Slate, DatabaseModels" \
 		--core-data-file-imports "Slate"
+	@mint run swiftformat --config .swiftformat Tests/Generated
 
 .PHONY: bootstrap \
 	format \

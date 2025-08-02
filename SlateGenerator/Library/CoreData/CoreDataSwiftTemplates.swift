@@ -106,10 +106,16 @@ public {OBJTYPE} {SLATECLASS}: SlateObject {
     public let slateID: SlateID
 
     /**
-     Instantiation is private to this file; Slate objects should only be instantiated
-     by accessing the `slateObject` property of the corresponding managed object.
+     Instantiation is public so that Slate instances can create immutable objects
+     from corresponding managed objects. You should never manually construct this in code.
      */
-    fileprivate init(managedObject: {COREDATACLASS}) {
+    public init(managedObject: ManagedPropertyProviding) {
+        // Immutable objects should only be created inside Slate contexts
+        // (by the Slate engine)
+        guard Slate.isThreadInsideQuery else {
+            fatalError("It is a programming error to instantiate an immutable Slate object from outside of a Slate query context.")
+        }
+
         // All objects inherit the objectID
         self.slateID = managedObject.objectID
 
@@ -159,7 +165,7 @@ let template_CD_Swift_SlateSubstructImpl: String = """
          Instantiation is private to this file; Substructs should only be instantiated
          by their parent Slate object.
          */
-        fileprivate init(managedObject: {COREDATACLASS}) {
+        fileprivate init(managedObject: ManagedPropertyProviding) {
 
             // Attribute assignment
 {ATTRASSIGNMENT}
@@ -296,9 +302,7 @@ extension {SLATECLASS}: Equatable {
 
 """
 
-// -----------------------------------
-// --- Core Data Entity Generators ---
-// -----------------------------------
+// MARK: - Core Data Entity Generators
 
 /// Inputs:
 ///  * PROPERTIES - Core Data properties of the class
@@ -330,3 +334,21 @@ public final class {CDENTITYCLASS}: NSManagedObject {
 ///  * TYPE - The property type
 ///  * OPTIONAL - The string "?" if the type is optional
 let template_CD_Entity_Property: String = "    @NSManaged public var {VARNAME}: {TYPE}{OPTIONAL}\n"
+
+/// Inputs:
+///  * SLATECLASS - Name of the slate class
+///  * PROPERTIES - List of protocol properties
+let template_CD_Property_Provider_Protocol: String = """
+public extension {SLATECLASS} {
+    protocol ManagedPropertyProviding: NSManagedObject {
+        {PROPERTIES}
+    }
+}
+
+"""
+
+/// Inputs:
+///  * VARNAME - Variable name
+///  * TYPE - The property type
+///  * OPTIONAL - The string "?" if the type is optional
+let template_CD_Property_Provider_Attr: String = "    var {VARNAME}: {TYPE}{OPTIONAL} { get }\n"

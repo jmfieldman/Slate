@@ -113,9 +113,10 @@ public enum CoreDataSwiftGenerator {
 
         let classImpl = generateClassImpl(entity: entity, useStruct: useStruct, castInt: castInt, className: className)
         let relations = generateRelationships(entity: entity, useStruct: useStruct, className: className)
+        let provider = generatePropertyProviderProtocol(entity: entity, className: className)
         let equatable = generateEquatable(entity: entity, className: className)
 
-        return "\(convertible)\(moExtension)\(classImpl)\(relations)\(equatable)"
+        return "\(convertible)\(moExtension)\(classImpl)\(relations)\(provider)\(equatable)"
     }
 
     static func generateClassImpl(
@@ -314,6 +315,13 @@ public enum CoreDataSwiftGenerator {
         ])
     }
 
+    static func generatePropertyProviderProtocol(entity: CoreDataEntity, className: String) -> String {
+        template_CD_Property_Provider_Protocol.replacingWithMap([
+            "SLATECLASS": className,
+            "PROPERTIES": generateCoreDataPropertyProviderAttributes(entity: entity),
+        ])
+    }
+
     // ----- Core Data Entities -----
 
     static func generateCoreDataEntityProperties(entity: CoreDataEntity) -> String {
@@ -358,6 +366,37 @@ public enum CoreDataSwiftGenerator {
                 "OPTIONAL": (relationship.optional || relationship.toMany) ? "?" : "",
                 "TYPE": type,
             ])
+        }
+        return properties
+    }
+
+    static func generateCoreDataPropertyProviderAttributes(entity: CoreDataEntity) -> String {
+        var properties = ""
+        for attribute in entity.attributes {
+            properties += template_CD_Property_Provider_Attr.replacingWithMap([
+                "VARNAME": attribute.name,
+                "OPTIONAL": ((attribute.optional || attribute.type.codeGenForceOptional) && !attribute.useScalar) ? "?" : "",
+                "TYPE": attribute.type.swiftManagedType(scalar: attribute.useScalar),
+            ])
+        }
+        for substruct in entity.substructs {
+            properties += "\n"
+
+            if substruct.optional {
+                properties += template_CD_Property_Provider_Attr.replacingWithMap([
+                    "VARNAME": substruct.varName + "_has",
+                    "OPTIONAL": "",
+                    "TYPE": "Bool",
+                ])
+            }
+
+            for attribute in substruct.attributes {
+                properties += template_CD_Property_Provider_Attr.replacingWithMap([
+                    "VARNAME": substruct.varName + "_" + attribute.name,
+                    "OPTIONAL": (attribute.optional && !attribute.useScalar) ? "?" : "",
+                    "TYPE": attribute.type.swiftManagedType(scalar: attribute.useScalar),
+                ])
+            }
         }
         return properties
     }

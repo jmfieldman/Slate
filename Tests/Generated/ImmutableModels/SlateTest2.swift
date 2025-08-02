@@ -67,10 +67,16 @@ public final class SlateTest2: SlateObject {
     public let slateID: SlateID
 
     /**
-     Instantiation is private to this file; Slate objects should only be instantiated
-     by accessing the `slateObject` property of the corresponding managed object.
+     Instantiation is public so that Slate instances can create immutable objects
+     from corresponding managed objects. You should never manually construct this in code.
      */
-    fileprivate init(managedObject: CoreDataTest2) {
+    public init(managedObject: ManagedPropertyProviding) {
+        // Immutable objects should only be created inside Slate contexts
+        // (by the Slate engine)
+        guard Slate.isThreadInsideQuery else {
+            fatalError("It is a programming error to instantiate an immutable Slate objects from outside of a Slate query context.")
+        }
+
         // All objects inherit the objectID
         self.slateID = managedObject.objectID
 
@@ -104,6 +110,10 @@ public extension SlateRelationshipResolver where SO: SlateTest2 {
 
         return convert(mo.test) as? SlateTest
     }
+}
+
+public extension SlateTest2 {
+    protocol ManagedPropertyProviding: NSManagedObject {}
 }
 
 extension SlateTest2: Equatable {
