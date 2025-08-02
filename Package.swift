@@ -59,8 +59,23 @@ let package = Package(
 
         .testTarget(
             name: "SlateTests",
-            dependencies: ["Slate"],
+            dependencies: [
+                "Slate",
+                "DatabaseModels",
+                "ImmutableModels",
+            ],
             path: "Tests/SlateTests"
+        ),
+
+        .target(
+            name: "DatabaseModels",
+            dependencies: [],
+            path: "Tests/Generated/DatabaseModels"
+        ),
+        .target(
+            name: "ImmutableModels",
+            dependencies: [],
+            path: "Tests/Generated/ImmutableModels"
         ),
     ]
 )

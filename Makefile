@@ -14,7 +14,7 @@ testsetup:
 		-f --cast-int \
 		--name-transform Slate%@ \
 		--file-transform Slate%@ \
-		--imports "import Slate"
+		--imports "import Slate; import DatabaseModels"
 
 .PHONY: bootstrap \
 	format
