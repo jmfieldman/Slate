@@ -1,6 +1,6 @@
 //
-//  String+ReplaceMap.swift
-//  Copyright © 2020 Jason Fieldman.
+//  Verbosity.swift
+//  Copyright © 2025 Jason Fieldman.
 //
 
 import Foundation

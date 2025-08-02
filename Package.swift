@@ -15,7 +15,6 @@ let package = Package(
         /** Generates slate files from a Core Data xcdatamodel file */
         .executable(name: "slategen", targets: ["SlateGenerator"]),
 
-        
         // MARK: Libraries
 
         /** The actual Slate library */
@@ -49,7 +48,7 @@ let package = Package(
             dependencies: [],
             path: "Slate"
         ),
-        
+
         .target(
             name: "SlateGeneratorLib",
             dependencies: [],

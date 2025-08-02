@@ -277,17 +277,17 @@ public final class Slate {
         defer {
             os_unfair_lock_unlock(&immutableObjectCacheLock)
         }
-        
+
         for (objId, obj) in updates {
             if immutableObjectCache[objId] != nil {
                 immutableObjectCache[objId] = obj
             }
         }
-        
+
         for (objId, obj) in inserts {
             immutableObjectCache[objId] = obj
         }
-        
+
         for objId in deletes.keys {
             immutableObjectCache[objId] = nil
         }
@@ -302,7 +302,7 @@ public final class Slate {
         defer {
             os_unfair_lock_unlock(&immutableObjectCacheLock)
         }
-        
+
         if let slateObj = immutableObjectCache[id] as? SlateObject {
             return slateObj
         }
@@ -512,7 +512,7 @@ public final class Slate {
                 // Attempt to save the context
                 do {
                     try masterContext.obtainPermanentIDs(for: [NSManagedObject](masterContext.insertedObjects))
-                    
+
                     // Update cache (after getting objects but before saving
                     // so that we are cached for any fetched results controllers
                     self.updateImmutableObjectCache(
@@ -841,7 +841,7 @@ private extension Slate {
             guard let slateObj = (mo as? SlateObjectConvertible)?.slateObject else {
                 continue
             }
-            
+
             response[slateObj.slateID] = slateObj
         }
 

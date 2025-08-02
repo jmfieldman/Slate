@@ -1,5 +1,5 @@
 //
-//  main.swift
+//  SlateGeneratorCommand.swift
 //  Copyright © 2020 Jason Fieldman.
 //
 
