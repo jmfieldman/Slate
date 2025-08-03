@@ -24,6 +24,10 @@ public enum SlateConfigError: Error {
 // MARK: - SlateError
 
 public enum SlateTransactionError: Error {
+    /// The master context has not been created yet, or there was
+    /// an error creating the context
+    case noMasterContext
+
     /// A slate context is being used outside of query/mutate blocks.
     case queryOutsideScope
 
@@ -52,7 +56,7 @@ public enum SlateTransactionError: Error {
     /// Quick accessor to check if this is aborted
     fileprivate var isAborted: Bool {
         switch self {
-        case .queryOutsideScope, .queryInvalidCast, .underlying:
+        case .noMasterContext, .queryOutsideScope, .queryInvalidCast, .underlying:
             false
         case .aborted:
             true
@@ -456,12 +460,20 @@ public final class Slate {
     ) async throws(SlateTransactionError) -> Output {
         do {
             return try await withCheckedThrowingContinuation { continuation in
-                // Create a new read MOC
-                let queryMOC = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
-                queryMOC.parent = self.masterContext
-                queryMOC.undoManager = nil
-
                 accessQueue.asyncUnsafe {
+                    guard let masterContext = self.masterContext else {
+                        continuation.resume(throwing: SlateTransactionError.noMasterContext)
+                        return
+                    }
+
+                    // Create a new read MOC
+                    let queryMOC = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+                    queryMOC.parent = masterContext
+                    queryMOC.undoManager = nil
+
+                    // Capture the result of the block
+                    var result: Result<Output, Error> = .failure(SlateTransactionError.noMasterContext)
+
                     // Run the remaining operations synchronously in the context's perform queue
                     queryMOC.performAndWait {
                         // Create query context
@@ -471,7 +483,6 @@ public final class Slate {
                         let oldQueryContext = Thread.current.setInsideQueryContext(slateQueryContext)
 
                         // Issue user query block
-                        let result: Result<Output, Error>
                         do {
                             result = try Result<Output, Error>.success(block(slateQueryContext))
                         } catch {
@@ -480,17 +491,13 @@ public final class Slate {
 
                         // Reset query context
                         Thread.current.setInsideQueryContext(oldQueryContext)
-
-                        continuation.resume(with: result)
                     }
+
+                    continuation.resume(with: result)
                 }
             }
         } catch {
-            if let err = error as? SlateTransactionError {
-                throw err
-            } else {
-                throw SlateTransactionError.underlying(error)
-            }
+            throw (error as? SlateTransactionError).flatMap { $0 } ?? .underlying(error)
         }
     }
 
@@ -623,6 +630,79 @@ public final class Slate {
         }
 
         return catchBlock
+    }
+
+    // MARK: Async Mutation
+
+    /**
+     The `mutate` function wraps `mutateAsync` in structured concurrency semantics. You can use:
+
+        do {
+            try await slate.mutate { moc in
+                let author = try moc[Author.self].fetchOne()
+                author.name = "New Name"
+            }
+        } catch { .. SlateTransactionError .. }
+
+     Note that since the inner block that exposes the context is running inside a ManagedObjectContext
+     queue, that it cannot be async itself.
+     */
+    @discardableResult public func mutate<Output: Sendable>(
+        block: @escaping (NSManagedObjectContext) throws -> Output
+    ) async throws(SlateTransactionError) -> Output {
+        do {
+            return try await withCheckedThrowingContinuation { continuation in
+                accessQueue.asyncUnsafe(flags: .barrier) {
+                    guard let masterContext = self.masterContext else {
+                        continuation.resume(throwing: SlateTransactionError.noMasterContext)
+                        return
+                    }
+
+                    // Capture the result of the block
+                    var result: Result<Output, Error> = .failure(SlateTransactionError.noMasterContext)
+
+                    // Issue the mutation block inside of the context's
+                    // performAndWait; capture the response
+                    // TODO: Protect against saving or other invalid MOC operations?
+                    masterContext.performAndWait {
+                        do {
+                            result = try .success(block(masterContext))
+                        } catch {
+                            result = .failure(error)
+                            masterContext.reset()
+                            return
+                        }
+
+                        // Attempt to save the context
+                        do {
+                            try masterContext.obtainPermanentIDs(for: [NSManagedObject](masterContext.insertedObjects))
+
+                            let queryContext = SlateQueryContext(slate: self, managedObjectContext: masterContext)
+                            let oldQueryContext = Thread.current.setInsideQueryContext(queryContext)
+
+                            // Update cache (after getting objects but before saving
+                            // so that we are cached for any fetched results controllers
+                            self.updateImmutableObjectCache(
+                                updates: Slate.toSlateMap(masterContext.updatedObjects),
+                                inserts: Slate.toSlateMap(masterContext.insertedObjects),
+                                deletes: masterContext.deletedObjects.map(\.objectID)
+                            )
+
+                            Thread.current.setInsideQueryContext(oldQueryContext)
+
+                            try masterContext.safeSave()
+                        } catch {
+                            result = .failure(error)
+                            return
+                        }
+                    }
+
+                    continuation.resume(with: result)
+                }
+            }
+        } catch {
+            throw (error as? SlateTransactionError).flatMap { $0 } ?? .underlying(error)
+        }
     }
 }
 
