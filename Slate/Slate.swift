@@ -80,7 +80,7 @@ public typealias SlateID = NSManagedObjectID
 /**
  Any immutable Slate data model implementation must implement SlateObject.
  */
-public protocol SlateObject {
+public protocol SlateObject: Sendable {
     /**
      Identifies the NSManagedObject type that backs this SlateObject
      */
