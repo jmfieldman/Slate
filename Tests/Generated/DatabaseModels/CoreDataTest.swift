@@ -30,7 +30,6 @@ public final class CoreDataTest: NSManagedObject, SlateTest.ManagedPropertyProvi
     @NSManaged public var int32attr: NSNumber
     @NSManaged public var int64atttr: Int64
     @NSManaged public var stringAttr: String?
-    @NSManaged public var transAttr: NSObject?
     @NSManaged public var uriAttr: URL?
     @NSManaged public var uuidAttr: UUID?
 

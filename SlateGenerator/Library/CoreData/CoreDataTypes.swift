@@ -125,6 +125,24 @@ enum CoreDataAttrType: String {
         case .transformable: "NSObject"
         }
     }
+
+    var supported: Bool {
+        switch self {
+        case .integer16: true
+        case .integer32: true
+        case .integer64: true
+        case .decimal: true
+        case .double: true
+        case .float: true
+        case .string: true
+        case .boolean: true
+        case .date: true
+        case .binaryData: true
+        case .uuid: true
+        case .uri: true
+        case .transformable: false
+        }
+    }
 }
 
 struct CoreDataRelationship {

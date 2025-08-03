@@ -18,7 +18,6 @@ public final class SlateTest: Sendable {
     public let int32attr: Int
     public let int64atttr: Int
     public let stringAttr: String
-    public let transAttr: AnyObject
     public let uriAttr: URL
     public let uuidAttr: UUID
 
@@ -35,7 +34,6 @@ public final class SlateTest: Sendable {
         public static let int32attr = "int32attr"
         public static let int64atttr = "int64atttr"
         public static let stringAttr = "stringAttr"
-        public static let transAttr = "transAttr"
         public static let uriAttr = "uriAttr"
         public static let uuidAttr = "uuidAttr"
     }
@@ -82,9 +80,6 @@ public final class SlateTest: Sendable {
         self.stringAttr = { let t: String? = managedObject.stringAttr
             return t!
         }()
-        self.transAttr = { let t: AnyObject? = managedObject.transAttr
-            return t!
-        }()
         self.uriAttr = { let t: URL? = managedObject.uriAttr
             return t!
         }()
@@ -110,7 +105,6 @@ public final class SlateTest: Sendable {
         int32attr: Int,
         int64atttr: Int,
         stringAttr: String,
-        transAttr: AnyObject,
         uriAttr: URL,
         uuidAttr: UUID
     ) {
@@ -127,7 +121,6 @@ public final class SlateTest: Sendable {
         self.int32attr = int32attr
         self.int64atttr = int64atttr
         self.stringAttr = stringAttr
-        self.transAttr = transAttr
         self.uriAttr = uriAttr
         self.uuidAttr = uuidAttr
     }
@@ -147,8 +140,25 @@ public extension SlateTest {
         var int32attr: NSNumber { get }
         var int64atttr: Int64 { get }
         var stringAttr: String? { get }
-        var transAttr: NSObject? { get }
         var uriAttr: URL? { get }
         var uuidAttr: UUID? { get }
+    }
+}
+
+extension SlateTest: Equatable {
+    public static func == (lhs: SlateTest, rhs: SlateTest) -> Bool {
+        (lhs.slateID == rhs.slateID) &&
+            (lhs.binAttr == rhs.binAttr) &&
+            (lhs.boolAttr == rhs.boolAttr) &&
+            (lhs.dateAttr == rhs.dateAttr) &&
+            (lhs.decAttr == rhs.decAttr) &&
+            (lhs.doubleAttr == rhs.doubleAttr) &&
+            (lhs.floatAttr == rhs.floatAttr) &&
+            (lhs.int16attr == rhs.int16attr) &&
+            (lhs.int32attr == rhs.int32attr) &&
+            (lhs.int64atttr == rhs.int64atttr) &&
+            (lhs.stringAttr == rhs.stringAttr) &&
+            (lhs.uriAttr == rhs.uriAttr) &&
+            (lhs.uuidAttr == rhs.uuidAttr)
     }
 }

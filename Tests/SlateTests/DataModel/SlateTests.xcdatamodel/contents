@@ -47,7 +47,6 @@
         <attribute name="int32attr" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="NO"/>
         <attribute name="int64atttr" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="stringAttr" attributeType="String"/>
-        <attribute name="transAttr" attributeType="Transformable"/>
         <attribute name="uriAttr" attributeType="URI"/>
         <attribute name="uuidAttr" attributeType="UUID" usesScalarValueType="NO"/>
         <relationship name="test2s" toMany="YES" deletionRule="Nullify" ordered="YES" destinationEntity="Test2" inverseName="test" inverseEntity="Test2"/>

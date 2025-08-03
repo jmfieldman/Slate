@@ -123,6 +123,11 @@ public enum CoreDataSwiftGenerator {
         for attr in entity.attributes {
             attributeNames.append(attr.name)
 
+            if !attr.type.supported {
+                vprint(.error, "Unsupported attribute type [\(attr.type.rawValue)] in [\(entity.entityName)]")
+                exit(12)
+            }
+
             declarations += template_CD_Swift_AttrDeclaration.replacingWithMap([
                 "ATTR": attr.name,
                 "TYPE": attr.type.immType(castInt: castInt),
@@ -204,6 +209,11 @@ public enum CoreDataSwiftGenerator {
         var initParamAssignments: [String] = []
 
         for attr in substruct.attributes {
+            if !attr.type.supported {
+                vprint(.error, "Unsupported attribute type [\(attr.type.rawValue)] in substruct [\(baseEntityClass) -> \(substruct.structName)_\(attr.name)]")
+                exit(12)
+            }
+
             let isOptionalForStruct: Bool = {
                 if let optInStruct = attr.userdata["optInStruct"] {
                     return optInStruct == "true"
