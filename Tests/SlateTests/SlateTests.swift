@@ -40,6 +40,30 @@ struct BasicSlateTests {
         #expect(authors.first!.name == "TestName")
     }
 
+    @Test func InstantiateInsertAsyncQuery() async throws {
+        await ConfigureTest(
+            slate: slate,
+            mom: kMomSlateTests
+        )
+
+        let inserted: Bool = await withCheckedContinuation { continuation in
+            slate.mutateAsync { moc in
+                let newAuthor = CoreDataAuthor(context: moc)
+                newAuthor.name = "TestName"
+
+                continuation.resume(returning: true)
+            }
+        }
+
+        #expect(inserted)
+
+        let authors: [SlateAuthor] = try await slate.query { context in
+            try context[SlateAuthor.self].fetch()
+        }
+
+        #expect(authors.first!.name == "TestName")
+    }
+
     @Test func InstantiateInsertAbortQuery() async {
         await ConfigureTest(
             slate: slate,

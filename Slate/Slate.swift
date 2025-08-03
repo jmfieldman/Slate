@@ -437,6 +437,63 @@ public final class Slate {
         return catchBlock
     }
 
+    // MARK: Async Query
+
+    /**
+     The `query` function wraps `queryAsync` in structured concurrency semantics. You can use:
+
+        do {
+            let result = try await slate.query { context in
+                return try context[Author.self].fetchOne()
+            }
+        } catch { .. SlateTransactionError .. }
+
+     Note that since the inner block that exposes the context is running inside a ManagedObjectContext
+     queue, that it cannot be async itself.
+     */
+    @discardableResult public func query<Output: Sendable>(
+        block: @escaping (SlateQueryContext) throws -> Output
+    ) async throws(SlateTransactionError) -> Output {
+        do {
+            return try await withCheckedThrowingContinuation { continuation in
+                // Create a new read MOC
+                let queryMOC = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+                queryMOC.parent = self.masterContext
+                queryMOC.undoManager = nil
+
+                accessQueue.asyncUnsafe {
+                    // Run the remaining operations synchronously in the context's perform queue
+                    queryMOC.performAndWait {
+                        // Create query context
+                        let slateQueryContext = SlateQueryContext(slate: self, managedObjectContext: queryMOC)
+
+                        // Set the Thread's query context key
+                        let oldQueryContext = Thread.current.setInsideQueryContext(slateQueryContext)
+
+                        // Issue user query block
+                        let result: Result<Output, Error>
+                        do {
+                            result = try Result<Output, Error>.success(block(slateQueryContext))
+                        } catch {
+                            result = Result<Output, Error>.failure(error)
+                        }
+
+                        // Reset query context
+                        Thread.current.setInsideQueryContext(oldQueryContext)
+
+                        continuation.resume(with: result)
+                    }
+                }
+            }
+        } catch {
+            if let err = error as? SlateTransactionError {
+                throw err
+            } else {
+                throw SlateTransactionError.underlying(error)
+            }
+        }
+    }
+
     // MARK: Mutation
 
     /**

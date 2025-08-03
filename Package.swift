@@ -5,7 +5,7 @@ import PackageDescription
 
 let package = Package(
     name: "Slate",
-    platforms: [.iOS(.v17), .macOS(.v12), .tvOS(.v17), .watchOS(.v6)],
+    platforms: [.iOS(.v17), .macOS(.v14), .tvOS(.v17), .watchOS(.v6)],
 
     // MARK: - Products
 
