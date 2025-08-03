@@ -16,59 +16,7 @@ let template_CD_Swift_fileheader: String = """
 // ----- DO NOT MODIFY -----
 
 import Foundation
-import CoreData{EXTRAIMPORT}
-
-/** These extensions are available if conversion to basic integer is required */
-private extension Int16 {
-    var slate_asInt: Int { return Int(self) }
-}
-
-private extension Int32 {
-    var slate_asInt: Int { return Int(self) }
-}
-
-private extension Int64 {
-    var slate_asInt: Int { return Int(self) }
-}
-
-
-"""
-
-/// Inputs:
-///  * COREDATACLASS - The Core Data class name
-///  * SLATECLASS - The Slate class name
-let template_CD_Swift_SlateObjectConvertible: String = """
-extension {COREDATACLASS}: SlateObjectConvertible {
-
-    /**
-     Instantiates an immutable Slate class from the receiving Core Data class.
-     */
-    public var slateObject: SlateObject {
-        return {SLATECLASS}(managedObject: self)
-    }
-}
-
-
-"""
-
-/// Inputs:
-///  * COREDATACLASS - The Core Data class name
-///  * COREDATAENTITYNAME - The name of the corresponding Core Data entity
-let template_CD_Swift_ManagedObjectExtension: String = """
-extension {COREDATACLASS} {
-
-    /**
-     Helper method that instantiates a {COREDATACLASS} in the specified context.
-     */
-    public static func create(in moc: NSManagedObjectContext) -> {COREDATACLASS}? {
-        guard let entity = NSEntityDescription.entity(forEntityName: "{COREDATAENTITYNAME}", in: moc) else {
-            return nil
-        }
-
-        return {COREDATACLASS}(entity: entity, insertInto: moc)
-    }
-}
-
+import CoreData
 
 """
 
@@ -79,7 +27,7 @@ extension {COREDATACLASS} {
 ///  * ATTRASSIGNMENT - A series of attribute assignments for this class
 ///  * ATTRDECLARATIONS - A series of attribute declarations
 let template_CD_Swift_SlateClassImpl: String = """
-public {OBJTYPE} {SLATECLASS}: SlateObject {
+public {OBJTYPE} {SLATECLASS}: Sendable {
 
     // -- Attribute Declarations --
 {ATTRDECLARATIONS}
@@ -94,22 +42,23 @@ public {OBJTYPE} {SLATECLASS}: SlateObject {
     }
 
     /**
-     Identifies the NSManagedObject type that backs this SlateObject
-     */
-    public static var __slate_managedObjectType: NSManagedObject.Type = {COREDATACLASS}.self
-
-    /**
      Each immutable data model object should have an associated SlateID (in the
      core data case, the NSManagedObjectID.  This is a cross-mutation identifier
      for the object.
     */
-    public let slateID: SlateID
+    public let slateID: NSManagedObjectID
 
     /**
-     Instantiation is private to this file; Slate objects should only be instantiated
-     by accessing the `slateObject` property of the corresponding managed object.
+     Instantiation is public so that Slate instances can create immutable objects
+     from corresponding managed objects. You should never manually construct this in code.
      */
-    fileprivate init(managedObject: {COREDATACLASS}) {
+    public init(managedObject: ManagedPropertyProviding) {
+        // Immutable objects should only be created inside Slate contexts
+        // (by the Slate engine)
+        guard Thread.current.threadDictionary["kThreadKeySlateQueryContext"] != nil else {
+            fatalError("It is a programming error to instantiate an immutable Slate object from outside of a Slate query context.")
+        }
+
         // All objects inherit the objectID
         self.slateID = managedObject.objectID
 
@@ -137,10 +86,6 @@ public {OBJTYPE} {SLATECLASS}: SlateObject {
 {SUBSTRUCTS}
 }
 
-extension {SLATECLASS}: SlateManagedObjectRelating {
-    public typealias ManagedObjectType = {COREDATACLASS}
-}
-
 
 """
 
@@ -150,7 +95,7 @@ extension {SLATECLASS}: SlateManagedObjectRelating {
 ///  * ATTRASSIGNMENT - A series of attribute assignments for this class
 ///  * ATTRDECLARATIONS - A series of attribute declarations
 let template_CD_Swift_SlateSubstructImpl: String = """
-    public struct {SLATESUBSTRUCT}: Equatable {
+    public struct {SLATESUBSTRUCT}: Equatable, Sendable {
 
         // -- Attribute Declarations --
 {ATTRDECLARATIONS}
@@ -159,7 +104,7 @@ let template_CD_Swift_SlateSubstructImpl: String = """
          Instantiation is private to this file; Substructs should only be instantiated
          by their parent Slate object.
          */
-        fileprivate init(managedObject: {COREDATACLASS}) {
+        fileprivate init(managedObject: ManagedPropertyProviding) {
 
             // Attribute assignment
 {ATTRASSIGNMENT}
@@ -195,6 +140,14 @@ let template_CD_Swift_AttrAssignment: String = "        self.{ATTR} = managedObj
 
 /// Inputs:
 ///  * ATTR - The name of the attribute
+let template_CD_Swift_AttrIntAssignment: String = "        self.{ATTR} = Int(managedObject.{ATTR})\n"
+
+/// Inputs:
+///  * ATTR - The name of the attribute
+let template_CD_Swift_AttrIntOptAssignment: String = "        self.{ATTR} = managedObject.{ATTR}.flatMap { Int($0) }\n"
+
+/// Inputs:
+///  * ATTR - The name of the attribute
 ///  * TYPE - The type of the managed object
 let template_CD_Swift_AttrForceAssignment: String = "        self.{ATTR} = { let t: {TYPE}? = managedObject.{ATTR}{CONV}; return t! }()\n"
 
@@ -217,6 +170,16 @@ let template_CD_Swift_SubstructAttrAssignment: String = "            self.{ATTR}
 /// Inputs:
 ///  * STRNAME - The managed property's struct prefix
 ///  * ATTR - The name of the attribute
+let template_CD_Swift_SubstructAttrIntAssignment: String = "            self.{ATTR} = Int(managedObject.{STRNAME}_{ATTR})\n"
+
+/// Inputs:
+///  * STRNAME - The managed property's struct prefix
+///  * ATTR - The name of the attribute
+let template_CD_Swift_SubstructAttrIntOptAssignment: String = "            self.{ATTR} = managedObject.{STRNAME}_{ATTR}.flatMap { Int($0) }\n"
+
+/// Inputs:
+///  * STRNAME - The managed property's struct prefix
+///  * ATTR - The name of the attribute
 ///  * TYPE - The type of the managed object
 ///  * DEF - The default value
 let template_CD_Swift_SubstructAttrForceAssignment: String = "            self.{ATTR} = { let t: {TYPE}? = managedObject.{STRNAME}_{ATTR}{CONV}; return t ?? {DEF} }()\n"
@@ -232,6 +195,72 @@ let template_CD_Swift_AttrDeclaration: String = "    {ACCESS} let {ATTR}: {TYPE}
 ///  * TYPE - The immutable type of the attribute
 ///  * OPTIONAL - Use `?` to indicate that this attribute is optional
 let template_CD_Swift_SubstructAttrDeclaration: String = "        {ACCESS} let {ATTR}: {TYPE}{OPTIONAL}\n"
+
+/// Inputs:
+///  * SLATECLASS - The name of the immutable slate class
+///  * ATTRS - Equatable attributes
+let template_CD_Swift_SlateEquatable: String = """
+extension {SLATECLASS}: Equatable {
+    public static func ==(lhs: {SLATECLASS}, rhs: {SLATECLASS}) -> Bool {
+        return (lhs.slateID == rhs.slateID){ATTRS}
+    }
+}
+
+
+"""
+
+// MARK: - Core Data Entity Generators
+
+/// Inputs:
+///  * PROPERTIES - Core Data properties of the class
+///  * CDENTITYCLASS - Core Data entity class name
+///  * CDENTITYNAME - Core Data entity name
+///  * SLATECLASS - Slate Immutable class name
+let template_CD_Entity: String = """
+// {FILENAME}
+//
+// ----- DO NOT MODIFY -----
+// This file was automatically generated by slate
+// ----- DO NOT MODIFY -----
+
+import Foundation
+import CoreData{CDIMPORTS}
+
+@objc({CDENTITYCLASS})
+public final class {CDENTITYCLASS}: NSManagedObject, {SLATECLASS}.ManagedPropertyProviding {
+    @nonobjc public class func fetchRequest() -> NSFetchRequest<{CDENTITYCLASS}> {
+        return NSFetchRequest<{CDENTITYCLASS}>(entityName: "{CDENTITYNAME}")
+    }
+
+    @nonobjc static func create(in moc: NSManagedObjectContext) -> {CDENTITYCLASS}? {
+        NSEntityDescription.entity(forEntityName: "{CDENTITYNAME}", in: moc).flatMap {
+            {CDENTITYCLASS}(entity: $0, insertInto: moc)
+        }
+    }
+
+{PROPERTIES}
+}
+
+extension {CDENTITYCLASS}: SlateObjectConvertible {
+    /**
+     Instantiates an immutable Slate class from the receiving Core Data class.
+     */
+    public var slateObject: SlateObject {
+        {SLATECLASS}(managedObject: self)
+    }
+}
+
+extension {SLATECLASS}: SlateObject {
+    public static var __slate_managedObjectType: NSManagedObject.Type = {CDENTITYCLASS}.self
+}
+
+extension {SLATECLASS}: SlateManagedObjectRelating {
+    public typealias ManagedObjectType = {CDENTITYCLASS}
+}
+
+{RELATIONS}
+
+"""
 
 /// Inputs:
 ///  * OBJQUAL - The SO qualifier string; `: ` for class or ` == ` for struct
@@ -284,43 +313,19 @@ let template_CD_Swift_SlateRelationshipToOne: String = """
 """
 
 /// Inputs:
-///  * SLATECLASS - The name of the immutable slate class
-///  * ATTRS - Equatable attributes
-let template_CD_Swift_SlateEquatable: String = """
-extension {SLATECLASS}: Equatable {
-    public static func ==(lhs: {SLATECLASS}, rhs: {SLATECLASS}) -> Bool {
-        return (lhs.slateID == rhs.slateID){ATTRS}
-    }
-}
-
-
-"""
-
-// -----------------------------------
-// --- Core Data Entity Generators ---
-// -----------------------------------
+///  * VARNAME - Variable name
+///  * TYPE - The property type
+///  * OPTIONAL - The string "?" if the type is optional
+let template_CD_Entity_Property: String = "    @NSManaged public var {VARNAME}: {TYPE}{OPTIONAL}\n"
 
 /// Inputs:
-///  * PROPERTIES - Core Data properties of the class
-///  * CDENTITYCLASS - Core Data entity class name
-///  * CDENTITYNAME - Core Data entity name
-let template_CD_Entity: String = """
-// {FILENAME}
-//
-// ----- DO NOT MODIFY -----
-// This file was automatically generated by slate
-// ----- DO NOT MODIFY -----
-
-import Foundation
-import CoreData
-
-@objc({CDENTITYCLASS})
-public class {CDENTITYCLASS}: NSManagedObject {
-    @nonobjc public class func fetchRequest() -> NSFetchRequest<{CDENTITYCLASS}> {
-        return NSFetchRequest<{CDENTITYCLASS}>(entityName: "{CDENTITYNAME}")
+///  * SLATECLASS - Name of the slate class
+///  * PROPERTIES - List of protocol properties
+let template_CD_Property_Provider_Protocol: String = """
+public extension {SLATECLASS} {
+    protocol ManagedPropertyProviding: NSManagedObject {
+        {PROPERTIES}
     }
-
-{PROPERTIES}
 }
 
 """
@@ -329,4 +334,4 @@ public class {CDENTITYCLASS}: NSManagedObject {
 ///  * VARNAME - Variable name
 ///  * TYPE - The property type
 ///  * OPTIONAL - The string "?" if the type is optional
-let template_CD_Entity_Property: String = "    @NSManaged public var {VARNAME}: {TYPE}{OPTIONAL}\n"
+let template_CD_Property_Provider_Attr: String = "    var {VARNAME}: {TYPE}{OPTIONAL} { get }\n"

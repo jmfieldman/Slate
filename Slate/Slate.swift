@@ -3,6 +3,7 @@
 //  Copyright © 2018 Jason Fieldman.
 //
 
+import Combine
 import CoreData
 import Foundation
 
@@ -11,14 +12,56 @@ import Foundation
 /// The thread key for the current SlateQueryContext
 private let kThreadKeySlateQueryContext = "kThreadKeySlateQueryContext"
 
-// MARK: - SlateError
+// MARK: - SlateConfigError
 
-public enum SlateError: Error {
+public enum SlateConfigError: Error {
     case alreadyConfigured
     case storageURLRequired
     case storageURLAlreadyInUse
+    case coreDataError(Error)
+}
+
+// MARK: - SlateError
+
+public enum SlateTransactionError: Error {
+    /// The master context has not been created yet, or there was
+    /// an error creating the context
+    case noMasterContext
+
+    /// A slate context is being used outside of query/mutate blocks.
     case queryOutsideScope
+
+    /// Some internal inconsistency occurred while casting
+    /// Core Data <-> Immutable objects. This should never occur,
+    /// but is coded to catch unexpected problems.
     case queryInvalidCast
+
+    /// Contains non-Slate Core Data errors (e.g. if a mutation
+    /// fails due to insufficient disk storage.)
+    ///
+    /// May also contain any specific errors thrown by the user
+    /// that need to bubble up. If you want to abort quietly
+    /// without rethrowing further errors, throw `aborted`.
+    case underlying(Error)
+
+    /// Throw this error from inside a mutation/query block to
+    /// terminate the block, without the error bubbling up to
+    /// any error publisher/handler (`aborted` is eaten internally
+    /// and resets the context/transaction.)
+    ///
+    /// If you would like to catch a specific error along with
+    /// the abort, use `underlying`.
+    case aborted
+
+    /// Quick accessor to check if this is aborted
+    fileprivate var isAborted: Bool {
+        switch self {
+        case .noMasterContext, .queryOutsideScope, .queryInvalidCast, .underlying:
+            false
+        case .aborted:
+            true
+        }
+    }
 }
 
 // MARK: - SlateID
@@ -32,34 +75,12 @@ public enum SlateError: Error {
  */
 public typealias SlateID = NSManagedObjectID
 
-// MARK: - SlateListener
-
-/**
- Any object may register itself as a SlateMutationListener.  It will receive
- the results of any call to a Slate mutation method.
- */
-public protocol SlateMutationListener: AnyObject {
-    /**
-     When a Slate instance is mutated, it will call `slateMutationHandler` on
-     all registed listeners.
-
-     In order to guarantee that the listeners can read from the context before subsequent
-     mutations can occur (for state consistency with the inserted/deleted/updated results),
-     the Slate instance will issue these announcements synchronously inside its R/W access
-     queue in the same block that the mutation occurred.  In essence, the listener
-     implementations of `slateMutationHandler` are extensions of the sync mutation block
-     with access to a query context into that transaction.  (All other reads are blocked until
-     all `slateMutationHandler` calls return.)
-     */
-    func slateMutationHandler(result: SlateMutationResult)
-}
-
 // MARK: - SlateObject
 
 /**
  Any immutable Slate data model implementation must implement SlateObject.
  */
-public protocol SlateObject {
+public protocol SlateObject: Sendable {
     /**
      Identifies the NSManagedObject type that backs this SlateObject
      */
@@ -79,122 +100,6 @@ public protocol SlateObject {
  */
 public protocol SlateManagedObjectRelating: SlateObject {
     associatedtype ManagedObjectType: SlateObjectConvertible, NSManagedObject
-}
-
-// MARK: - SlateChangeDictionaries
-
-/**
- Contains dictionaries of all changes for a single SlateObject type that occurred in
- a mutation block.
- */
-public struct SlateChangeDictionaries<T: SlateObject> {
-    public let inserted: [SlateID: T]
-    public let deleted: [SlateID: T]
-    public let updated: [SlateID: T]
-}
-
-// MARK: - __SlateAbort
-
-/**
- This is a no-op class that can be used to signal a mutation block to abort
- (i.e. Slate will NOT run the `save` method on the MOC after the mutation
- block is complete.)  See `Slate.abort`
- */
-public class __SlateAbort {}
-
-// MARK: - SlateMutationResult
-
-/**
- Contains all metadata for the result of a single Slate mutation block.  This result
- is sent to all listeners of the Slate instance per mutation.
- */
-public class SlateMutationResult {
-    /**
-     The Slate instance that was mutated
-     */
-    public let slate: Slate
-
-    /**
-     A query context that listeners can use to run follow-up queries before a
-     subsequent write block is issued (in case there is additional data the listener
-     must read out from a consistent view of the model.)  This context blocks other reads.
-     */
-    public let queryContext: SlateQueryContext
-
-    /**
-     Contains the return value of the mutation block.  This acts as a
-     traditional void pointer that allows higher-level user code to pass
-     an arbitrary value from the mutation block on to the listeners.
-     */
-    public let mutationBlockResult: Any?
-
-    /**
-     All update results from the block.  This is derived from the mutation MOC
-     and converted into immutable SlateObject instances.  Accessed through the
-     `changes` function that returns type-safe results
-     */
-    private let internalUpdateMap: [AnyHashable: [SlateID: Any]]
-
-    /**
-     All delete results from the block.  This is derived from the mutation MOC
-     and converted into immutable SlateObject instances.  Accessed through the
-     `changes` function that returns type-safe results
-     */
-    private let internalDeleteMap: [AnyHashable: [SlateID: Any]]
-
-    /**
-     All insert results from the block.  This is derived from the mutation MOC
-     and converted into immutable SlateObject instances.  Accessed through the
-     `changes` function that returns type-safe results
-     */
-    private let internalInsertMap: [AnyHashable: [SlateID: Any]]
-
-    /**
-     This is a cache of the generated internal change dictionaries that are
-     created lazily as they are accessed (to prevent second instantiations).
-     */
-    private var internalChangeDictionaryCache: [AnyHashable: Any] = [:]
-
-    /**
-     Initializing the SlateMutationResult can only be done from this implementation.
-     */
-    fileprivate init(
-        slate: Slate,
-        blockResult: Any?,
-        queryContext: SlateQueryContext,
-        updateMap: [AnyHashable: [SlateID: Any]],
-        deleteMap: [AnyHashable: [SlateID: Any]],
-        insertMap: [AnyHashable: [SlateID: Any]]
-    ) {
-        self.slate = slate
-        self.mutationBlockResult = blockResult
-        self.queryContext = queryContext
-        self.internalUpdateMap = updateMap
-        self.internalDeleteMap = deleteMap
-        self.internalInsertMap = insertMap
-    }
-
-    /**
-     Returns type-safe changes for the specified SlateObject type.
-     */
-    public func changes<T: SlateObject>(_ objectClass: T.Type) -> SlateChangeDictionaries<T> {
-        let hashKey = "\(objectClass)"
-
-        // Return cached value
-        if let cached = internalChangeDictionaryCache[hashKey] as? SlateChangeDictionaries<T> {
-            return cached
-        }
-
-        // Otherwise generate and cache
-        let changeDic = SlateChangeDictionaries<T>(
-            inserted: (internalInsertMap[hashKey] as? [SlateID: T]) ?? [:],
-            deleted: (internalDeleteMap[hashKey] as? [SlateID: T]) ?? [:],
-            updated: (internalUpdateMap[hashKey] as? [SlateID: T]) ?? [:]
-        )
-
-        internalChangeDictionaryCache[hashKey] = changeDic
-        return changeDic
-    }
 }
 
 // MARK: - Slate
@@ -224,7 +129,7 @@ public class SlateMutationResult {
  consistent representation of the object graph that will not be modified in the
  middle of multiple query operations.
  */
-public class Slate {
+public final class Slate {
     // MARK: Private Properties
 
     /// The NSManagedObjectModel associated with this Slate
@@ -249,6 +154,18 @@ public class Slate {
 
     /// Indicates that we have been configured
     private var configured: Bool = false
+
+    /// A passthrough subject to publish uncaught transaction errors.
+    /// This only emits transaction errors that are not otherwise
+    /// caught by an explicit catch block. This does not emit .aborted
+    /// errors.
+    fileprivate let uncaughtTransactionErrorSubject: PassthroughSubject<SlateTransactionError, Never> = .init()
+
+    /// Publishes uncaught transaction errors.
+    /// This only emits transaction errors that are not otherwise
+    /// caught by an explicit catch block. This does not emit .aborted
+    /// errors.
+    public let uncaughtTransactionErrors: AnyPublisher<SlateTransactionError, Never>
 
     /// The access lock for the global unique store URL check
     private static let storeUrlCheckLock = NSLock()
@@ -284,11 +201,17 @@ public class Slate {
             autoreleaseFrequency: .workItem,
             target: nil
         )
+
+        self.uncaughtTransactionErrors = uncaughtTransactionErrorSubject.eraseToAnyPublisher()
     }
 
     // MARK: Deinit
 
     deinit {
+        if !configured {
+            accessQueue.activate()
+        }
+
         // Remove the storeURL from the set of active disk stores.
         if let storeURL = self.persistentStoreDescription?.url {
             Slate.storeUrlCheckLock.lock()
@@ -302,25 +225,25 @@ public class Slate {
     public func configure(
         managedObjectModel: NSManagedObjectModel,
         persistentStoreDescription: NSPersistentStoreDescription,
-        completionHandler: @escaping (NSPersistentStoreDescription, Error?) -> Void
+        completionHandler: @escaping (NSPersistentStoreDescription, SlateConfigError?) -> Void
     ) {
         configQueue.async {
             guard !self.configured else {
-                completionHandler(persistentStoreDescription, SlateError.alreadyConfigured)
+                completionHandler(persistentStoreDescription, .alreadyConfigured)
                 return
             }
 
             // Validate the storeURL for disk-based persistent stores.
             if persistentStoreDescription.type != NSInMemoryStoreType {
                 guard let storeURL = persistentStoreDescription.url else {
-                    completionHandler(persistentStoreDescription, SlateError.storageURLRequired)
+                    completionHandler(persistentStoreDescription, .storageURLRequired)
                     return
                 }
 
                 Slate.storeUrlCheckLock.lock()
                 if Slate.storeUrlSet.contains(storeURL) {
                     Slate.storeUrlCheckLock.unlock()
-                    completionHandler(persistentStoreDescription, SlateError.storageURLAlreadyInUse)
+                    completionHandler(persistentStoreDescription, .storageURLAlreadyInUse)
                     return
                 }
                 Slate.storeUrlCheckLock.unlock()
@@ -368,7 +291,7 @@ public class Slate {
                 }
 
                 // Call our parent completion handler
-                completionHandler(desc, error)
+                completionHandler(desc, error.flatMap { .coreDataError($0) })
             }
         }
     }
@@ -377,30 +300,37 @@ public class Slate {
 
     /// The immutable object cache -- Cannot use NSCache because it does not support
     /// Swift structs as values
-    private var immObjectCache: [SlateID: Any] = [:]
+    private var immutableObjectCache: [SlateID: Any] = [:]
 
     /// Fast locking mechanism for immObjectCache
-    private var immObjectCacheLock = os_unfair_lock_s()
+    private var immutableObjectCacheLock = os_unfair_lock_s()
 
     /**
      Run bulk immutable object cache updates inside lock
      */
-    private func updateImmObjectCache(with updates: [[SlateID: Any]], deletes: [[SlateID: Any]]) {
-        os_unfair_lock_lock(&immObjectCacheLock)
-        for dictionary in updates {
-            for (objId, obj) in dictionary {
-                if immObjectCache[objId] != nil {
-                    immObjectCache[objId] = obj
-                }
+    private func updateImmutableObjectCache(
+        updates: [SlateID: Any],
+        inserts: [SlateID: Any],
+        deletes: [SlateID]
+    ) {
+        os_unfair_lock_lock(&immutableObjectCacheLock)
+        defer {
+            os_unfair_lock_unlock(&immutableObjectCacheLock)
+        }
+
+        for (objId, obj) in updates {
+            if immutableObjectCache[objId] != nil {
+                immutableObjectCache[objId] = obj
             }
         }
 
-        for dictionary in deletes {
-            for objId in dictionary.keys {
-                immObjectCache[objId] = nil
-            }
+        for (objId, obj) in inserts {
+            immutableObjectCache[objId] = obj
         }
-        os_unfair_lock_unlock(&immObjectCacheLock)
+
+        for objId in deletes {
+            immutableObjectCache[objId] = nil
+        }
     }
 
     /**
@@ -408,63 +338,18 @@ public class Slate {
      the make block to create the SlateObject, cache it, and return it.
      */
     fileprivate func cachedObjectOrCreate(id: SlateID, make: () -> SlateObject) -> SlateObject {
-        os_unfair_lock_lock(&immObjectCacheLock)
-        if let slateObj = immObjectCache[id] as? SlateObject {
-            os_unfair_lock_unlock(&immObjectCacheLock)
+        os_unfair_lock_lock(&immutableObjectCacheLock)
+        defer {
+            os_unfair_lock_unlock(&immutableObjectCacheLock)
+        }
+
+        if let slateObj = immutableObjectCache[id] as? SlateObject {
             return slateObj
         }
 
         let slateObj = make()
-        immObjectCache[id] = slateObj
-        os_unfair_lock_unlock(&immObjectCacheLock)
+        immutableObjectCache[id] = slateObj
         return slateObj
-    }
-
-    // MARK: Listeners
-
-    /// The array of listeners
-    private var listeners: [String: SlateAnnounceNode] = [:]
-
-    /// The listener array lock
-    private let listenersLock = NSLock()
-
-    /**
-     Attach an object as a listener to the slate
-     */
-    public func addListener(_ listener: SlateMutationListener) {
-        listenersLock.lock()
-        listeners["\(ObjectIdentifier(listener))"] = SlateAnnounceNode(listener: listener)
-        listenersLock.unlock()
-    }
-
-    /**
-     Remove an object as a listener to the slate
-     */
-    public func removeListener(_ listener: SlateMutationListener) {
-        listenersLock.lock()
-        listeners["\(ObjectIdentifier(listener))"] = nil
-        listenersLock.unlock()
-    }
-
-    /**
-     This private announce function is called to announce mutation results to
-     all listeners.  Any listener node whose weak reference is nil will be removed
-     automatically (listeners do not have to explicitly remove themselves during deinit).
-     */
-    private func announce(_ mutationResult: SlateMutationResult) {
-        listenersLock.lock()
-        var toRemove: [String] = []
-        for (objId, node) in listeners {
-            if let listener = node.listener {
-                listener.slateMutationHandler(result: mutationResult)
-            } else {
-                toRemove.append(objId)
-            }
-        }
-        for objId in toRemove {
-            listeners.removeValue(forKey: objId)
-        }
-        listenersLock.unlock()
     }
 
     // MARK: Query
@@ -476,7 +361,7 @@ public class Slate {
      data model representations of the core data graph objects.
      */
     @discardableResult public func querySync(block: (SlateQueryContext) throws -> Void) -> _SlateCatchBlock {
-        let catchBlock = _SlateCatchBlock()
+        let catchBlock = _SlateCatchBlock(slate: self)
 
         // Run immediately if the thread is being called synchronously inside of
         // an exisitng query context
@@ -525,7 +410,7 @@ public class Slate {
      data model representations of the core data graph objects.
      */
     @discardableResult public func queryAsync(block: @escaping (SlateQueryContext) throws -> Void) -> _SlateCatchBlock {
-        let catchBlock = _SlateCatchBlock()
+        let catchBlock = _SlateCatchBlock(slate: self)
 
         accessQueue.async {
             // Create a new read MOC
@@ -556,6 +441,66 @@ public class Slate {
         return catchBlock
     }
 
+    // MARK: Async Query
+
+    /**
+     The `query` function wraps `queryAsync` in structured concurrency semantics. You can use:
+
+        do {
+            let result = try await slate.query { context in
+                return try context[Author.self].fetchOne()
+            }
+        } catch { .. SlateTransactionError .. }
+
+     Note that since the inner block that exposes the context is running inside a ManagedObjectContext
+     queue, that it cannot be async itself.
+     */
+    @discardableResult public func query<Output: Sendable>(
+        block: @escaping (SlateQueryContext) throws -> Output
+    ) async throws(SlateTransactionError) -> Output {
+        do {
+            return try await withCheckedThrowingContinuation { continuation in
+                accessQueue.asyncUnsafe {
+                    guard let masterContext = self.masterContext else {
+                        continuation.resume(throwing: SlateTransactionError.noMasterContext)
+                        return
+                    }
+
+                    // Create a new read MOC
+                    let queryMOC = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+                    queryMOC.parent = masterContext
+                    queryMOC.undoManager = nil
+
+                    // Capture the result of the block
+                    var result: Result<Output, Error> = .failure(SlateTransactionError.noMasterContext)
+
+                    // Run the remaining operations synchronously in the context's perform queue
+                    queryMOC.performAndWait {
+                        // Create query context
+                        let slateQueryContext = SlateQueryContext(slate: self, managedObjectContext: queryMOC)
+
+                        // Set the Thread's query context key
+                        let oldQueryContext = Thread.current.setInsideQueryContext(slateQueryContext)
+
+                        // Issue user query block
+                        do {
+                            result = try Result<Output, Error>.success(block(slateQueryContext))
+                        } catch {
+                            result = Result<Output, Error>.failure(error)
+                        }
+
+                        // Reset query context
+                        Thread.current.setInsideQueryContext(oldQueryContext)
+                    }
+
+                    continuation.resume(with: result)
+                }
+            }
+        } catch {
+            throw (error as? SlateTransactionError).flatMap { $0 } ?? .underlying(error)
+        }
+    }
+
     // MARK: Mutation
 
     /**
@@ -575,8 +520,8 @@ public class Slate {
      listener blocks are called synchronously after the call to `mutateSync` and
      will also act as barriers to futher read/write operations.
      */
-    @discardableResult public func mutateSync(block: (NSManagedObjectContext) throws -> Any?) -> _SlateCatchBlock {
-        let catchBlock = _SlateCatchBlock()
+    @discardableResult public func mutateSync(block: (NSManagedObjectContext) throws -> Void) -> _SlateCatchBlock {
+        let catchBlock = _SlateCatchBlock(slate: self)
 
         accessQueue.sync(flags: .barrier) {
             guard let masterContext = self.masterContext else {
@@ -587,61 +532,36 @@ public class Slate {
             // performAndWait; capture the response
             // TODO: Protect against saving or other invalid MOC operations?
             masterContext.performAndWait {
-                var userBlockResponse: Any?
                 do {
-                    userBlockResponse = try block(masterContext)
+                    try block(masterContext)
                 } catch {
                     catchBlock.error = error
+                    masterContext.reset()
                     return
                 }
-
-                // Bail on abort
-                guard (userBlockResponse as? __SlateAbort) !== Slate.abort else {
-                    return masterContext.reset()
-                }
-
-                // Construct the state change maps (MUST DO BEFORE SAVING)
-                var updateMap: [AnyHashable: [SlateID: Any]]!
-                var deleteMap: [AnyHashable: [SlateID: Any]]!
-                var insertMap: [AnyHashable: [SlateID: Any]]!
 
                 // Attempt to save the context
                 do {
                     try masterContext.obtainPermanentIDs(for: [NSManagedObject](masterContext.insertedObjects))
-                    updateMap = Slate.toSlateChangeMap(masterContext.updatedObjects)
-                    deleteMap = Slate.toSlateChangeMap(masterContext.deletedObjects)
-                    insertMap = Slate.toSlateChangeMap(masterContext.insertedObjects)
+
+                    let queryContext = SlateQueryContext(slate: self, managedObjectContext: masterContext)
+                    let oldQueryContext = Thread.current.setInsideQueryContext(queryContext)
 
                     // Update cache (after getting objects but before saving
                     // so that we are cached for any fetched results controllers
-                    self.updateImmObjectCache(with: Array(updateMap.values), deletes: Array(deleteMap.values))
+                    self.updateImmutableObjectCache(
+                        updates: Slate.toSlateMap(masterContext.updatedObjects),
+                        inserts: Slate.toSlateMap(masterContext.insertedObjects),
+                        deletes: masterContext.deletedObjects.map(\.objectID),
+                    )
+
+                    Thread.current.setInsideQueryContext(oldQueryContext)
 
                     try masterContext.safeSave()
                 } catch {
                     catchBlock.error = error
                     return
                 }
-
-                // Create a query context for the handler
-                let queryContext = SlateQueryContext(slate: self, managedObjectContext: masterContext)
-                let oldQueryContext = Thread.current.setInsideQueryContext(queryContext)
-
-                // Generate the mutation result
-                let mutationResult = SlateMutationResult(
-                    slate: self,
-                    blockResult: userBlockResponse,
-                    queryContext: queryContext,
-                    updateMap: updateMap,
-                    deleteMap: deleteMap,
-                    insertMap: insertMap
-                )
-
-                // The announcement is made within the perform queue of the
-                // masterContext (since it is being used for reads in the query context)
-                self.announce(mutationResult)
-
-                // Reset query context
-                Thread.current.setInsideQueryContext(oldQueryContext)
             }
         }
 
@@ -664,8 +584,8 @@ public class Slate {
      the mutation results WITHIN THE MOC'S `performAndWait` context.  This means that
      listener blocks will also act as barriers to futher read/write operations.
      */
-    @discardableResult public func mutateAsync(block: @escaping (NSManagedObjectContext) throws -> Any?) -> _SlateCatchBlock {
-        let catchBlock = _SlateCatchBlock()
+    @discardableResult public func mutateAsync(block: @escaping (NSManagedObjectContext) throws -> Void) -> _SlateCatchBlock {
+        let catchBlock = _SlateCatchBlock(slate: self)
 
         accessQueue.async(flags: .barrier) {
             guard let masterContext = self.masterContext else {
@@ -676,71 +596,114 @@ public class Slate {
             // performAndWait; capture the response
             // TODO: Protect against saving or other invalid MOC operations?
             masterContext.performAndWait {
-                var userBlockResponse: Any?
                 do {
-                    userBlockResponse = try block(masterContext)
+                    try block(masterContext)
                 } catch {
                     catchBlock.error = error
+                    masterContext.reset()
                     return
                 }
-
-                // Bail on abort
-                guard (userBlockResponse as? __SlateAbort) !== Slate.abort else {
-                    return masterContext.reset()
-                }
-
-                // Construct the state change maps (MUST DO BEFORE SAVING)
-                var updateMap: [AnyHashable: [SlateID: Any]]!
-                var deleteMap: [AnyHashable: [SlateID: Any]]!
-                var insertMap: [AnyHashable: [SlateID: Any]]!
 
                 // Attempt to save the context
                 do {
                     try masterContext.obtainPermanentIDs(for: [NSManagedObject](masterContext.insertedObjects))
-                    updateMap = Slate.toSlateChangeMap(masterContext.updatedObjects)
-                    deleteMap = Slate.toSlateChangeMap(masterContext.deletedObjects)
-                    insertMap = Slate.toSlateChangeMap(masterContext.insertedObjects)
+
+                    let queryContext = SlateQueryContext(slate: self, managedObjectContext: masterContext)
+                    let oldQueryContext = Thread.current.setInsideQueryContext(queryContext)
 
                     // Update cache (after getting objects but before saving
                     // so that we are cached for any fetched results controllers
-                    self.updateImmObjectCache(with: Array(updateMap.values), deletes: Array(deleteMap.values))
+                    self.updateImmutableObjectCache(
+                        updates: Slate.toSlateMap(masterContext.updatedObjects),
+                        inserts: Slate.toSlateMap(masterContext.insertedObjects),
+                        deletes: masterContext.deletedObjects.map(\.objectID)
+                    )
+
+                    Thread.current.setInsideQueryContext(oldQueryContext)
 
                     try masterContext.safeSave()
                 } catch {
                     catchBlock.error = error
                     return
                 }
-
-                // Create a query context for the handler
-                let queryContext = SlateQueryContext(slate: self, managedObjectContext: masterContext)
-                let oldQueryContext = Thread.current.setInsideQueryContext(queryContext)
-
-                // Generate the mutation result
-                let mutationResult = SlateMutationResult(
-                    slate: self,
-                    blockResult: userBlockResponse,
-                    queryContext: queryContext,
-                    updateMap: updateMap,
-                    deleteMap: deleteMap,
-                    insertMap: insertMap
-                )
-
-                // The announcement is made within the perform queue of the
-                // masterContext (since it is being used for reads in the query context)
-                self.announce(mutationResult)
-
-                // Reset query context
-                Thread.current.setInsideQueryContext(oldQueryContext)
             }
         }
 
         return catchBlock
     }
 
-    /// Return `Slate.abort` from a mutation block and Slate will `reset` the master MOC
-    /// rather than saving it.  A mutation result will NOT be broadcast to
-    /// listeners (there will have been no mutation).
-    public static let abort = __SlateAbort()
+    // MARK: Async Mutation
+
+    /**
+     The `mutate` function wraps `mutateAsync` in structured concurrency semantics. You can use:
+
+        do {
+            try await slate.mutate { moc in
+                let author = try moc[Author.self].fetchOne()
+                author.name = "New Name"
+            }
+        } catch { .. SlateTransactionError .. }
+
+     Note that since the inner block that exposes the context is running inside a ManagedObjectContext
+     queue, that it cannot be async itself.
+     */
+    @discardableResult public func mutate<Output: Sendable>(
+        block: @escaping (NSManagedObjectContext) throws -> Output
+    ) async throws(SlateTransactionError) -> Output {
+        do {
+            return try await withCheckedThrowingContinuation { continuation in
+                accessQueue.asyncUnsafe(flags: .barrier) {
+                    guard let masterContext = self.masterContext else {
+                        continuation.resume(throwing: SlateTransactionError.noMasterContext)
+                        return
+                    }
+
+                    // Capture the result of the block
+                    var result: Result<Output, Error> = .failure(SlateTransactionError.noMasterContext)
+
+                    // Issue the mutation block inside of the context's
+                    // performAndWait; capture the response
+                    // TODO: Protect against saving or other invalid MOC operations?
+                    masterContext.performAndWait {
+                        do {
+                            result = try .success(block(masterContext))
+                        } catch {
+                            result = .failure(error)
+                            masterContext.reset()
+                            return
+                        }
+
+                        // Attempt to save the context
+                        do {
+                            try masterContext.obtainPermanentIDs(for: [NSManagedObject](masterContext.insertedObjects))
+
+                            let queryContext = SlateQueryContext(slate: self, managedObjectContext: masterContext)
+                            let oldQueryContext = Thread.current.setInsideQueryContext(queryContext)
+
+                            // Update cache (after getting objects but before saving
+                            // so that we are cached for any fetched results controllers
+                            self.updateImmutableObjectCache(
+                                updates: Slate.toSlateMap(masterContext.updatedObjects),
+                                inserts: Slate.toSlateMap(masterContext.insertedObjects),
+                                deletes: masterContext.deletedObjects.map(\.objectID)
+                            )
+
+                            Thread.current.setInsideQueryContext(oldQueryContext)
+
+                            try masterContext.safeSave()
+                        } catch {
+                            result = .failure(error)
+                            return
+                        }
+                    }
+
+                    continuation.resume(with: result)
+                }
+            }
+        } catch {
+            throw (error as? SlateTransactionError).flatMap { $0 } ?? .underlying(error)
+        }
+    }
 }
 
 // MARK: - _SlateCatchBlock
@@ -749,12 +712,15 @@ public class Slate {
  Provides a mechanism to attach a catch statement to a mutation/query scope.  Should
  not be used directly by callers.
  */
-public class _SlateCatchBlock {
+public final class _SlateCatchBlock {
     /// Lock providing synchronous access to internal properties
     private let errorLock = NSLock()
 
     /// The internal error
-    private var internalError: Error?
+    private var internalError: SlateTransactionError?
+
+    /// Handle to the owning slate objects
+    private weak var slate: Slate?
 
     /// thread safe access to the internal error
     fileprivate var error: Error? {
@@ -763,7 +729,13 @@ public class _SlateCatchBlock {
         }
         set {
             errorLock.withLock {
-                internalError = newValue
+                if let slateError = newValue as? SlateTransactionError {
+                    internalError = slateError
+                } else if let error = newValue {
+                    internalError = .underlying(error)
+                } else {
+                    internalError = nil
+                }
                 self.resolveErrorBlock()
             }
         }
@@ -778,19 +750,17 @@ public class _SlateCatchBlock {
     /// Was the catchBlock executed?
     private var executed: Bool = false
 
-    private static let defaultCatchBlock: ((Error) -> Void) = { error in
-        fatalError("Uncaught try resulted in error: \(error)")
-    }
-
     /// Prevent public init
-    fileprivate init() {}
+    fileprivate init(slate: Slate) {
+        self.slate = slate
+    }
 
     /// Prevent uncaught errors
     deinit {
         errorLock.withLock {
             if let err = internalError {
-                if !executed {
-                    _SlateCatchBlock.defaultCatchBlock(err)
+                if !executed, !err.isAborted {
+                    slate?.uncaughtTransactionErrorSubject.send(err)
                 }
             }
         }
@@ -843,7 +813,7 @@ public class _SlateCatchBlock {
  level code is not calling `save` on the MOC.  Only the Slate should call
  `save` on the MOC internally when the mutation block completes.
  */
-public class _SlateManagedObjectContext: NSManagedObjectContext {
+public final class _SlateManagedObjectContext: NSManagedObjectContext {
     /// Are we in an internal save call?
     fileprivate var inSafeSave: Bool = false
 
@@ -861,19 +831,6 @@ public class _SlateManagedObjectContext: NSManagedObjectContext {
             fatalError("You cannot explicitly call save on a Slate MOC")
         }
         try super.save()
-    }
-}
-
-// MARK: - SlateAnnounceNode
-
-/**
- This is a node that captures a weak reference to a SlateListener
- */
-private class SlateAnnounceNode {
-    fileprivate weak var listener: SlateMutationListener?
-
-    init(listener: SlateMutationListener) {
-        self.listener = listener
     }
 }
 
@@ -933,7 +890,7 @@ public extension Slate {
  consistent representation of the object graph that will not be modified in the
  middle of multiple query operations.
  */
-public class SlateQueryContext {
+public final class SlateQueryContext {
     /// The parent Slate
     fileprivate let slate: Slate
 
@@ -1003,7 +960,7 @@ public class SlateQueryContext {
  way that object queries are: as a snapshot inside of the query context they are queried
  in.
  */
-public class SlateRelationshipResolver<SO: SlateObject> {
+public final class SlateRelationshipResolver<SO: SlateObject> {
     let context: SlateQueryContext
     let slateObject: SO
 
@@ -1046,24 +1003,21 @@ public class SlateRelationshipResolver<SO: SlateObject> {
 
 private extension Slate {
     /**
-     This method takes a sets of NSManangedObject and
-     maps them to a dictionary structure that can be imported into
-     the mutation results as change maps.
+     This method takes a set of NSManangedObject and
+     maps them to a dictionary structure.
 
      This method only operates on NSManagedObjects that implement the
      SlateObjectConvertible protocol.
      */
-    static func toSlateChangeMap(_ managedObjects: Set<NSManagedObject>) -> [AnyHashable: [SlateID: Any]] {
-        var response: [AnyHashable: [SlateID: Any]] = [:]
-        let defaultDic = [SlateID: Any](minimumCapacity: managedObjects.count)
+    static func toSlateMap(_ managedObjects: Set<NSManagedObject>) -> [SlateID: Any] {
+        var response = [SlateID: Any](minimumCapacity: managedObjects.count)
 
         for mo in managedObjects {
             guard let slateObj = (mo as? SlateObjectConvertible)?.slateObject else {
                 continue
             }
 
-            let hashKey = "\(type(of: slateObj))"
-            response[hashKey, default: defaultDic][slateObj.slateID] = slateObj
+            response[slateObj.slateID] = slateObj
         }
 
         return response
@@ -1080,7 +1034,7 @@ private extension Slate {
  It is a fatalError to attempt to fetch outside of a block.  The fetch will know which
  context it is being called from.
  */
-public class SlateQueryRequest<SO: SlateObject> {
+public final class SlateQueryRequest<SO: SlateObject> {
     /// The backing NSFetchRequest that will power this fetch
     private let nsFetchRequest: NSFetchRequest<NSFetchRequestResult>
 
@@ -1172,7 +1126,7 @@ public class SlateQueryRequest<SO: SlateObject> {
         if nsFetchRequest.sortDescriptors == nil {
             nsFetchRequest.sortDescriptors = [descriptor]
         } else {
-            nsFetchRequest.sortDescriptors!.append(descriptor)
+            nsFetchRequest.sortDescriptors?.append(descriptor)
         }
         return self
     }
@@ -1201,28 +1155,34 @@ public class SlateQueryRequest<SO: SlateObject> {
      Executes the fetch on the current context.  You cannot execute a fetch from
      any scope other than the query scope it was created in.
      */
-    public func fetch() throws -> [SO] {
+    public func fetch() throws(SlateTransactionError) -> [SO] {
         guard let currentContext = Thread.current.containingQueryContext() else {
-            throw SlateError.queryOutsideScope
+            throw .queryOutsideScope
         }
 
         guard currentContext === slateQueryContext else {
-            throw SlateError.queryOutsideScope
+            throw .queryOutsideScope
         }
 
         // The slate we are in
         let slate = currentContext.slate
 
         // The fetch result is now an array of our NSManagedObjects for the SO type
-        let fetchResult = try currentContext.managedObjectContext.fetch(nsFetchRequest)
-        guard let slatableResult = fetchResult as? [SlateObjectConvertible] else {
-            throw SlateError.queryInvalidCast
+        let fetchResult: [NSFetchRequestResult]
+        do {
+            fetchResult = try currentContext.managedObjectContext.fetch(nsFetchRequest)
+        } catch {
+            throw .underlying(error)
         }
 
-        let immResults: [SO] = try slatableResult.map { slatableObject in
+        guard let slatableResult = fetchResult as? [SlateObjectConvertible] else {
+            throw .queryInvalidCast
+        }
+
+        let immResults: [SO] = try slatableResult.map { slatableObject throws(SlateTransactionError) in
             let slateObject = slate.cachedObjectOrCreate(id: slatableObject.objectID, make: { slatableObject.slateObject })
             guard let immObj = slateObject as? SO else {
-                throw SlateError.queryInvalidCast
+                throw .queryInvalidCast
             }
 
             return immObj
@@ -1235,7 +1195,7 @@ public class SlateQueryRequest<SO: SlateObject> {
      Executes the fetch on the current context.  You cannot execute a fetch from
      any scope other than the query scope it was created in.
      */
-    public func fetchOne() throws -> SO? {
+    public func fetchOne() throws(SlateTransactionError) -> SO? {
         let prevLimit = nsFetchRequest.fetchLimit
         nsFetchRequest.fetchLimit = 1
         let result: SO? = try fetch().first
@@ -1248,16 +1208,20 @@ public class SlateQueryRequest<SO: SlateObject> {
      counting objects, this method is much faster than performing a normal fetch and counting
      the objects in the full response array.
      */
-    public func count() throws -> Int {
+    public func count() throws(SlateTransactionError) -> Int {
         guard let currentContext = Thread.current.containingQueryContext() else {
-            throw SlateError.queryOutsideScope
+            throw .queryOutsideScope
         }
 
         guard currentContext === slateQueryContext else {
-            throw SlateError.queryOutsideScope
+            throw .queryOutsideScope
         }
 
-        return try currentContext.managedObjectContext.count(for: nsFetchRequest)
+        do {
+            return try currentContext.managedObjectContext.count(for: nsFetchRequest)
+        } catch {
+            throw .underlying(error)
+        }
     }
 }
 
@@ -1265,7 +1229,7 @@ public class SlateQueryRequest<SO: SlateObject> {
  The SlateMOCFetchRequest provides a wrapping around the standard NSFetchRequest in order to
  buildable query interface.
  */
-public class SlateMOCFetchRequest<MO: NSManagedObject> {
+public final class SlateMOCFetchRequest<MO: NSManagedObject> {
     /// The backing NSFetchRequest that will power this fetch
     fileprivate let nsFetchRequest: NSFetchRequest<MO>
 
@@ -1465,15 +1429,15 @@ public extension NSManagedObjectContext {
 }
 
 public extension Slate {
-    func convert<SO: SlateObject>(managedObjects: [some NSManagedObject]) throws -> [SO] {
+    func convert<SO: SlateObject>(managedObjects: [some NSManagedObject]) throws(SlateTransactionError) -> [SO] {
         guard let slatableResult = managedObjects as? [SlateObjectConvertible] else {
-            throw SlateError.queryInvalidCast
+            throw .queryInvalidCast
         }
 
-        let immResults: [SO] = try slatableResult.map { slatableObject in
+        let immResults: [SO] = try slatableResult.map { slatableObject throws(SlateTransactionError) in
             let slateObject = self.cachedObjectOrCreate(id: slatableObject.objectID, make: { slatableObject.slateObject })
             guard let immObj = slateObject as? SO else {
-                throw SlateError.queryInvalidCast
+                throw .queryInvalidCast
             }
 
             return immObj
