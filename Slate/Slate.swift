@@ -67,15 +67,6 @@ public protocol SlateManagedObjectRelating: SlateObject {
     associatedtype ManagedObjectType: SlateObjectConvertible, NSManagedObject
 }
 
-// MARK: - __SlateAbort
-
-/**
- This is a no-op class that can be used to signal a mutation block to abort
- (i.e. Slate will NOT run the `save` method on the MOC after the mutation
- block is complete.)  See `Slate.abort`
- */
-public final class __SlateAbort {}
-
 // MARK: - Slate
 
 /**
@@ -420,7 +411,7 @@ public final class Slate {
      listener blocks are called synchronously after the call to `mutateSync` and
      will also act as barriers to futher read/write operations.
      */
-    @discardableResult public func mutateSync(block: (NSManagedObjectContext) throws -> Any?) -> _SlateCatchBlock {
+    @discardableResult public func mutateSync(block: (NSManagedObjectContext) throws -> Void) -> _SlateCatchBlock {
         let catchBlock = _SlateCatchBlock()
 
         accessQueue.sync(flags: .barrier) {
@@ -432,17 +423,10 @@ public final class Slate {
             // performAndWait; capture the response
             // TODO: Protect against saving or other invalid MOC operations?
             masterContext.performAndWait {
-                var userBlockResponse: Any?
                 do {
-                    userBlockResponse = try block(masterContext)
+                    try block(masterContext)
                 } catch {
                     catchBlock.error = error
-                    masterContext.reset()
-                    return
-                }
-
-                // Bail on abort
-                guard (userBlockResponse as? __SlateAbort) !== Slate.abort else {
                     masterContext.reset()
                     return
                 }
@@ -491,7 +475,7 @@ public final class Slate {
      the mutation results WITHIN THE MOC'S `performAndWait` context.  This means that
      listener blocks will also act as barriers to futher read/write operations.
      */
-    @discardableResult public func mutateAsync(block: @escaping (NSManagedObjectContext) throws -> Any?) -> _SlateCatchBlock {
+    @discardableResult public func mutateAsync(block: @escaping (NSManagedObjectContext) throws -> Void) -> _SlateCatchBlock {
         let catchBlock = _SlateCatchBlock()
 
         accessQueue.async(flags: .barrier) {
@@ -503,17 +487,10 @@ public final class Slate {
             // performAndWait; capture the response
             // TODO: Protect against saving or other invalid MOC operations?
             masterContext.performAndWait {
-                var userBlockResponse: Any?
                 do {
-                    userBlockResponse = try block(masterContext)
+                    try block(masterContext)
                 } catch {
                     catchBlock.error = error
-                    masterContext.reset()
-                    return
-                }
-
-                // Bail on abort
-                guard (userBlockResponse as? __SlateAbort) !== Slate.abort else {
                     masterContext.reset()
                     return
                 }
@@ -545,11 +522,6 @@ public final class Slate {
 
         return catchBlock
     }
-
-    /// Return `Slate.abort` from a mutation block and Slate will `reset` the master MOC
-    /// rather than saving it.  A mutation result will NOT be broadcast to
-    /// listeners (there will have been no mutation).
-    public static let abort = __SlateAbort()
 }
 
 // MARK: - _SlateCatchBlock
