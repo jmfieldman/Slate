@@ -52,7 +52,10 @@ let package = Package(
         .target(
             name: "SlateGeneratorLib",
             dependencies: [],
-            path: "SlateGenerator/Library"
+            path: "SlateGenerator/Library",
+            exclude: [
+                "External/SwiftyXMLParser/LICENSE.txt",
+            ]
         ),
 
         // MARK: Tests
@@ -64,7 +67,8 @@ let package = Package(
                 "DatabaseModels",
                 "ImmutableModels",
             ],
-            path: "Tests/SlateTests"
+            path: "Tests/SlateTests",
+            resources: [.process("DataModel/SlateTests.xcdatamodel")]
         ),
 
         .target(

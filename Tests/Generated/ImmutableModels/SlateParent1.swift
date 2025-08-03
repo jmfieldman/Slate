@@ -77,7 +77,7 @@ public final class SlateParent1: Sendable {
 
     // -- Substruct Definitions
 
-    public struct Child1: Equatable {
+    public struct Child1: Equatable, Sendable {
         // -- Attribute Declarations --
         public let optString: String?
         public let propInt64scalar: Int
@@ -115,7 +115,7 @@ public final class SlateParent1: Sendable {
         }
     }
 
-    public struct Child2: Equatable {
+    public struct Child2: Equatable, Sendable {
         // -- Attribute Declarations --
         public let bool: Bool
         public let int64scalar: Int

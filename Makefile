@@ -8,7 +8,7 @@ format:
 
 setuptests:
 	@swift run slategen gen-core-data \
-		--input-model Tests/DataModel/SlateTests.xcdatamodel \
+		--input-model Tests/SlateTests/DataModel/SlateTests.xcdatamodel \
 		--output-slate-object-path Tests/Generated/ImmutableModels \
 		--output-core-data-entity-path Tests/Generated/DatabaseModels \
 		-f --cast-int \

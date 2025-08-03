@@ -3,16 +3,37 @@
 //  Copyright © 2020 Jason Fieldman.
 //
 
+import DatabaseModels
 import Foundation
+import ImmutableModels
 import Slate
-import XCTest
+import Testing
 
-class SlateTests: XCTestCase {
-    var slate = Slate()
+@Suite(.timeLimit(.minutes(1)))
+struct BasicSlateTests {
+    let slate = Slate()
 
-    override func setUp() {}
+    @Test func InstantiateInsertQuery() async {
+        await ConfigureTest(slate: slate)
 
-    func testA() {}
+        let inserted: Bool = await withCheckedContinuation { continuation in
+            slate.mutateAsync { moc in
+                let newAuthor = CoreDataAuthor(context: moc)
+                newAuthor.name = "TestName"
 
-    override func tearDown() {}
+                continuation.resume(returning: true)
+            }
+        }
+
+        #expect(inserted)
+
+        let authors: [SlateAuthor] = await withCheckedContinuation { continuation in
+            slate.queryAsync { context in
+                let authors = try context[SlateAuthor.self].fetch()
+                continuation.resume(returning: authors)
+            }
+        }
+
+        #expect(authors.first!.name == "TestName")
+    }
 }

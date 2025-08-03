@@ -168,6 +168,10 @@ public final class Slate {
     // MARK: Deinit
 
     deinit {
+        if !configured {
+            accessQueue.activate()
+        }
+
         // Remove the storeURL from the set of active disk stores.
         if let storeURL = self.persistentStoreDescription?.url {
             Slate.storeUrlCheckLock.lock()
@@ -447,6 +451,9 @@ public final class Slate {
                 do {
                     try masterContext.obtainPermanentIDs(for: [NSManagedObject](masterContext.insertedObjects))
 
+                    let queryContext = SlateQueryContext(slate: self, managedObjectContext: masterContext)
+                    let oldQueryContext = Thread.current.setInsideQueryContext(queryContext)
+
                     // Update cache (after getting objects but before saving
                     // so that we are cached for any fetched results controllers
                     self.updateImmutableObjectCache(
@@ -454,6 +461,8 @@ public final class Slate {
                         inserts: Slate.toSlateMap(masterContext.insertedObjects),
                         deletes: masterContext.deletedObjects.map(\.objectID),
                     )
+
+                    Thread.current.setInsideQueryContext(oldQueryContext)
 
                     try masterContext.safeSave()
                 } catch {
@@ -513,6 +522,9 @@ public final class Slate {
                 do {
                     try masterContext.obtainPermanentIDs(for: [NSManagedObject](masterContext.insertedObjects))
 
+                    let queryContext = SlateQueryContext(slate: self, managedObjectContext: masterContext)
+                    let oldQueryContext = Thread.current.setInsideQueryContext(queryContext)
+
                     // Update cache (after getting objects but before saving
                     // so that we are cached for any fetched results controllers
                     self.updateImmutableObjectCache(
@@ -520,6 +532,8 @@ public final class Slate {
                         inserts: Slate.toSlateMap(masterContext.insertedObjects),
                         deletes: masterContext.deletedObjects.map(\.objectID)
                     )
+
+                    Thread.current.setInsideQueryContext(oldQueryContext)
 
                     try masterContext.safeSave()
                 } catch {

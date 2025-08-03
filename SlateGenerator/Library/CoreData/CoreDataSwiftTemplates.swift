@@ -95,7 +95,7 @@ public {OBJTYPE} {SLATECLASS}: Sendable {
 ///  * ATTRASSIGNMENT - A series of attribute assignments for this class
 ///  * ATTRDECLARATIONS - A series of attribute declarations
 let template_CD_Swift_SlateSubstructImpl: String = """
-    public struct {SLATESUBSTRUCT}: Equatable {
+    public struct {SLATESUBSTRUCT}: Equatable, Sendable {
 
         // -- Attribute Declarations --
 {ATTRDECLARATIONS}
