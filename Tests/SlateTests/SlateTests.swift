@@ -14,7 +14,10 @@ struct BasicSlateTests {
     let slate = Slate()
 
     @Test func InstantiateInsertQuery() async {
-        await ConfigureTest(slate: slate)
+        await ConfigureTest(
+            slate: slate,
+            mom: kMomSlateTests
+        )
 
         let inserted: Bool = await withCheckedContinuation { continuation in
             slate.mutateAsync { moc in
@@ -38,7 +41,10 @@ struct BasicSlateTests {
     }
 
     @Test func InstantiateInsertAbortQuery() async {
-        await ConfigureTest(slate: slate)
+        await ConfigureTest(
+            slate: slate,
+            mom: kMomSlateTests
+        )
 
         let inserted: Bool = await withCheckedContinuation { continuation in
             slate.mutateAsync { moc in
@@ -46,7 +52,7 @@ struct BasicSlateTests {
                 newAuthor.name = "TestName"
 
                 continuation.resume(returning: true)
-                throw SlateTransactionError.aborted(nil)
+                throw SlateTransactionError.aborted
             }
         }
 

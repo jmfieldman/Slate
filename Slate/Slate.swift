@@ -3,6 +3,7 @@
 //  Copyright © 2018 Jason Fieldman.
 //
 
+import Combine
 import CoreData
 import Foundation
 
@@ -23,10 +24,40 @@ public enum SlateConfigError: Error {
 // MARK: - SlateError
 
 public enum SlateTransactionError: Error {
+    /// A slate context is being used outside of query/mutate blocks.
     case queryOutsideScope
+
+    /// Some internal inconsistency occurred while casting
+    /// Core Data <-> Immutable objects. This should never occur,
+    /// but is coded to catch unexpected problems.
     case queryInvalidCast
-    case coreDataError(Error)
-    case aborted(Error?)
+
+    /// Contains non-Slate Core Data errors (e.g. if a mutation
+    /// fails due to insufficient disk storage.)
+    ///
+    /// May also contain any specific errors thrown by the user
+    /// that need to bubble up. If you want to abort quietly
+    /// without rethrowing further errors, throw `aborted`.
+    case underlying(Error)
+
+    /// Throw this error from inside a mutation/query block to
+    /// terminate the block, without the error bubbling up to
+    /// any error publisher/handler (`aborted` is eaten internally
+    /// and resets the context/transaction.)
+    ///
+    /// If you would like to catch a specific error along with
+    /// the abort, use `underlying`.
+    case aborted
+
+    /// Quick accessor to check if this is aborted
+    fileprivate var isAborted: Bool {
+        switch self {
+        case .queryOutsideScope, .queryInvalidCast, .underlying:
+            false
+        case .aborted:
+            true
+        }
+    }
 }
 
 // MARK: - SlateID
@@ -120,6 +151,18 @@ public final class Slate {
     /// Indicates that we have been configured
     private var configured: Bool = false
 
+    /// A passthrough subject to publish uncaught transaction errors.
+    /// This only emits transaction errors that are not otherwise
+    /// caught by an explicit catch block. This does not emit .aborted
+    /// errors.
+    fileprivate let uncaughtTransactionErrorSubject: PassthroughSubject<SlateTransactionError, Never> = .init()
+
+    /// Publishes uncaught transaction errors.
+    /// This only emits transaction errors that are not otherwise
+    /// caught by an explicit catch block. This does not emit .aborted
+    /// errors.
+    public let uncaughtTransactionErrors: AnyPublisher<SlateTransactionError, Never>
+
     /// The access lock for the global unique store URL check
     private static let storeUrlCheckLock = NSLock()
 
@@ -154,6 +197,8 @@ public final class Slate {
             autoreleaseFrequency: .workItem,
             target: nil
         )
+
+        self.uncaughtTransactionErrors = uncaughtTransactionErrorSubject.eraseToAnyPublisher()
     }
 
     // MARK: Deinit
@@ -312,7 +357,7 @@ public final class Slate {
      data model representations of the core data graph objects.
      */
     @discardableResult public func querySync(block: (SlateQueryContext) throws -> Void) -> _SlateCatchBlock {
-        let catchBlock = _SlateCatchBlock()
+        let catchBlock = _SlateCatchBlock(slate: self)
 
         // Run immediately if the thread is being called synchronously inside of
         // an exisitng query context
@@ -361,7 +406,7 @@ public final class Slate {
      data model representations of the core data graph objects.
      */
     @discardableResult public func queryAsync(block: @escaping (SlateQueryContext) throws -> Void) -> _SlateCatchBlock {
-        let catchBlock = _SlateCatchBlock()
+        let catchBlock = _SlateCatchBlock(slate: self)
 
         accessQueue.async {
             // Create a new read MOC
@@ -412,7 +457,7 @@ public final class Slate {
      will also act as barriers to futher read/write operations.
      */
     @discardableResult public func mutateSync(block: (NSManagedObjectContext) throws -> Void) -> _SlateCatchBlock {
-        let catchBlock = _SlateCatchBlock()
+        let catchBlock = _SlateCatchBlock(slate: self)
 
         accessQueue.sync(flags: .barrier) {
             guard let masterContext = self.masterContext else {
@@ -476,7 +521,7 @@ public final class Slate {
      listener blocks will also act as barriers to futher read/write operations.
      */
     @discardableResult public func mutateAsync(block: @escaping (NSManagedObjectContext) throws -> Void) -> _SlateCatchBlock {
-        let catchBlock = _SlateCatchBlock()
+        let catchBlock = _SlateCatchBlock(slate: self)
 
         accessQueue.async(flags: .barrier) {
             guard let masterContext = self.masterContext else {
@@ -535,7 +580,10 @@ public final class _SlateCatchBlock {
     private let errorLock = NSLock()
 
     /// The internal error
-    private var internalError: Error?
+    private var internalError: SlateTransactionError?
+
+    /// Handle to the owning slate objects
+    private weak var slate: Slate?
 
     /// thread safe access to the internal error
     fileprivate var error: Error? {
@@ -544,7 +592,13 @@ public final class _SlateCatchBlock {
         }
         set {
             errorLock.withLock {
-                internalError = newValue
+                if let slateError = newValue as? SlateTransactionError {
+                    internalError = slateError
+                } else if let error = newValue {
+                    internalError = .underlying(error)
+                } else {
+                    internalError = nil
+                }
                 self.resolveErrorBlock()
             }
         }
@@ -559,19 +613,17 @@ public final class _SlateCatchBlock {
     /// Was the catchBlock executed?
     private var executed: Bool = false
 
-    private static let defaultCatchBlock: ((Error) -> Void) = { error in
-        fatalError("Uncaught try resulted in error: \(error)")
-    }
-
     /// Prevent public init
-    fileprivate init() {}
+    fileprivate init(slate: Slate) {
+        self.slate = slate
+    }
 
     /// Prevent uncaught errors
     deinit {
         errorLock.withLock {
             if let err = internalError {
-                if !executed {
-                    _SlateCatchBlock.defaultCatchBlock(err)
+                if !executed, !err.isAborted {
+                    slate?.uncaughtTransactionErrorSubject.send(err)
                 }
             }
         }
@@ -983,7 +1035,7 @@ public final class SlateQueryRequest<SO: SlateObject> {
         do {
             fetchResult = try currentContext.managedObjectContext.fetch(nsFetchRequest)
         } catch {
-            throw .coreDataError(error)
+            throw .underlying(error)
         }
 
         guard let slatableResult = fetchResult as? [SlateObjectConvertible] else {
@@ -1031,7 +1083,7 @@ public final class SlateQueryRequest<SO: SlateObject> {
         do {
             return try currentContext.managedObjectContext.count(for: nsFetchRequest)
         } catch {
-            throw .coreDataError(error)
+            throw .underlying(error)
         }
     }
 }

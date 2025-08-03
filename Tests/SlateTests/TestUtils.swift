@@ -8,21 +8,25 @@ import Foundation
 import Slate
 import Testing
 
-func ConfigureTest(
-    slate: Slate
-) async {
+let kMomSlateTests: NSManagedObjectModel = {
     guard let basePath = Bundle.module.path(forResource: "SlateTests", ofType: "mom") else {
         Issue.record("Coult not find managed object model")
-        return
+        return NSManagedObjectModel(contentsOf: URL(fileURLWithPath: "Crash"))!
     }
 
-    let momd = NSManagedObjectModel(contentsOf: URL(fileURLWithPath: basePath))!
+    return NSManagedObjectModel(contentsOf: URL(fileURLWithPath: basePath))!
+}()
+
+func ConfigureTest(
+    slate: Slate,
+    mom: NSManagedObjectModel
+) async {
     let desc = NSPersistentStoreDescription()
     desc.type = NSInMemoryStoreType
 
     let success: Bool = await withCheckedContinuation { continuation in
         slate.configure(
-            managedObjectModel: momd,
+            managedObjectModel: mom,
             persistentStoreDescription: desc
         ) { _, error in
             if let error {
