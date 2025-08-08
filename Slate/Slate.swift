@@ -15,9 +15,18 @@ private let kThreadKeySlateQueryContext = "kThreadKeySlateQueryContext"
 // MARK: - SlateConfigError
 
 public enum SlateConfigError: Error {
+    /// This instance of a Slate is already configured.
     case alreadyConfigured
+
+    /// A storage URL is required for persistence types other than
+    /// in-memory.
     case storageURLRequired
+
+    /// Another Slate instance is already configured to use this
+    /// storage URL.
     case storageURLAlreadyInUse
+
+    /// An underlying Core Data error occurred.
     case coreDataError(Error)
 }
 
@@ -25,7 +34,7 @@ public enum SlateConfigError: Error {
 
 public enum SlateTransactionError: Error {
     /// The master context has not been created yet, or there was
-    /// an error creating the context
+    /// an error creating the context.
     case noMasterContext
 
     /// A slate context is being used outside of query/mutate blocks.
@@ -35,6 +44,10 @@ public enum SlateTransactionError: Error {
     /// Core Data <-> Immutable objects. This should never occur,
     /// but is coded to catch unexpected problems.
     case queryInvalidCast
+
+    /// Thrown if a user attempts to save a mutation context outside
+    /// of a mutation block.
+    case saveOutsideScope
 
     /// Contains non-Slate Core Data errors (e.g. if a mutation
     /// fails due to insufficient disk storage.)
@@ -56,7 +69,8 @@ public enum SlateTransactionError: Error {
     /// Quick accessor to check if this is aborted
     fileprivate var isAborted: Bool {
         switch self {
-        case .noMasterContext, .queryOutsideScope, .queryInvalidCast, .underlying:
+        case .noMasterContext, .queryOutsideScope, .queryInvalidCast, .underlying,
+             .saveOutsideScope:
             false
         case .aborted:
             true
@@ -110,9 +124,9 @@ public protocol SlateManagedObjectRelating: SlateObject {
  instantiation of a Slate per NSPersistentStore.  Think of a Slate as an
  implementation replacement of a NSPersistentStoreCoordinator.
 
- It is considered a fatalError to instantiate multiple concurrent Slate instances
- on the same NSPersistentStore data.  Slate will attempt to validate this by checking
- against a global cache of used NSPersistentStore.URL locations.
+ It is considered a programming error to instantiate multiple concurrent Slate
+ instances on the same NSPersistentStore data.  Slate will attempt to validate
+ this by checking against a global cache of used NSPersistentStore.URL locations.
 
  A Slate provides a single-write/multiple-read I/O system.  All mutations occur
  as a barrier operation, waiting for all reads to complete and blocking all reads
@@ -171,8 +185,8 @@ public final class Slate {
     private static let storeUrlCheckLock = NSLock()
 
     /// The set of on-disk persistent store URLs used by all instantiated Slates.
-    /// It is considered a fatalError to instantiate multiple Slates that use the
-    /// same storeUrl.
+    /// It is considered a programming error to instantiate multiple Slates that
+    /// use the same storeUrl.
     private static var storeUrlSet: Set<URL> = .init()
 
     // MARK: Initialization
@@ -808,13 +822,15 @@ public final class _SlateCatchBlock {
 // MARK: - _SlateManagedObjectContext
 
 /**
- Despite being a publicly-exposed class, this is not meant to be instantiated.
- Instead, it provides a tap into the `save` method to make sure that higher-
- level code is not calling `save` on the MOC.  Only the Slate should call
- `save` on the MOC internally when the mutation block completes.
+ Provides a tap into the `save` method to make sure that higher-level
+ code is not calling `save` on the MOC outside of a mutation context.
+ Only a Slate instance should call `save` on the MOC internally when
+ the mutation block completes.
  */
-public final class _SlateManagedObjectContext: NSManagedObjectContext {
-    /// Are we in an internal save call?
+final class _SlateManagedObjectContext: NSManagedObjectContext {
+    /// Are we in an internal save call? Mutation blocks are
+    /// used serialially inside the access queue so this should
+    /// be thread safe.
     fileprivate var inSafeSave: Bool = false
 
     /// Run a safe save operation inside of Slate.  Don't need lock
@@ -826,9 +842,9 @@ public final class _SlateManagedObjectContext: NSManagedObjectContext {
     }
 
     /// Override save to make sure we are inside a safe save.
-    override public func save() throws {
+    override func save() throws {
         guard inSafeSave else {
-            fatalError("You cannot explicitly call save on a Slate MOC")
+            throw SlateTransactionError.saveOutsideScope
         }
         try super.save()
     }
@@ -1031,8 +1047,9 @@ private extension Slate {
  The chained configuration style helps make the fetch statements a bit more cohesive.
 
  The SlateQueryRequest fetch methods can ONLY be called from inside a query context block.
- It is a fatalError to attempt to fetch outside of a block.  The fetch will know which
- context it is being called from.
+ It is a programming error to attempt to fetch outside of a block.  The fetch will know which
+ context it is being called from, and will throw SlateTransactionError.queryOutsideScope
+ if called outside of a query block.
  */
 public final class SlateQueryRequest<SO: SlateObject> {
     /// The backing NSFetchRequest that will power this fetch
