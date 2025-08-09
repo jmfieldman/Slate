@@ -1354,6 +1354,15 @@ public final class SlateQueryRequest<SO: SlateManagedObjectRelating> {
     }
 
     /**
+     Attach a sort descriptor to the fetch using key and ascending.
+     */
+    public func sort(_ keyPath: KeyPath<SO, some Any>, ascending: Bool = true) -> SlateQueryRequest<SO> {
+        let keyString = String(describing: keyPath).keypathToAttribute()
+        let descriptor = NSSortDescriptor(key: keyString, ascending: ascending)
+        return sort(descriptor)
+    }
+
+    /**
      Attach a sort descriptor to the fetch using an NSSortDescriptor
      */
     public func sort(_ descriptor: NSSortDescriptor) -> SlateQueryRequest<SO> {
@@ -1668,5 +1677,17 @@ extension Slate {
         }
 
         return immResults
+    }
+}
+
+private extension String {
+    /// Converts a SlateObject keypath \SlateObjectName.path1.path2 to a valid
+    /// Core Data attribute name path1_path2
+    func keypathToAttribute() -> String {
+        guard case let comps = components(separatedBy: "."), comps.count > 1 else {
+            return self
+        }
+
+        return comps.dropFirst().joined(separator: "_")
     }
 }

@@ -1,5 +1,5 @@
 //
-//  BasicSlateTests.swift
+//  SlateBasicTests.swift
 //  Copyright © 2020 Jason Fieldman.
 //
 
@@ -10,7 +10,7 @@ import Slate
 import Testing
 
 @Suite(.timeLimit(.minutes(1)))
-struct BasicSlateTests {
+struct SlateBasicTests {
     let slate = Slate()
 
     @Test func InstantiateInsertQuery() async {
