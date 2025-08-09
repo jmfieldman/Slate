@@ -1300,11 +1300,23 @@ public final class SlateQueryRequest<SO: SlateManagedObjectRelating> {
     }
 
     /**
-     Filter the query by a specified predicate.  Will create a compound AND predicate with any
-     existing predicates.
+     Filter the query by a specified predicate.
+
+     Will create a compound AND predicate with any existing predicates.
      */
     public func filter(_ predicateString: String, _ predicateArgs: Any...) -> SlateQueryRequest<SO> {
         let newPredicate = NSPredicate(format: predicateString, argumentArray: predicateArgs)
+        return filter(newPredicate)
+    }
+
+    /**
+     Filter the query by a keypath and operator.
+
+     Will create a compound AND predicate with any existing predicates.
+     */
+    public func filter<T>(where keyPath: KeyPath<SO, T>, _ operator: SlatePredicateOperator<T>) -> SlateQueryRequest<SO> {
+        let keyString = String(describing: keyPath).keypathToAttribute()
+        let newPredicate = `operator`.predicate(keyPath: keyString)
         return filter(newPredicate)
     }
 
@@ -1513,6 +1525,17 @@ public final class SlateMOCFetchRequest<MO: NSManagedObject> {
     }
 
     /**
+     Filter the query by a keypath and operator.
+
+     Will create a compound AND predicate with any existing predicates.
+     */
+    public func filter<T>(where keyPath: KeyPath<MO, T>, _ operator: SlatePredicateOperator<T>) -> SlateMOCFetchRequest<MO> {
+        let keyString = String(describing: keyPath).keypathToAttribute()
+        let newPredicate = `operator`.predicate(keyPath: keyString)
+        return filter(newPredicate)
+    }
+
+    /**
      An alias for `filter`.  Semantically, it should come after an initial filter call.
      */
     public func and(_ predicate: NSPredicate) -> SlateMOCFetchRequest<MO> {
@@ -1698,5 +1721,48 @@ private extension String {
         }
 
         return comps.dropFirst().joined(separator: "_")
+    }
+}
+
+public struct SlatePredicateOperator<T> {
+    enum Operator {
+        case equals
+        case notEquals
+        case lessThan
+        case lessThanOrEqualTo
+        case greaterThan
+        case greaterThanOrEqualTo
+    }
+
+    let `operator`: Operator
+    let value: T
+
+    public static func equals(
+        _ value: T
+    ) -> SlatePredicateOperator<T> where T: Equatable {
+        SlatePredicateOperator(operator: .equals, value: value)
+    }
+
+    public static func notEquals(
+        _ value: T
+    ) -> SlatePredicateOperator<T> where T: Equatable {
+        SlatePredicateOperator(operator: .notEquals, value: value)
+    }
+
+    func predicate(keyPath: String) -> NSPredicate {
+        switch `operator` {
+        case .equals:
+            NSPredicate(format: "%K == %@", argumentArray: [keyPath, value])
+        case .notEquals:
+            NSPredicate(format: "%K != %@", argumentArray: [keyPath, value])
+        case .lessThan:
+            NSPredicate(format: "%K < %@", argumentArray: [keyPath, value])
+        case .lessThanOrEqualTo:
+            NSPredicate(format: "%K <= %@", argumentArray: [keyPath, value])
+        case .greaterThan:
+            NSPredicate(format: "%K > %@", argumentArray: [keyPath, value])
+        case .greaterThanOrEqualTo:
+            NSPredicate(format: "%K >= %@", argumentArray: [keyPath, value])
+        }
     }
 }

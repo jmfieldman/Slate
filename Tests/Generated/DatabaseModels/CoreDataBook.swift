@@ -22,6 +22,7 @@ public final class CoreDataBook: NSManagedObject, SlateBook.ManagedPropertyProvi
 
     @NSManaged public var likeCount: Int64
     @NSManaged public var loading: Bool
+    @NSManaged public var subtitle: String?
     @NSManaged public var title: String?
 
     @NSManaged public var author: CoreDataAuthor

@@ -10,6 +10,7 @@ public final class SlateBook: Sendable {
     // -- Attribute Declarations --
     public let likeCount: Int
     public let loading: Bool
+    public let subtitle: String?
     public let title: String
 
     // -- Attribute Names --
@@ -17,6 +18,7 @@ public final class SlateBook: Sendable {
     public enum Attributes {
         public static let likeCount = "likeCount"
         public static let loading = "loading"
+        public static let subtitle = "subtitle"
         public static let title = "title"
     }
 
@@ -48,6 +50,7 @@ public final class SlateBook: Sendable {
         // Attribute assignment
         self.likeCount = Int(managedObject.likeCount)
         self.loading = managedObject.loading
+        self.subtitle = managedObject.subtitle
         self.title = { let t: String? = managedObject.title
             return t!
         }()
@@ -62,6 +65,7 @@ public final class SlateBook: Sendable {
     init(
         likeCount: Int,
         loading: Bool,
+        subtitle: String?,
         title: String
     ) {
         // Internally created objects have no real managed object ID
@@ -69,6 +73,7 @@ public final class SlateBook: Sendable {
 
         self.likeCount = likeCount
         self.loading = loading
+        self.subtitle = subtitle
         self.title = title
     }
 
@@ -79,6 +84,7 @@ public extension SlateBook {
     protocol ManagedPropertyProviding: NSManagedObject {
         var likeCount: Int64 { get }
         var loading: Bool { get }
+        var subtitle: String? { get }
         var title: String? { get }
     }
 }
@@ -88,6 +94,7 @@ extension SlateBook: Equatable {
         (lhs.slateID == rhs.slateID) &&
             (lhs.likeCount == rhs.likeCount) &&
             (lhs.loading == rhs.loading) &&
+            (lhs.subtitle == rhs.subtitle) &&
             (lhs.title == rhs.title)
     }
 }
