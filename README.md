@@ -117,6 +117,12 @@ It is important to consider module abstraction at this point. If you are going t
 
 Make sure that you set the Codegen property of each Entity to `Manual/None`, since compiler-generated classes will conflict with those created by `slategen`.
 
+#### `class` vs. `struct`
+
+Slate will derive the immutable types using `class` by default. Core Data objects are typically larger, stable objects that benefit from reference semantics when passed around your code.
+
+In a scenario where an Entity type is going to have its values constantly mutated, it may be more appropriate to use `struct` to avoid thrashing the heap each time new instantiations of the immutable type are required. You can do this per-Entity by adding the key/value pair `struct`: `true` to the Entity's User Info dictionary in the data model.
+
 ### `slategen` - The Model code generator
 
 This is a Swift application used to generate both the Core Data NSManagedObject classes, and the Immutable types derived from them.
