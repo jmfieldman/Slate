@@ -33,6 +33,16 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
             exit(3)
         }
 
+        if let abstract = entity.attributes["isAbstract"], abstract.lowercased() == "yes" {
+            vprint(.error, "Entity [\(entityName)] is abstract, but this is not supported by Slate.")
+            exit(3)
+        }
+
+        if let parent = entity.attributes["parentEntity"] {
+            vprint(.error, "Entity [\(entityName)] defines a parent entity [\(parent)], but this is not supported by Slate.")
+            exit(3)
+        }
+
         // Attributes
 
         var attributes: [CoreDataAttribute] = []
