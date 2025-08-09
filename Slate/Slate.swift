@@ -973,7 +973,11 @@ public extension Slate {
             // that triggers our fetched results controller.
             //
             // Explicitly capture `self` during this async function
-            mutateAsync { [self] moc in
+            mutateAsync { [weak self] moc in
+                guard let self else {
+                    throw SlateTransactionError.aborted
+                }
+
                 // Make an artificial read-context from this MOC, pass it through
                 // to get the final request, and then create a controller for it.
                 let queryContext = SlateQueryContext(slate: self, managedObjectContext: moc)
