@@ -15,8 +15,8 @@ Take your typical Core Data NSManagedObjects:
 
 ```swift
 class CoreDataBook: NSManagedObject {
-  @NSManaged public var id: UUID
-  @NSManaged public var pageCount: Int64
+    @NSManaged public var id: UUID
+    @NSManaged public var pageCount: Int64
 }
 ```
 
@@ -25,8 +25,8 @@ Slate automatically generates immutable representations:
 ```swift
 /* Auto-generated */
 final class Book {
-  let id: UUID
-  let pageCount: Int
+    let id: UUID
+    let pageCount: Int
 }
 ```
 
@@ -36,9 +36,9 @@ Query from a read-only context that provides these immutable versions of your Co
 /// Performs an async query on the Slate Core Data context and returns immutable
 /// Book objects representing CoreDataBook NSManagedObjects.
 func fetchBooksWithAtLeast(pageCount: Int) async throws -> [Book] {
-  try await slate.query { readContext in
-    return try readContext[Book.self].filter("pageCount > \(pageCount)").fetch()
-  }
+    try await slate.query { readContext in
+        return try readContext[Book.self].filter("pageCount > \(pageCount)").fetch()
+    }
 }
 ```
 
@@ -49,11 +49,24 @@ Continue to use NSManagedObjectContext for writes, but operate in a safe single-
 /// using your typical Core Data classes. Slate protects against mutations leaking
 /// outside of this block.
 func updateBookPageCount(bookId: UUID, newPageCount: Int) async throws {
-  try await slate.mutate { writeContext in
-    if let book = try writeContext[CoreDataBook.self].filter("id = %@", id).fetchOne() {
-      book.pageCount = newPageCount
+    try await slate.mutate { writeContext in
+        if let book = try writeContext[CoreDataBook.self].filter("id = %@", id).fetchOne() {
+            book.pageCount = newPageCount
+        }
     }
-  }
+}
+```
+
+You can also stream NSFetchedResultsController updates through a Combine publisher to reactively observe a collection represented by a filter/sort query:
+
+```swift
+/// Creates an AnyPublisher<Slate.StreamUpdate, SlateTransactionError>.
+/// The StreamUpdate struct contains information such as the current sorted
+/// array of values, and the inserted/updated/deleted/moved indexes since
+/// the last update.
+let streamPublisher = slate.stream { request -> SlateQueryRequest<Book> in
+    // Return the request modified by filter/sort instructions
+    return request.sort(Book.Attributes.pageCount)
 }
 ```
 
