@@ -1768,10 +1768,12 @@ public struct SlatePredicateOperator<T> {
         case lessThanOrEqualTo
         case greaterThan
         case greaterThanOrEqualTo
+        case `in`
+        case notIn
     }
 
     let `operator`: Operator
-    let value: T
+    let value: Any
 
     public static func equals(
         _ value: T
@@ -1809,6 +1811,18 @@ public struct SlatePredicateOperator<T> {
         SlatePredicateOperator(operator: .greaterThanOrEqualTo, value: value)
     }
 
+    public static func `in`(
+        _ value: any Collection<T>
+    ) -> SlatePredicateOperator<T> where T: Equatable {
+        SlatePredicateOperator(operator: .in, value: value)
+    }
+
+    public static func notIn(
+        _ value: any Collection<T>
+    ) -> SlatePredicateOperator<T> where T: Equatable {
+        SlatePredicateOperator(operator: .notIn, value: value)
+    }
+
     func predicate(keyPath: String) -> NSPredicate {
         switch `operator` {
         case .equals:
@@ -1823,6 +1837,10 @@ public struct SlatePredicateOperator<T> {
             NSPredicate(format: "%K > %@", argumentArray: [keyPath, value])
         case .greaterThanOrEqualTo:
             NSPredicate(format: "%K >= %@", argumentArray: [keyPath, value])
+        case .in:
+            NSPredicate(format: "%K IN %@", argumentArray: [keyPath, value])
+        case .notIn:
+            NSPredicate(format: "NOT (%K IN %@)", argumentArray: [keyPath, value])
         }
     }
 }

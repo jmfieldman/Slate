@@ -235,6 +235,53 @@ struct SlateFetchTests {
         #expect(authors.map(\.name) == ["TestName2", "TestName3", "TestName4"])
     }
 
+    @Test func QueryFilterPredicateContains() async {
+        await ConfigureTest(
+            slate: slate,
+            mom: kMomSlateTests
+        )
+
+        slate.mutateSync { moc in
+            let newAuthor = CoreDataAuthor(context: moc)
+            newAuthor.name = "TestName1"
+            newAuthor.age = 10
+
+            let newAuthor2 = CoreDataAuthor(context: moc)
+            newAuthor2.name = "TestName2"
+            newAuthor2.age = 20
+
+            let newAuthor3 = CoreDataAuthor(context: moc)
+            newAuthor3.name = "TestName3"
+            newAuthor3.age = 30
+
+            let newAuthor4 = CoreDataAuthor(context: moc)
+            newAuthor4.name = "TestName4"
+            newAuthor4.age = 40
+        }
+
+        var authors: [SlateAuthor] = []
+
+        slate.querySync { context in
+            authors = try context[SlateAuthor.self]
+                .filter(where: \.name, .in(["TestName1", "TestName2"]))
+                .sort(\.name)
+                .fetch()
+        }
+
+        // Cannot have both name clauses be true
+        #expect(authors.map(\.name) == ["TestName1", "TestName2"])
+
+        slate.querySync { context in
+            authors = try context[SlateAuthor.self]
+                .filter(where: \.name, .notIn(["TestName1", "TestName2"]))
+                .sort(\.name)
+                .fetch()
+        }
+
+        // -or- allows either name to appear
+        #expect(authors.map(\.name) == ["TestName3", "TestName4"])
+    }
+
     @Test func MutateFilterPredicate() async {
         await ConfigureTest(
             slate: slate,
