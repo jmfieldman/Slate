@@ -13,7 +13,7 @@ import Testing
 struct SlateFetchTests {
     let slate = Slate()
 
-    @Test func InstantiateInsertQuery() async {
+    @Test func QuerySort() async {
         await ConfigureTest(
             slate: slate,
             mom: kMomSlateTests
@@ -31,10 +31,45 @@ struct SlateFetchTests {
         }
 
         var authors: [SlateAuthor] = []
+
         slate.querySync { context in
             authors = try context[SlateAuthor.self].sort(\.name).fetch()
         }
 
         #expect(authors.map(\.name) == ["TestName1", "TestName2", "TestName3"])
+
+        slate.querySync { context in
+            authors = try context[SlateAuthor.self].sort(SlateAuthor.Attributes.name).fetch()
+        }
+
+        #expect(authors.map(\.name) == ["TestName1", "TestName2", "TestName3"])
+    }
+
+    @Test func MutateSort() async {
+        await ConfigureTest(
+            slate: slate,
+            mom: kMomSlateTests
+        )
+
+        slate.mutateSync { moc in
+            let newAuthor = CoreDataAuthor(context: moc)
+            newAuthor.name = "TestName1"
+
+            let newAuthor2 = CoreDataAuthor(context: moc)
+            newAuthor2.name = "TestName3"
+
+            let newAuthor3 = CoreDataAuthor(context: moc)
+            newAuthor3.name = "TestName2"
+
+            // Sorting inside of a mutable block should know about all
+            // objects instantiated inside of this block already.
+            let authors = try! moc[CoreDataAuthor.self].sort(\.name).fetch()
+            #expect(authors.map(\.name) == ["TestName1", "TestName2", "TestName3"])
+        }
+
+        slate.mutateSync { moc in
+            let authors = try! moc[CoreDataAuthor.self].sort(SlateAuthor.Attributes.name).fetch()
+            #expect(authors.map(\.name) == ["TestName1", "TestName2", "TestName3"])
+        }
     }
 }

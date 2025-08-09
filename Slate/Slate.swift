@@ -1558,6 +1558,15 @@ public final class SlateMOCFetchRequest<MO: NSManagedObject> {
     }
 
     /**
+     Attach a sort descriptor to the fetch using key and ascending.
+     */
+    public func sort(_ keyPath: KeyPath<MO, some Any>, ascending: Bool = true) -> SlateMOCFetchRequest<MO> {
+        let keyString = String(describing: keyPath).keypathToAttribute()
+        let descriptor = NSSortDescriptor(key: keyString, ascending: ascending)
+        return sort(descriptor)
+    }
+
+    /**
      Attach a sort descriptor to the fetch using an NSSortDescriptor
      */
     public func sort(_ descriptor: NSSortDescriptor) -> SlateMOCFetchRequest<MO> {
