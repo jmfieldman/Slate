@@ -1762,14 +1762,23 @@ private extension String {
 
 public struct SlatePredicateOperator<T> {
     enum Operator {
+        // Numeraical
         case equals
         case notEquals
         case lessThan
         case lessThanOrEqualTo
         case greaterThan
         case greaterThanOrEqualTo
+        case between
+        case notBetween
+
+        // Container
         case `in`
         case notIn
+
+        // Strings
+        case like(String)
+        case notLike(String)
     }
 
     let `operator`: Operator
@@ -1811,6 +1820,20 @@ public struct SlatePredicateOperator<T> {
         SlatePredicateOperator(operator: .greaterThanOrEqualTo, value: value)
     }
 
+    public static func between(
+        _ lower: T,
+        _ upper: T
+    ) -> SlatePredicateOperator<T> where T: Comparable {
+        SlatePredicateOperator(operator: .between, value: [lower, upper])
+    }
+
+    public static func notBetween(
+        _ lower: T,
+        _ upper: T
+    ) -> SlatePredicateOperator<T> where T: Comparable {
+        SlatePredicateOperator(operator: .notBetween, value: [lower, upper])
+    }
+
     public static func `in`(
         _ value: any Collection<T>
     ) -> SlatePredicateOperator<T> where T: Equatable {
@@ -1821,6 +1844,34 @@ public struct SlatePredicateOperator<T> {
         _ value: any Collection<T>
     ) -> SlatePredicateOperator<T> where T: Equatable {
         SlatePredicateOperator(operator: .notIn, value: value)
+    }
+
+    public static func like(
+        _ value: T,
+        _ insensitivities: String? = nil
+    ) -> SlatePredicateOperator<T> where T == String {
+        SlatePredicateOperator(operator: .like(insensitivities.flatMap { "[\($0)]" } ?? ""), value: value)
+    }
+
+    public static func like(
+        _ value: String,
+        _ insensitivities: String? = nil
+    ) -> SlatePredicateOperator<T> where T == String? {
+        SlatePredicateOperator(operator: .like(insensitivities.flatMap { "[\($0)]" } ?? ""), value: value)
+    }
+
+    public static func notLike(
+        _ value: T,
+        _ insensitivities: String? = nil
+    ) -> SlatePredicateOperator<T> where T == String {
+        SlatePredicateOperator(operator: .notLike(insensitivities.flatMap { "[\($0)]" } ?? ""), value: value)
+    }
+
+    public static func notLike(
+        _ value: String,
+        _ insensitivities: String? = nil
+    ) -> SlatePredicateOperator<T> where T == String? {
+        SlatePredicateOperator(operator: .notLike(insensitivities.flatMap { "[\($0)]" } ?? ""), value: value)
     }
 
     func predicate(keyPath: String) -> NSPredicate {
@@ -1837,10 +1888,18 @@ public struct SlatePredicateOperator<T> {
             NSPredicate(format: "%K > %@", argumentArray: [keyPath, value])
         case .greaterThanOrEqualTo:
             NSPredicate(format: "%K >= %@", argumentArray: [keyPath, value])
+        case .between:
+            NSPredicate(format: "%K BETWEEN %@", argumentArray: [keyPath, value])
+        case .notBetween:
+            NSPredicate(format: "NOT (%K BETWEEN %@)", argumentArray: [keyPath, value])
         case .in:
             NSPredicate(format: "%K IN %@", argumentArray: [keyPath, value])
         case .notIn:
             NSPredicate(format: "NOT (%K IN %@)", argumentArray: [keyPath, value])
+        case let .like(insensitivities):
+            NSPredicate(format: "%K LIKE\(insensitivities) %@", argumentArray: [keyPath, value])
+        case let .notLike(insensitivities):
+            NSPredicate(format: "NOT (%K LIKE\(insensitivities) %@)", argumentArray: [keyPath, value])
         }
     }
 }

@@ -282,6 +282,107 @@ struct SlateFetchTests {
         #expect(authors.map(\.name) == ["TestName3", "TestName4"])
     }
 
+    @Test func QueryFilterPredicateBetween() async {
+        await ConfigureTest(
+            slate: slate,
+            mom: kMomSlateTests
+        )
+
+        slate.mutateSync { moc in
+            let newAuthor = CoreDataAuthor(context: moc)
+            newAuthor.name = "TestName1"
+            newAuthor.age = 10
+
+            let newAuthor2 = CoreDataAuthor(context: moc)
+            newAuthor2.name = "TestName2"
+            newAuthor2.age = 20
+
+            let newAuthor3 = CoreDataAuthor(context: moc)
+            newAuthor3.name = "TestName3"
+            newAuthor3.age = 30
+
+            let newAuthor4 = CoreDataAuthor(context: moc)
+            newAuthor4.name = "TestName4"
+            newAuthor4.age = 40
+        }
+
+        var authors: [SlateAuthor] = []
+
+        slate.querySync { context in
+            authors = try context[SlateAuthor.self]
+                .filter(where: \.age, .between(20, 30))
+                .sort(\.name)
+                .fetch()
+        }
+
+        // Cannot have both name clauses be true
+        #expect(authors.map(\.name) == ["TestName2", "TestName3"])
+
+        slate.querySync { context in
+            authors = try context[SlateAuthor.self]
+                .filter(where: \.age, .notBetween(20, 30))
+                .sort(\.name)
+                .fetch()
+        }
+
+        // -or- allows either name to appear
+        #expect(authors.map(\.name) == ["TestName1", "TestName4"])
+    }
+
+    @Test func QueryFilterPredicateLike() async {
+        await ConfigureTest(
+            slate: slate,
+            mom: kMomSlateTests
+        )
+
+        slate.mutateSync { moc in
+            let newAuthor = CoreDataAuthor(context: moc)
+            newAuthor.name = "TestName1"
+
+            let newBook = CoreDataBook(context: moc)
+            newBook.author = newAuthor
+            newBook.title = "TestBook1"
+
+            let newBook2 = CoreDataBook(context: moc)
+            newBook2.author = newAuthor
+            newBook2.title = "TestBook2"
+
+            let newBook3 = CoreDataBook(context: moc)
+            newBook3.author = newAuthor
+            newBook3.title = "TestBook3"
+            newBook3.subtitle = "Subtitle3"
+        }
+
+        var books: [SlateBook] = []
+
+        slate.querySync { context in
+            books = try context[SlateBook.self]
+                .filter(where: \.subtitle, .like("Subt*"))
+                .sort(\.title)
+                .fetch()
+        }
+
+        #expect(books.map(\.title) == ["TestBook3"])
+
+        slate.querySync { context in
+            books = try context[SlateBook.self]
+                .filter(where: \.subtitle, .like("subt*", "cd"))
+                .sort(\.title)
+                .fetch()
+        }
+
+        #expect(books.map(\.title) == ["TestBook3"])
+
+        slate.querySync { context in
+            books = try context[SlateBook.self]
+                .filter(where: \.subtitle, .notLike("Subt*"))
+                .sort(\.title)
+                .fetch()
+        }
+
+        #expect(books.map(\.title) == ["TestBook1", "TestBook2"])
+    }
+
     @Test func MutateFilterPredicate() async {
         await ConfigureTest(
             slate: slate,
