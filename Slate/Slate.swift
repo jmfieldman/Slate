@@ -982,8 +982,17 @@ public extension Slate {
                 // to get the final request, and then create a controller for it.
                 let queryContext = SlateQueryContext(slate: self, managedObjectContext: moc)
                 let fetchRequest = queryFilter(queryContext.query(Value.self))
-                resultsController = fetchRequest.fetchedResultsController
-                resultsController?.delegate = delegate
+                let fetchResultsController = fetchRequest.fetchedResultsController
+                fetchResultsController.delegate = delegate
+                resultsController = fetchResultsController
+
+                // Bind the FRC to the passthrough subject
+                objc_setAssociatedObject(
+                    passthroughSubject,
+                    &kStreamFRCAssociationKey,
+                    fetchResultsController,
+                    .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+                )
 
                 // Create the initial data set
                 try resultsController?.performFetch()
@@ -1025,6 +1034,9 @@ public extension Slate {
 
 /// Associate key for the stream delegate to the passthrough subject
 private var kStreamDelegateAssociationKey: UInt8 = 0
+
+/// Associate key for the stream delegate to the passthrough subject
+private var kStreamFRCAssociationKey: UInt8 = 0
 
 // MARK: - _SlateManagedObjectContext
 
