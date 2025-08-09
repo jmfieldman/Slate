@@ -11,7 +11,7 @@ setuptests:
 		--input-model Tests/SlateTests/DataModel/SlateTests.xcdatamodel \
 		--output-slate-object-path Tests/Generated/ImmutableModels \
 		--output-core-data-entity-path Tests/Generated/DatabaseModels \
-		-f --cast-int \
+		-f \
 		--name-transform Slate%@ \
 		--file-transform Slate%@ \
 		--core-data-file-imports "Slate, ImmutableModels"
