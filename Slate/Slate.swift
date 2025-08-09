@@ -1336,6 +1336,15 @@ public final class SlateQueryRequest<SO: SlateManagedObjectRelating> {
     }
 
     /**
+     An alias for `filter`.  Semantically, it should come after an initial filter call.
+     */
+    public func and<T>(where keyPath: KeyPath<SO, T>, _ operator: SlatePredicateOperator<T>) -> SlateQueryRequest<SO> {
+        let keyString = String(describing: keyPath).keypathToAttribute()
+        let newPredicate = `operator`.predicate(keyPath: keyString)
+        return and(newPredicate)
+    }
+
+    /**
      Creates an OR compound predicate with an existing predicate.
      */
     public func or(_ predicate: NSPredicate) -> SlateQueryRequest<SO> {
@@ -1352,6 +1361,15 @@ public final class SlateQueryRequest<SO: SlateManagedObjectRelating> {
      */
     public func or(_ predicateString: String, _ predicateArgs: AnyObject...) -> SlateQueryRequest<SO> {
         let newPredicate = NSPredicate(format: predicateString, argumentArray: predicateArgs)
+        return or(newPredicate)
+    }
+
+    /**
+     Creates an OR compound predicate with an existing predicate.
+     */
+    public func or<T>(where keyPath: KeyPath<SO, T>, _ operator: SlatePredicateOperator<T>) -> SlateQueryRequest<SO> {
+        let keyString = String(describing: keyPath).keypathToAttribute()
+        let newPredicate = `operator`.predicate(keyPath: keyString)
         return or(newPredicate)
     }
 
@@ -1551,6 +1569,15 @@ public final class SlateMOCFetchRequest<MO: NSManagedObject> {
     }
 
     /**
+     An alias for `filter`.  Semantically, it should come after an initial filter call.
+     */
+    public func and<T>(where keyPath: KeyPath<MO, T>, _ operator: SlatePredicateOperator<T>) -> SlateMOCFetchRequest<MO> {
+        let keyString = String(describing: keyPath).keypathToAttribute()
+        let newPredicate = `operator`.predicate(keyPath: keyString)
+        return and(newPredicate)
+    }
+
+    /**
      Creates an OR compound predicate with an existing predicate.
      */
     public func or(_ predicate: NSPredicate) -> SlateMOCFetchRequest<MO> {
@@ -1567,6 +1594,15 @@ public final class SlateMOCFetchRequest<MO: NSManagedObject> {
      */
     public func or(_ predicateString: String, _ predicateArgs: AnyObject...) -> SlateMOCFetchRequest<MO> {
         let newPredicate = NSPredicate(format: predicateString, argumentArray: predicateArgs)
+        return or(newPredicate)
+    }
+
+    /**
+     Creates an OR compound predicate with an existing predicate.
+     */
+    public func or<T>(where keyPath: KeyPath<MO, T>, _ operator: SlatePredicateOperator<T>) -> SlateMOCFetchRequest<MO> {
+        let keyString = String(describing: keyPath).keypathToAttribute()
+        let newPredicate = `operator`.predicate(keyPath: keyString)
         return or(newPredicate)
     }
 
@@ -1747,6 +1783,30 @@ public struct SlatePredicateOperator<T> {
         _ value: T
     ) -> SlatePredicateOperator<T> where T: Equatable {
         SlatePredicateOperator(operator: .notEquals, value: value)
+    }
+
+    public static func lessThan(
+        _ value: T
+    ) -> SlatePredicateOperator<T> where T: Comparable {
+        SlatePredicateOperator(operator: .lessThan, value: value)
+    }
+
+    public static func lessThanOrEqualTo(
+        _ value: T
+    ) -> SlatePredicateOperator<T> where T: Comparable {
+        SlatePredicateOperator(operator: .lessThanOrEqualTo, value: value)
+    }
+
+    public static func greaterThan(
+        _ value: T
+    ) -> SlatePredicateOperator<T> where T: Comparable {
+        SlatePredicateOperator(operator: .greaterThan, value: value)
+    }
+
+    public static func greaterThanOrEqualTo(
+        _ value: T
+    ) -> SlatePredicateOperator<T> where T: Comparable {
+        SlatePredicateOperator(operator: .greaterThanOrEqualTo, value: value)
     }
 
     func predicate(keyPath: String) -> NSPredicate {

@@ -20,6 +20,7 @@ public final class CoreDataAuthor: NSManagedObject, SlateAuthor.ManagedPropertyP
         }
     }
 
+    @NSManaged public var age: Int64
     @NSManaged public var name: String?
 
     @NSManaged public var books: NSSet?

@@ -8,11 +8,13 @@ import Foundation
 
 public final class SlateAuthor: Sendable {
     // -- Attribute Declarations --
+    public let age: Int
     public let name: String
 
     // -- Attribute Names --
 
     public enum Attributes {
+        public static let age = "age"
         public static let name = "name"
     }
 
@@ -42,6 +44,7 @@ public final class SlateAuthor: Sendable {
         self.slateID = managedObject.objectID
 
         // Attribute assignment
+        self.age = Int(managedObject.age)
         self.name = { let t: String? = managedObject.name
             return t!
         }()
@@ -54,11 +57,13 @@ public final class SlateAuthor: Sendable {
      constructor in normal code.
      */
     init(
+        age: Int,
         name: String
     ) {
         // Internally created objects have no real managed object ID
         self.slateID = NSManagedObjectID()
 
+        self.age = age
         self.name = name
     }
 
@@ -67,6 +72,7 @@ public final class SlateAuthor: Sendable {
 
 public extension SlateAuthor {
     protocol ManagedPropertyProviding: NSManagedObject {
+        var age: Int64 { get }
         var name: String? { get }
     }
 }
@@ -74,6 +80,7 @@ public extension SlateAuthor {
 extension SlateAuthor: Equatable {
     public static func == (lhs: SlateAuthor, rhs: SlateAuthor) -> Bool {
         (lhs.slateID == rhs.slateID) &&
+            (lhs.age == rhs.age) &&
             (lhs.name == rhs.name)
     }
 }
