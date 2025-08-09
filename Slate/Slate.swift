@@ -1779,6 +1779,11 @@ public struct SlatePredicateOperator<T> {
         // Strings
         case like(String)
         case notLike(String)
+        case contains(String)
+        case notContains(String)
+        case beginsWith(String)
+        case endsWith(String)
+        case matches(String)
     }
 
     let `operator`: Operator
@@ -1874,6 +1879,76 @@ public struct SlatePredicateOperator<T> {
         SlatePredicateOperator(operator: .notLike(insensitivities.flatMap { "[\($0)]" } ?? ""), value: value)
     }
 
+    public static func contains(
+        _ value: T,
+        _ insensitivities: String? = nil
+    ) -> SlatePredicateOperator<T> where T == String {
+        SlatePredicateOperator(operator: .contains(insensitivities.flatMap { "[\($0)]" } ?? ""), value: value)
+    }
+
+    public static func contains(
+        _ value: String,
+        _ insensitivities: String? = nil
+    ) -> SlatePredicateOperator<T> where T == String? {
+        SlatePredicateOperator(operator: .contains(insensitivities.flatMap { "[\($0)]" } ?? ""), value: value)
+    }
+
+    public static func notContains(
+        _ value: T,
+        _ insensitivities: String? = nil
+    ) -> SlatePredicateOperator<T> where T == String {
+        SlatePredicateOperator(operator: .notContains(insensitivities.flatMap { "[\($0)]" } ?? ""), value: value)
+    }
+
+    public static func notContains(
+        _ value: String,
+        _ insensitivities: String? = nil
+    ) -> SlatePredicateOperator<T> where T == String? {
+        SlatePredicateOperator(operator: .notContains(insensitivities.flatMap { "[\($0)]" } ?? ""), value: value)
+    }
+
+    public static func beginsWith(
+        _ value: T,
+        _ insensitivities: String? = nil
+    ) -> SlatePredicateOperator<T> where T == String {
+        SlatePredicateOperator(operator: .beginsWith(insensitivities.flatMap { "[\($0)]" } ?? ""), value: value)
+    }
+
+    public static func beginsWith(
+        _ value: String,
+        _ insensitivities: String? = nil
+    ) -> SlatePredicateOperator<T> where T == String? {
+        SlatePredicateOperator(operator: .beginsWith(insensitivities.flatMap { "[\($0)]" } ?? ""), value: value)
+    }
+
+    public static func endsWith(
+        _ value: T,
+        _ insensitivities: String? = nil
+    ) -> SlatePredicateOperator<T> where T == String {
+        SlatePredicateOperator(operator: .endsWith(insensitivities.flatMap { "[\($0)]" } ?? ""), value: value)
+    }
+
+    public static func endsWith(
+        _ value: String,
+        _ insensitivities: String? = nil
+    ) -> SlatePredicateOperator<T> where T == String? {
+        SlatePredicateOperator(operator: .endsWith(insensitivities.flatMap { "[\($0)]" } ?? ""), value: value)
+    }
+
+    public static func matches(
+        _ value: T,
+        _ insensitivities: String? = nil
+    ) -> SlatePredicateOperator<T> where T == String {
+        SlatePredicateOperator(operator: .matches(insensitivities.flatMap { "[\($0)]" } ?? ""), value: value)
+    }
+
+    public static func matches(
+        _ value: String,
+        _ insensitivities: String? = nil
+    ) -> SlatePredicateOperator<T> where T == String? {
+        SlatePredicateOperator(operator: .matches(insensitivities.flatMap { "[\($0)]" } ?? ""), value: value)
+    }
+
     func predicate(keyPath: String) -> NSPredicate {
         switch `operator` {
         case .equals:
@@ -1900,6 +1975,16 @@ public struct SlatePredicateOperator<T> {
             NSPredicate(format: "%K LIKE\(insensitivities) %@", argumentArray: [keyPath, value])
         case let .notLike(insensitivities):
             NSPredicate(format: "NOT (%K LIKE\(insensitivities) %@)", argumentArray: [keyPath, value])
+        case let .contains(insensitivities):
+            NSPredicate(format: "%K CONTAINS\(insensitivities) %@", argumentArray: [keyPath, value])
+        case let .notContains(insensitivities):
+            NSPredicate(format: "NOT (%K CONTAINS\(insensitivities) %@)", argumentArray: [keyPath, value])
+        case let .beginsWith(insensitivities):
+            NSPredicate(format: "%K BEGINSWITH\(insensitivities) %@", argumentArray: [keyPath, value])
+        case let .endsWith(insensitivities):
+            NSPredicate(format: "%K ENDSWITH\(insensitivities) %@", argumentArray: [keyPath, value])
+        case let .matches(insensitivities):
+            NSPredicate(format: "%K MATCHES\(insensitivities) %@", argumentArray: [keyPath, value])
         }
     }
 }
