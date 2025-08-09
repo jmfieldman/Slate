@@ -194,8 +194,8 @@ let slate = Slate()
 
 // Inside your manager's init/begin; first get your data model
 guard 
-  let momPath = Bundle.main.path(forResource: "YourDataModel", ofType: "mom"),
-  let managedObjectModel = NSManagedObjectModel(contentsOf: URL(fileURLWithPath: basePath))
+    let momPath = Bundle.main.path(forResource: "YourDataModel", ofType: "mom"),
+    let managedObjectModel = NSManagedObjectModel(contentsOf: URL(fileURLWithPath: basePath))
 else {
     throw // no data model! -- note that it may have a .mom or .momd extension
 }
