@@ -1,5 +1,5 @@
 //
-//  SlateTests.swift
+//  BasicSlateTests.swift
 //  Copyright © 2020 Jason Fieldman.
 //
 
@@ -32,6 +32,48 @@ struct BasicSlateTests {
 
         let authors: [SlateAuthor] = await withCheckedContinuation { continuation in
             slate.queryAsync { context in
+                let authors = try context[SlateAuthor.self].fetch()
+                continuation.resume(returning: authors)
+            }
+        }
+
+        #expect(authors.first!.name == "TestName")
+    }
+
+    @Test func InstantiateInsertSyncQuery() async {
+        await ConfigureTest(
+            slate: slate,
+            mom: kMomSlateTests
+        )
+
+        slate.mutateSync { moc in
+            let newAuthor = CoreDataAuthor(context: moc)
+            newAuthor.name = "TestName"
+        }
+
+        let authors: [SlateAuthor] = await withCheckedContinuation { continuation in
+            slate.queryAsync { context in
+                let authors = try context[SlateAuthor.self].fetch()
+                continuation.resume(returning: authors)
+            }
+        }
+
+        #expect(authors.first!.name == "TestName")
+    }
+
+    @Test func InstantiateInsertSyncQuerySync() async {
+        await ConfigureTest(
+            slate: slate,
+            mom: kMomSlateTests
+        )
+
+        slate.mutateSync { moc in
+            let newAuthor = CoreDataAuthor(context: moc)
+            newAuthor.name = "TestName"
+        }
+
+        let authors: [SlateAuthor] = await withCheckedContinuation { continuation in
+            slate.querySync { context in
                 let authors = try context[SlateAuthor.self].fetch()
                 continuation.resume(returning: authors)
             }

@@ -7,6 +7,12 @@ import Combine
 import CoreData
 import Foundation
 
+#if os(iOS) || os(tvOS)
+import UIKit
+#else
+import AppKit
+#endif
+
 // MARK: - Private Constants
 
 /// The thread key for the current SlateQueryContext
@@ -819,6 +825,203 @@ public final class _SlateCatchBlock {
     }
 }
 
+// MARK: - Streaming Data
+
+private class SlateFetchedResultsControllerBlockDelegate: NSObject, NSFetchedResultsControllerDelegate {
+    let onUpdate: (
+        _ inserted: [IndexPath],
+        _ updated: [IndexPath],
+        _ removed: [IndexPath],
+        _ moved: [(IndexPath, IndexPath)]
+    ) -> Void
+
+    var inserted: [IndexPath] = []
+    var updated: [IndexPath] = []
+    var deleted: [IndexPath] = []
+    var moved: [(IndexPath, IndexPath)] = []
+
+    init(
+        onUpdate: @escaping (
+            _ inserted: [IndexPath],
+            _ updated: [IndexPath],
+            _ deleted: [IndexPath],
+            _ moved: [(IndexPath, IndexPath)]
+        ) -> Void
+    ) {
+        self.onUpdate = onUpdate
+        super.init()
+    }
+
+    func controllerWillChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
+        inserted = []
+        updated = []
+        deleted = []
+        moved = []
+    }
+
+    func controllerDidChangeContent(_ controller: NSFetchedResultsController<NSFetchRequestResult>) {
+        onUpdate(inserted, updated, deleted, moved)
+    }
+
+    func controller(
+        _ controller: NSFetchedResultsController<NSFetchRequestResult>,
+        didChange anObject: Any,
+        at indexPath: IndexPath?,
+        for type: NSFetchedResultsChangeType,
+        newIndexPath: IndexPath?
+    ) {
+        switch type {
+        case NSFetchedResultsChangeType(rawValue: 0): break
+        case .update:
+            indexPath.flatMap { updated.append($0) }
+        case .insert:
+            newIndexPath.flatMap { inserted.append($0) }
+        case .delete:
+            indexPath.flatMap { deleted.append($0) }
+        case .move:
+            if let fromPath = indexPath, let toPath = newIndexPath {
+                moved.append((fromPath, toPath))
+            }
+        @unknown default:
+            break
+        }
+    }
+}
+
+public extension Slate {
+    struct StreamUpdate<Value: SlateObject> {
+        public let values: [Value]
+        public let insertedIndexes: [IndexPath]
+        public let updatedIndexes: [IndexPath]
+        public let deletedIndexes: [IndexPath]
+        public let movedIndexes: [(IndexPath, IndexPath)]
+        public let initialUpdate: Bool
+    }
+
+    /**
+     Returns a *Deferred* publisher that emits a series of `SlateStreamUpdate`
+     values reflecting the streaming results of the provided query block.
+
+     The query block parameter will be a generic query to return all values of
+     the specified type. You can then return a more scoped query by using the
+     methods of `SlateQueryRequest`.
+
+     `stream` uses an NSFetchedResultsController under the hood, and requires
+     that you provide some sort clause.
+
+     This deferred publisher does not capture the receiving Slate instance. If
+     you attempt to subscribe after the Slate instance has deallocated you will
+     receive an error.
+     */
+    func stream<Value: SlateManagedObjectRelating>(
+        _ queryFilter: @escaping (SlateQueryRequest<Value>) -> SlateQueryRequest<Value>
+    ) -> AnyPublisher<StreamUpdate<Value>, SlateTransactionError> {
+        Deferred { [weak self] () -> AnyPublisher<StreamUpdate<Value>, SlateTransactionError> in
+            // This deferred publisher does not capture the receiving Slate
+            // instance; it is an error to subscribe to this publisher outside
+            // of its lifecycle.
+            guard let self else {
+                return Fail(
+                    error: SlateTransactionError.noMasterContext
+                ).eraseToAnyPublisher()
+            }
+
+            // This is the passthrough subject that will propagate to subscribers
+            let passthroughSubject = PassthroughSubject<StreamUpdate<Value>, SlateTransactionError>()
+
+            // This is the results controller that we will extract from our query
+            var resultsController: NSFetchedResultsController<Value.ManagedObjectType>?
+
+            let delegate = SlateFetchedResultsControllerBlockDelegate { [weak self, weak passthroughSubject] inserted, updated, deleted, moved in
+                guard let passthroughSubject, let fetchedObjects = resultsController?.fetchedObjects else {
+                    return
+                }
+
+                do {
+                    guard let slateObjects: [Value] = try self?.convert(managedObjects: fetchedObjects) else {
+                        return
+                    }
+
+                    let streamUpdate = StreamUpdate(
+                        values: slateObjects,
+                        insertedIndexes: inserted,
+                        updatedIndexes: updated,
+                        deletedIndexes: deleted,
+                        movedIndexes: moved,
+                        initialUpdate: false
+                    )
+
+                    passthroughSubject.send(streamUpdate)
+                } catch {
+                    passthroughSubject.send(
+                        completion: .failure(
+                            (error as? SlateTransactionError).flatMap { $0 } ?? .underlying(error)
+                        )
+                    )
+                }
+            }
+
+            // Bind the delegate to the lifetime of our subject
+            objc_setAssociatedObject(
+                passthroughSubject,
+                &kStreamDelegateAssociationKey,
+                delegate,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+
+            // Now that the delegate is created, we can begin the query
+            // that triggers our fetched results controller.
+            //
+            // Explicitly capture `self` during this async function
+            mutateAsync { [self] moc in
+                // Make an artificial read-context from this MOC, pass it through
+                // to get the final request, and then create a controller for it.
+                let queryContext = SlateQueryContext(slate: self, managedObjectContext: moc)
+                let fetchRequest = queryFilter(queryContext.query(Value.self))
+                resultsController = fetchRequest.fetchedResultsController
+                resultsController?.delegate = delegate
+
+                // Create the initial data set
+                try resultsController?.performFetch()
+
+                guard let fetchedObjects = resultsController?.fetchedObjects else {
+                    throw SlateTransactionError.aborted
+                }
+
+                let slateObjects: [Value] = try convert(managedObjects: fetchedObjects)
+
+                // Create an array of the initially-inserted index paths
+                var initialInsert: [IndexPath] = []
+                if slateObjects.count > 0 {
+                    initialInsert = (0 ..< slateObjects.count).map { IndexPath(item: $0, section: 0) }
+                }
+
+                let streamUpdate = StreamUpdate(
+                    values: slateObjects,
+                    insertedIndexes: initialInsert,
+                    updatedIndexes: [],
+                    deletedIndexes: [],
+                    movedIndexes: [],
+                    initialUpdate: true
+                )
+
+                passthroughSubject.send(streamUpdate)
+            }.catch { error in
+                passthroughSubject.send(
+                    completion: .failure(
+                        (error as? SlateTransactionError).flatMap { $0 } ?? .underlying(error)
+                    )
+                )
+            }
+
+            return passthroughSubject.eraseToAnyPublisher()
+        }.eraseToAnyPublisher()
+    }
+}
+
+/// Associate key for the stream delegate to the passthrough subject
+private var kStreamDelegateAssociationKey: UInt8 = 0
+
 // MARK: - _SlateManagedObjectContext
 
 /**
@@ -1051,12 +1254,22 @@ private extension Slate {
  context it is being called from, and will throw SlateTransactionError.queryOutsideScope
  if called outside of a query block.
  */
-public final class SlateQueryRequest<SO: SlateObject> {
+public final class SlateQueryRequest<SO: SlateManagedObjectRelating> {
     /// The backing NSFetchRequest that will power this fetch
-    private let nsFetchRequest: NSFetchRequest<NSFetchRequestResult>
+    private let nsFetchRequest: NSFetchRequest<SO.ManagedObjectType>
 
     /// The backing SlateQueryContext
     private let slateQueryContext: SlateQueryContext
+
+    /// Generate a fetched results controller for this query
+    var fetchedResultsController: NSFetchedResultsController<SO.ManagedObjectType> {
+        NSFetchedResultsController<SO.ManagedObjectType>(
+            fetchRequest: nsFetchRequest,
+            managedObjectContext: slateQueryContext.managedObjectContext,
+            sectionNameKeyPath: nil,
+            cacheName: nil
+        )
+    }
 
     /**
      Initializes the SlateFetchRequest with the backing NSFetchRequest returned based
@@ -1064,7 +1277,7 @@ public final class SlateQueryRequest<SO: SlateObject> {
      */
     fileprivate init(slateQueryContext: SlateQueryContext) {
         self.slateQueryContext = slateQueryContext
-        self.nsFetchRequest = SO.__slate_managedObjectType.fetchRequest()
+        self.nsFetchRequest = SO.ManagedObjectType.fetchRequest() as! NSFetchRequest<SO.ManagedObjectType>
     }
 
     // -------------------------- Filtering ------------------------------
@@ -1253,16 +1466,6 @@ public final class SlateMOCFetchRequest<MO: NSManagedObject> {
     /// The backing MOC
     fileprivate let moc: NSManagedObjectContext
 
-    /// Generate a fetched results controller for this query
-    public var fetchedResultsController: NSFetchedResultsController<MO> {
-        NSFetchedResultsController<MO>(
-            fetchRequest: nsFetchRequest,
-            managedObjectContext: moc,
-            sectionNameKeyPath: nil,
-            cacheName: nil
-        )
-    }
-
     /**
      Initializes the SlateFetchRequest with the backing NSFetchRequest returned based
      on the generic SlateObject type.
@@ -1445,7 +1648,7 @@ public extension NSManagedObjectContext {
     }
 }
 
-public extension Slate {
+extension Slate {
     func convert<SO: SlateObject>(managedObjects: [some NSManagedObject]) throws(SlateTransactionError) -> [SO] {
         guard let slatableResult = managedObjects as? [SlateObjectConvertible] else {
             throw .queryInvalidCast
