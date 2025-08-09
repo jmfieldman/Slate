@@ -28,6 +28,11 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
             exit(2)
         }
 
+        if let codeGenerationType = entity.attributes["codeGenerationType"] {
+            vprint(.error, "Entity [\(entityName)] Codegen setting is [\(codeGenerationType)], but this is not supported. Set it to Manual/None.")
+            exit(3)
+        }
+
         // Attributes
 
         var attributes: [CoreDataAttribute] = []
