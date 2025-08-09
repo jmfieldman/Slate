@@ -53,23 +53,32 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
             }
 
             guard let name = attribute.attributes["name"] else {
-                vprint(.error, "attribute does not have name")
-                continue
+                vprint(.error, "[\(entityName)]: attribute does not have a name")
+                exit(4)
             }
 
             guard let attrTypeStr = attribute.attributes["attributeType"] else {
-                vprint(.error, "attribute does not attributeType")
-                continue
+                vprint(.error, "[\(entityName).\(name)]: attribute does not have attributeType")
+                exit(4)
             }
 
             guard let attrType = CoreDataAttrType(rawValue: attrTypeStr) else {
-                vprint(.error, "Unrecognized attributeType \(attrTypeStr)")
-                continue
+                vprint(.error, "[\(entityName).\(name)]: Unrecognized attributeType \(attrTypeStr)")
+                exit(4)
             }
 
             let optional = (attribute.attributes["optional"] ?? "NO") == "YES"
-
             let useScalar = (attribute.attributes["usesScalarValueType"] ?? "NO") == "YES"
+
+            if optional, useScalar {
+                vprint(.error, "[\(entityName).\(name)]: optional scalar attributes are not supported")
+                exit(4)
+            }
+
+            if useScalar, attribute.attributes["defaultValueString"] == nil {
+                vprint(.error, "[\(entityName).\(name)]: scalar attributes must have a default value")
+                exit(4)
+            }
 
             var userdata: [String: String] = [:]
             for userdataElement in attribute.childElements {

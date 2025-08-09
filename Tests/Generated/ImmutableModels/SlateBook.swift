@@ -8,8 +8,8 @@ import Foundation
 
 public final class SlateBook: Sendable {
     // -- Attribute Declarations --
-    public let likeCount: Int?
-    public let loading: Bool?
+    public let likeCount: Int
+    public let loading: Bool
     public let title: String
 
     // -- Attribute Names --
@@ -60,8 +60,8 @@ public final class SlateBook: Sendable {
      constructor in normal code.
      */
     init(
-        likeCount: Int?,
-        loading: Bool?,
+        likeCount: Int,
+        loading: Bool,
         title: String
     ) {
         // Internally created objects have no real managed object ID
