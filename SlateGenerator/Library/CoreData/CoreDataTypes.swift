@@ -163,6 +163,9 @@ struct CoreDataAttribute {
     var access: String {
         userdata["access"] ?? "public"
     }
+
+    var enumType: String? { userdata["enum"] }
+    var enumDefault: String? { userdata["enumDefault"] }
 }
 
 struct CoreDataSubstruct {
@@ -180,6 +183,7 @@ struct CoreDataEntity {
     let entityName: String
     let codeClass: String
     let useStruct: Bool
+    let imports: [String]
     let attributes: [CoreDataAttribute]
     let relationships: [CoreDataRelationship]
     let substructs: [CoreDataSubstruct]

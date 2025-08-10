@@ -12,6 +12,16 @@
         <attribute name="title" attributeType="String"/>
         <relationship name="author" maxCount="1" deletionRule="Nullify" destinationEntity="Author" inverseName="books" inverseEntity="Author"/>
     </entity>
+    <entity name="EnumUser" representedClassName="CoreDataEnumUser" syncable="YES">
+        <attribute name="intEnumOptNSNumber" optional="YES" attributeType="Integer 64" usesScalarValueType="NO">
+            <userInfo>
+                <entry key="enum" value="IntegerEnumExample"/>
+            </userInfo>
+        </attribute>
+        <userInfo>
+            <entry key="imports" value="ExampleEnums"/>
+        </userInfo>
+    </entity>
     <entity name="Parent1" representedClassName="CoreDataParent1" syncable="YES">
         <attribute name="child1_has" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
         <attribute name="child1_optString" optional="YES" attributeType="String"/>

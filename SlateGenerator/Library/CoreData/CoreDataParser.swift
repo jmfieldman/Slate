@@ -216,6 +216,7 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
 
         // UserInfo of the top-level entity
         var useStruct = false
+        var imports: [String] = []
         for userInfo in entity.childElements {
             guard userInfo.name == "userInfo" else {
                 continue
@@ -225,6 +226,10 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
                 if child.attributes["key"] == "struct", child.attributes["value"]?.lowercased() == "true" {
                     useStruct = true
                 }
+
+                if child.attributes["key"] == "imports", let importsString = child.attributes["value"] {
+                    imports = importsString.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                }
             }
         }
 
@@ -233,6 +238,7 @@ func ParseCoreData(contentsPath: String) -> [CoreDataEntity] {
                 entityName: entityName,
                 codeClass: representedClass,
                 useStruct: useStruct,
+                imports: imports,
                 attributes: attributes.sorted { $0.name < $1.name },
                 relationships: relationships.sorted { $0.name < $1.name },
                 substructs: substructs.sorted { $0.structName < $1.structName }

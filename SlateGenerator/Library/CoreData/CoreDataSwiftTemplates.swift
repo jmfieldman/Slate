@@ -17,7 +17,7 @@ let template_CD_Swift_fileheader: String = """
 
 import Foundation
 import CoreData
-
+{IMPORTS}
 """
 
 /// Inputs:
@@ -145,6 +145,10 @@ let template_CD_Swift_AttrIntAssignment: String = "        self.{ATTR} = Int(man
 /// Inputs:
 ///  * ATTR - The name of the attribute
 let template_CD_Swift_AttrIntOptAssignment: String = "        self.{ATTR} = managedObject.{ATTR}.flatMap { Int($0) }\n"
+
+/// Inputs:
+///  * ATTR - The name of the attribute
+let template_CD_Swift_AttrEnumAssignment: String = "        self.{ATTR} = Int(managedObject.{ATTR})\n"
 
 /// Inputs:
 ///  * ATTR - The name of the attribute

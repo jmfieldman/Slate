@@ -25,7 +25,10 @@ public enum CoreDataSwiftGenerator {
     ) {
         let entities = ParseCoreData(contentsPath: contentsPath)
         let filePerClass: Bool = fileTransform.contains(kStringArgVar)
-        var fileAccumulator = generateHeader(filename: fileTransform)
+        var fileAccumulator = generateHeader(
+            filename: fileTransform,
+            imports: entities.map(\.imports)
+        )
 
         // First pass create lookup dictionaries
         for entity in entities {
@@ -41,7 +44,7 @@ public enum CoreDataSwiftGenerator {
 
             // Start a new file accumulator if uses per-class file
             if filePerClass {
-                fileAccumulator = generateHeader(filename: filename)
+                fileAccumulator = generateHeader(filename: filename, imports: [entity.imports])
             }
 
             fileAccumulator += entityCode(entity: entity, castInt: castInt, className: className)
@@ -54,9 +57,9 @@ public enum CoreDataSwiftGenerator {
         }
 
         // Output Core Data entity files if necessary
-        let coreDataImportString = importHeaderString(imports: coreDataFileImports)
         for entity in entities {
             let filename = "\(entity.codeClass).swift"
+            let coreDataImportString = importHeaderString(entity: entity, imports: coreDataFileImports)
             let slateClassName: String = nameTransform.replacingOccurrences(of: kStringArgVar, with: entity.entityName)
             let properties = generateCoreDataEntityProperties(entity: entity)
             let relations = generateRelationships(entity: entity, className: slateClassName)
@@ -81,15 +84,21 @@ public enum CoreDataSwiftGenerator {
         }
     }
 
-    static func generateHeader(filename: String) -> String {
-        template_CD_Swift_fileheader.replacingWithMap([
+    static func generateHeader(filename: String, imports: [[String]]) -> String {
+        let importList = imports.reduce(Set<String>()) { partialResult, imports in
+            partialResult.union(imports)
+        }.sorted().map { "import \($0)" }.joined(separator: "\n")
+
+        return template_CD_Swift_fileheader.replacingWithMap([
             "FILENAME": filename,
+            "IMPORTS": importList.count == 0 ? "" : importList + "\n",
         ])
     }
 
-    static func importHeaderString(imports: String) -> String {
-        let importArray: [String] = imports.count > 0 ? imports.components(separatedBy: ",").map { "import \($0.trimmingCharacters(in: .whitespaces))" } : []
-        return (importArray.count > 0) ? "\n\(importArray.joined(separator: "\n"))" : ""
+    static func importHeaderString(entity: CoreDataEntity, imports: String) -> String {
+        let importArray: [String] = imports.count > 0 ? imports.components(separatedBy: ",") : []
+        let finalArray = Array(Set(importArray)).sorted().map { "import \($0.trimmingCharacters(in: .whitespaces))" }
+        return (finalArray.count > 0) ? "\n\(finalArray.joined(separator: "\n"))" : ""
     }
 
     static var commandline: String {
@@ -128,12 +137,22 @@ public enum CoreDataSwiftGenerator {
                 exit(12)
             }
 
-            declarations += template_CD_Swift_AttrDeclaration.replacingWithMap([
-                "ATTR": attr.name,
-                "TYPE": attr.type.immType(castInt: castInt),
-                "ACCESS": attr.access,
-                "OPTIONAL": attr.optional ? "?" : "",
-            ])
+            if let enumType = attr.enumType {
+                // Handle special enum case
+                declarations += template_CD_Swift_AttrDeclaration.replacingWithMap([
+                    "ATTR": attr.name,
+                    "TYPE": enumType,
+                    "ACCESS": attr.access,
+                    "OPTIONAL": attr.enumDefault == nil ? "?" : "",
+                ])
+            } else {
+                declarations += template_CD_Swift_AttrDeclaration.replacingWithMap([
+                    "ATTR": attr.name,
+                    "TYPE": attr.type.immType(castInt: castInt),
+                    "ACCESS": attr.access,
+                    "OPTIONAL": attr.optional ? "?" : "",
+                ])
+            }
 
             let useForce = !attr.optional && attr.type.codeGenForceOptional
             var str = useForce ? template_CD_Swift_AttrForceAssignment : template_CD_Swift_AttrAssignment

@@ -83,8 +83,15 @@ let package = Package(
             name: "ImmutableModels",
             dependencies: [
                 "Slate",
+                "ExampleEnums",
             ],
             path: "Tests/Generated/ImmutableModels"
+        ),
+        .target(
+            name: "ExampleEnums",
+            dependencies: [
+            ],
+            path: "Tests/Generated/ExampleEnums"
         ),
     ]
 )

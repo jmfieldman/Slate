@@ -1086,6 +1086,36 @@ public protocol SlateObjectConvertible: NSFetchRequestResult {
     var objectID: NSManagedObjectID { get }
 }
 
+private let kEnumStringLocale: Locale = .init(identifier: "en_US")
+
+/**
+ This extension provides some helper functions that can convert the
+ NSManagedObject attributes to their enum-based derived counterparts.
+ */
+public extension Slate {
+    static func __convertIntToEnum<E: RawRepresentable>(
+        _ int: Int?
+    ) -> E? where E.RawValue == Int {
+        int.flatMap { E(rawValue: $0) }
+    }
+
+    static func __convertNSNumberToEnum<E: RawRepresentable>(
+        _ int: NSNumber?
+    ) -> E? where E.RawValue == Int {
+        int.flatMap { E(rawValue: $0.intValue) }
+    }
+
+    static func __convertStringToEnum<E: RawRepresentable>(
+        _ string: String?
+    ) -> E? where E.RawValue == String {
+        guard let enumString = string else { return nil }
+        if let initial = E(rawValue: enumString) { return initial }
+        if let lowercase = E(rawValue: enumString.lowercased(with: kEnumStringLocale)) { return lowercase }
+        if let uppercase = E(rawValue: enumString.uppercased(with: kEnumStringLocale)) { return uppercase }
+        return nil
+    }
+}
+
 // MARK: - Thread Keys
 
 private extension Thread {
