@@ -166,6 +166,16 @@ struct CoreDataAttribute {
 
     var enumType: String? { userdata["enum"] }
     var enumDefault: String? { userdata["enumDefault"] }
+    var enumSource: CoreDataEnumSource? {
+        guard enumType != nil else { return nil }
+        if type.isInt { return useScalar ? .Int : .NSNumber }
+        if type == .string { return .String }
+        return nil
+    }
+}
+
+enum CoreDataEnumSource: String {
+    case Int, NSNumber, String
 }
 
 struct CoreDataSubstruct {

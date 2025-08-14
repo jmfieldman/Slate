@@ -86,7 +86,7 @@ public {OBJTYPE} {SLATECLASS}: Sendable {
 {SUBSTRUCTS}
 }
 
-
+{PRIVATE}
 """
 
 /// Inputs:
@@ -148,7 +148,9 @@ let template_CD_Swift_AttrIntOptAssignment: String = "        self.{ATTR} = mana
 
 /// Inputs:
 ///  * ATTR - The name of the attribute
-let template_CD_Swift_AttrEnumAssignment: String = "        self.{ATTR} = Int(managedObject.{ATTR})\n"
+///  * ENUMSRC - The source of conversion: Int, NSNumber, String
+///  * DEFAULT - The default expression
+let template_CD_Swift_AttrEnumAssignment: String = "        self.{ATTR} = __convert{ENUMSRC}ToEnum(managedObject.{ATTR}){DEFAULT}\n"
 
 /// Inputs:
 ///  * ATTR - The name of the attribute
@@ -210,6 +212,41 @@ extension {SLATECLASS}: Equatable {
     }
 }
 
+
+"""
+
+// MARK: - Enum Conversion Functions
+
+let template_Conversion_Int: String = """
+private func __convertIntToEnum<E: RawRepresentable>(
+    _ int: (any BinaryInteger)?
+) -> E? where E.RawValue == Int {
+    int.flatMap { E(rawValue: Int($0)) }
+}
+
+"""
+
+let template_Conversion_NSNumber: String = """
+private func __convertNSNumberToEnum<E: RawRepresentable>(
+    _ int: NSNumber?
+) -> E? where E.RawValue == Int {
+    int.flatMap { E(rawValue: $0.intValue) }
+}
+
+"""
+
+let template_Conversion_String: String = """
+private let kEnumStringLocale: Locale = .init(identifier: "en_US")
+
+private func __convertStringToEnum<E: RawRepresentable>(
+    _ string: String?
+) -> E? where E.RawValue == String {
+    guard let enumString = string else { return nil }
+    if let initial = E(rawValue: enumString) { return initial }
+    if let lowercase = E(rawValue: enumString.lowercased(with: kEnumStringLocale)) { return lowercase }
+    if let uppercase = E(rawValue: enumString.uppercased(with: kEnumStringLocale)) { return uppercase }
+    return nil
+}
 
 """
 

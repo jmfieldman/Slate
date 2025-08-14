@@ -87,6 +87,11 @@ struct GenCoreData: ParsableCommand {
             try FileManager.default.createDirectory(atPath: outputCoreDataEntityPath, withIntermediateDirectories: true, attributes: nil)
         }
 
+        guard fileTransform.contains(kStringArgVar) else {
+            printError("--file-transform must contain the \(kStringArgVar) element")
+            try exit(.invalidArgument)
+        }
+
         guard nameTransform.contains(kStringArgVar) else {
             printError("--name-transform must contain the \(kStringArgVar) element")
             try exit(.invalidArgument)

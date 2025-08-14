@@ -24,7 +24,6 @@ public enum CoreDataSwiftGenerator {
         coreDataFileImports: String
     ) {
         let entities = ParseCoreData(contentsPath: contentsPath)
-        let filePerClass: Bool = fileTransform.contains(kStringArgVar)
         var fileAccumulator = generateHeader(
             filename: fileTransform,
             imports: entities.map(\.imports)
@@ -43,17 +42,12 @@ public enum CoreDataSwiftGenerator {
             let filename: String = fileTransform.replacingOccurrences(of: kStringArgVar, with: entity.entityName)
 
             // Start a new file accumulator if uses per-class file
-            if filePerClass {
-                fileAccumulator = generateHeader(filename: filename, imports: [entity.imports])
-            }
-
+            fileAccumulator = generateHeader(filename: filename, imports: [entity.imports])
             fileAccumulator += entityCode(entity: entity, castInt: castInt, className: className)
 
             // Write to file if necessary
-            if filePerClass {
-                let filepath = (outputPath as NSString).appendingPathComponent("\(filename).swift")
-                try! fileAccumulator.write(toFile: filepath, atomically: true, encoding: String.Encoding.utf8)
-            }
+            let filepath = (outputPath as NSString).appendingPathComponent("\(filename).swift")
+            try! fileAccumulator.write(toFile: filepath, atomically: true, encoding: String.Encoding.utf8)
         }
 
         // Output Core Data entity files if necessary
@@ -75,12 +69,6 @@ public enum CoreDataSwiftGenerator {
 
             let filepath = (entityPath as NSString).appendingPathComponent(filename)
             try! file.write(toFile: filepath, atomically: true, encoding: String.Encoding.utf8)
-        }
-
-        // Output single file if necessary
-        if !filePerClass {
-            let filepath = (outputPath as NSString).appendingPathComponent("\(fileTransform).swift")
-            try! fileAccumulator.write(toFile: filepath, atomically: true, encoding: String.Encoding.utf8)
         }
     }
 
@@ -129,6 +117,10 @@ public enum CoreDataSwiftGenerator {
         var initParams: [String] = []
         var initParamAssignments: [String] = []
 
+        var hasIntEnum = false
+        var hasNSNumberEnum = false
+        var hasStringEnum = false
+
         for attr in entity.attributes {
             attributeNames.append(attr.name)
 
@@ -137,7 +129,7 @@ public enum CoreDataSwiftGenerator {
                 exit(12)
             }
 
-            if let enumType = attr.enumType {
+            if let enumType = attr.enumType, let enumSource = attr.enumSource {
                 // Handle special enum case
                 declarations += template_CD_Swift_AttrDeclaration.replacingWithMap([
                     "ATTR": attr.name,
@@ -145,6 +137,12 @@ public enum CoreDataSwiftGenerator {
                     "ACCESS": attr.access,
                     "OPTIONAL": attr.enumDefault == nil ? "?" : "",
                 ])
+
+                switch enumSource {
+                case .Int: hasIntEnum = true
+                case .NSNumber: hasNSNumberEnum = true
+                case .String: hasStringEnum = true
+                }
             } else {
                 declarations += template_CD_Swift_AttrDeclaration.replacingWithMap([
                     "ATTR": attr.name,
@@ -157,7 +155,13 @@ public enum CoreDataSwiftGenerator {
             let useForce = !attr.optional && attr.type.codeGenForceOptional
             var str = useForce ? template_CD_Swift_AttrForceAssignment : template_CD_Swift_AttrAssignment
             var conv = ""
-            if let sconv = attr.type.swiftValueConversion(castInt: castInt), !attr.useScalar {
+            var enumSrcStr = ""
+            var defaultExp = ""
+            if let enumSource = attr.enumSource {
+                str = template_CD_Swift_AttrEnumAssignment
+                enumSrcStr = enumSource.rawValue
+                defaultExp = attr.enumDefault.map { " ?? .\($0)" } ?? ""
+            } else if let sconv = attr.type.swiftValueConversion(castInt: castInt), !attr.useScalar {
                 conv = ((attr.optional || useForce) ? "?" : "") + sconv
             } else if castInt, attr.type.isInt {
                 str = (attr.optional && !attr.useScalar) ? template_CD_Swift_AttrIntOptAssignment : template_CD_Swift_AttrIntAssignment
@@ -166,9 +170,19 @@ public enum CoreDataSwiftGenerator {
                 "ATTR": attr.name,
                 "TYPE": attr.type.immType(castInt: castInt),
                 "CONV": conv,
+                "ENUMSRC": enumSrcStr,
+                "DEFAULT": defaultExp,
             ])
 
-            initParams += ["\(attr.name): \(attr.type.immType(castInt: castInt))\(attr.optional ? "?" : "")"]
+            // Slightly different rules for normal types vs. enums
+            var initType = attr.type.immType(castInt: castInt)
+            var initTypeOptional = attr.optional
+            if let enumType = attr.enumType {
+                initType = enumType
+                initTypeOptional = attr.enumDefault == nil
+            }
+
+            initParams += ["\(attr.name): \(initType)\(initTypeOptional ? "?" : "")"]
             initParamAssignments += ["self.\(attr.name) = \(attr.name)"]
         }
 
@@ -203,6 +217,11 @@ public enum CoreDataSwiftGenerator {
             initParamAssignments += ["self.\(substruct.varName) = \(substruct.varName)"]
         }
 
+        let privateFunctionsConvertInt: String = hasIntEnum ? template_Conversion_Int : ""
+        let privateFunctionsConvertNSNumber: String = hasNSNumberEnum ? template_Conversion_NSNumber : ""
+        let privateFunctionsConvertString: String = hasStringEnum ? template_Conversion_String : ""
+        let privateFunctions = privateFunctionsConvertInt + privateFunctionsConvertNSNumber + privateFunctionsConvertString
+
         return template_CD_Swift_SlateClassImpl.replacingWithMap([
             "OBJTYPE": entity.useStruct ? "struct" : "final class",
             "SLATECLASS": className,
@@ -214,6 +233,7 @@ public enum CoreDataSwiftGenerator {
             "INITPARAMS": initParams.sorted(by: <).joined(separator: ",\n        "),
             "INITPARAMASSIGNMENTS": initParamAssignments.sorted(by: <).joined(separator: "\n        "),
             "SUBSTRUCTS": substruct,
+            "PRIVATE": privateFunctions,
         ])
     }
 

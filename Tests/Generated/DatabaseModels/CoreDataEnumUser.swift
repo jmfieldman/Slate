@@ -20,7 +20,17 @@ public final class CoreDataEnumUser: NSManagedObject, SlateEnumUser.ManagedPrope
         }
     }
 
-    @NSManaged public var intEnumOptNSNumber: NSNumber?
+    @NSManaged public var id: Int64
+    @NSManaged public var intEnumNonOptIntNoDef: Int64
+    @NSManaged public var intEnumNonOptIntYesDef: Int64
+    @NSManaged public var intEnumNonOptNSNumberNoDef: NSNumber
+    @NSManaged public var intEnumNonOptNSNumberYesDef: NSNumber
+    @NSManaged public var intEnumOptNSNumberNoDef: NSNumber?
+    @NSManaged public var intEnumOptNSNumberYesDef: NSNumber?
+    @NSManaged public var stringEnumNonOptStringNoDef: String?
+    @NSManaged public var stringEnumNonOptStringYesDef: String?
+    @NSManaged public var stringEnumOptStringNoDef: String?
+    @NSManaged public var stringEnumOptStringYesDef: String?
 }
 
 extension CoreDataEnumUser: SlateObjectConvertible {
