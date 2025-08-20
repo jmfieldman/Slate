@@ -24,6 +24,9 @@ public enum SlateConfigError: Error {
     /// This instance of a Slate is already configured.
     case alreadyConfigured
 
+    /// No Managed Object Model was detected at the specified URL
+    case noManagedObjectModel
+
     /// A storage URL is required for persistence types other than
     /// in-memory.
     case storageURLRequired
@@ -242,6 +245,11 @@ public final class Slate {
 
     // MARK: Configuration
 
+    /// Configures the Slate persistent store coordinator with the provided
+    /// managed object model and persistent store description.
+    ///
+    /// The Slate internal `accessQueue` is not activated until the Slate
+    /// instances is successfully configured.
     public func configure(
         managedObjectModel: NSManagedObjectModel,
         persistentStoreDescription: NSPersistentStoreDescription,
@@ -312,6 +320,76 @@ public final class Slate {
 
                 // Call our parent completion handler
                 completionHandler(desc, error.flatMap { .coreDataError($0) })
+            }
+        }
+    }
+
+    /// Quick-configure
+    ///
+    /// Configures the Slate persistent store coordinator with the provided
+    /// managed object model and persistent store description.
+    ///
+    /// The Slate internal `accessQueue` is not activated until the Slate
+    /// instances is successfully configured.
+    ///
+    /// If `persistentStoreType` is NSInMemoryStoreType then the `persistentStoreUrl`
+    /// argument can be nil.
+    ///
+    /// If `wipeDirectoryAndRetryOnFailure` is true, and the type is not in-memory,
+    /// Slate will attempt to wipe the parent directory of the `persistentStoreUrl`
+    /// on failure, and retry configuration (i.e. a lightweight migration may have
+    /// failed.) This will cause full data loss, and is not recommended for data models
+    /// that contain data that cannot be recovered. It is meant to make cache stores
+    /// more resilient to migration problems.
+    public func configure(
+        managedObjectModelUrl: URL,
+        persistentStoreType: String,
+        persistentStoreUrl: URL?,
+        wipeDirectoryAndRetryOnFailure: Bool,
+        completionHandler: @escaping (NSPersistentStoreDescription, SlateConfigError?) -> Void
+    ) {
+        let persistentStoreDescription = NSPersistentStoreDescription()
+        persistentStoreDescription.type = persistentStoreType
+        persistentStoreDescription.url = persistentStoreUrl
+
+        // Verify MOM loading
+        guard let managedObjectModel = NSManagedObjectModel(contentsOf: managedObjectModelUrl) else {
+            completionHandler(persistentStoreDescription, .noManagedObjectModel)
+            return
+        }
+
+        // Capture the directory that the persistent store file exists
+        let databaseDirPath = persistentStoreUrl.flatMap { $0.deletingLastPathComponent() }
+        databaseDirPath.flatMap {
+            try? FileManager.default.createDirectory(at: $0, withIntermediateDirectories: true)
+        }
+
+        configure(
+            managedObjectModel: managedObjectModel,
+            persistentStoreDescription: persistentStoreDescription
+        ) { [self] persistentStoreDescription, error in
+            if error == nil {
+                completionHandler(persistentStoreDescription, nil)
+                return
+            }
+
+            // If we are not retrying then emit error immediately
+            guard wipeDirectoryAndRetryOnFailure, let databaseDirPath else {
+                completionHandler(persistentStoreDescription, error)
+                return
+            }
+
+            // Wipe and recreate db directory
+            try? FileManager.default.removeItem(at: databaseDirPath)
+            try? FileManager.default.createDirectory(at: databaseDirPath, withIntermediateDirectories: true)
+            persistentStoreDescription.url = persistentStoreUrl
+
+            // Attempt again
+            configure(
+                managedObjectModel: managedObjectModel,
+                persistentStoreDescription: persistentStoreDescription
+            ) { persistentStoreDescription, error in
+                completionHandler(persistentStoreDescription, error)
             }
         }
     }
