@@ -1011,14 +1011,20 @@ public extension Slate {
             var resultsController: NSFetchedResultsController<Value.ManagedObjectType>?
 
             let delegate = SlateFetchedResultsControllerBlockDelegate { [weak self, weak passthroughSubject] inserted, updated, deleted, moved in
-                guard let passthroughSubject, let fetchedObjects = resultsController?.fetchedObjects else {
+                guard
+                    let self,
+                    let passthroughSubject,
+                    let resultsController,
+                    let fetchedObjects = resultsController.fetchedObjects
+                else {
                     return
                 }
 
                 do {
-                    guard let slateObjects: [Value] = try self?.convert(managedObjects: fetchedObjects) else {
-                        return
-                    }
+                    let queryContext = SlateQueryContext(slate: self, managedObjectContext: resultsController.managedObjectContext)
+                    let oldQueryContext = Thread.current.setInsideQueryContext(queryContext)
+                    let slateObjects: [Value] = try convert(managedObjects: fetchedObjects)
+                    Thread.current.setInsideQueryContext(oldQueryContext)
 
                     let streamUpdate = StreamUpdate(
                         values: slateObjects,
@@ -1079,7 +1085,9 @@ public extension Slate {
                     throw SlateTransactionError.aborted
                 }
 
+                let oldQueryContext = Thread.current.setInsideQueryContext(queryContext)
                 let slateObjects: [Value] = try convert(managedObjects: fetchedObjects)
+                Thread.current.setInsideQueryContext(oldQueryContext)
 
                 // Create an array of the initially-inserted index paths
                 var initialInsert: [IndexPath] = []
