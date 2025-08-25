@@ -103,7 +103,7 @@ Slate is distributed as a Swift Package. Add it to your project using Xcode's pa
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/jmfieldman/Slate", from: "1.0.0")
+    .package(url: "https://github.com/jmfieldman/Slate", from: "<latest version>")
 ]
 ```
 
@@ -119,7 +119,7 @@ dependencies: [
 Use the `slategen` command-line tool to generate both Core Data managed objects and immutable Slate models:
 
 ```bash
-$ mint run slategen gen-core-data \
+$ swift run slategen gen-core-data \
   --input-model <path-to-implementation-module>/SlateTests.xcdatamodel \
   --output-core-data-entity-path <path-to-implementation-module>/DatabaseModels \
   --output-slate-object-path <path-to-api-module>/ImmutableModels \
