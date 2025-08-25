@@ -1,224 +1,276 @@
+# Slate
+
 ![Slate](/Misc/Banner/banner.png)
 
-# Immutable Data Models for Core Data
+## Overview
 
-Slate is middleware that sits on top of your Core Data object graph and provides:
+**Slate** is a Swift framework that provides immutable data models for Core Data, enabling safe and efficient access to your application's data with thread safety guarantees. It sits on top of Core Data's object graph and provides a clean, type-safe interface for querying and mutating data.
 
-* Single-writer/multi-reader transactional access to the object graph.
-* **Immutable data models** with a clean query DSL.
+Slate addresses common Core Data challenges by offering:
+- **Single-writer/multi-reader transactional access** to the object graph
+- **Immutable data models** with a clean query DSL that ensures thread safety and prevents accidental mutations
 
-> Note: If you're looking for an earlier version of Slate pre-2025, check out the `0.0.2` tag.
+## Key Features
 
-## By Example
+### Immutable Data Models
+Slate automatically generates immutable representations of your Core Data entities, providing:
+- Thread-safe access to data models
+- Protection against accidental mutations outside of mutation contexts  
+- Clean separation between read and write operations
 
-Take your typical Core Data NSManagedObjects:
+### Thread Safety
+All immutable models in Slate conform to `Sendable`, making them safe for concurrent access across different threads. This eliminates the need for manual synchronization when passing data between background and main threads.
 
+### Transactional Access
+Slate implements a single-writer/multi-reader pattern that ensures:
+- Mutations occur in isolated barriers, preventing race conditions
+- Queries always operate on consistent snapshots of the data model
+- Safe concurrent access to read operations
+
+### Reactive Streaming
+Slate provides Combine publisher support for streaming NSFetchedResultsController updates, enabling reactive UI updates that respond to data changes in real-time.
+
+## Architecture
+
+### Core Components
+
+1. **Slate Instance**: The central management context for all operations on a NSPersistentStore
+2. **Core Data Integration**: Works directly with Core Data's object graph and managed objects  
+3. **Immutable Model Generation**: Automatically generates immutable representations of your Core Data entities
+4. **Query Contexts**: Thread-local contexts for safe read operations with snapshot consistency
+5. **Mutation Contexts**: Single-writer barrier operations that ensure data integrity
+
+### How It Works
+
+1. **Data Model Definition**: Define your Core Data entities in `.xcdatamodel` files
+2. **Code Generation**: Use `slategen` to generate both Core Data managed objects and immutable Slate models
+3. **Runtime Usage**: 
+   - Use `slate.query()` for read operations that return immutable models
+   - Use `slate.mutate()` for write operations that modify the Core Data store
+4. **Thread Safety**: Immutable models can be safely shared across threads without synchronization
+
+## Core Concepts
+
+### Immutable Models
+Slate generates immutable representations of your Core Data entities that:
+- Cannot be modified after creation
+- Provide thread-safe access patterns  
+- Are automatically cached for performance
+- Support the `Sendable` protocol
+
+### Query DSL
+Slate provides a fluent API for querying data:
 ```swift
-class CoreDataBook: NSManagedObject {
-    @NSManaged public var id: UUID
-    @NSManaged public var pageCount: Int64
+let books = try await slate.query { context in
+    return try context[Book.self]
+        .filter(where: \.pageCount, .greaterThan(100))
+        .sort(\.title)
+        .fetch()
 }
 ```
 
-Slate automatically generates immutable representations:
-
+### Mutation Contexts
+Mutations are performed in barrier operations:
 ```swift
-/* Auto-generated */
-final class Book {
-    let id: UUID
-    let pageCount: Int
-}
-```
-
-Query from a read-only context that provides these immutable versions of your Core Data model:
-
-```swift
-/// Performs an async query on the Slate Core Data context and returns immutable
-/// Book objects representing CoreDataBook NSManagedObjects.
-func fetchBooksWithMoreThan(pageCount: Int) async throws -> [Book] {
-    try await slate.query { readContext in
-        return try readContext[Book.self]
-            .filter(where: \.pageCount, .greaterThan(pageCount))
-            .fetch()
+try await slate.mutate { writeContext in
+    if let book = try writeContext[CoreDataBook.self]
+        .filter(where: \.id, .equals(bookId))
+        .fetchOne() 
+    {
+        book.pageCount = newPageCount
     }
 }
 ```
 
-Continue to use NSManagedObjectContext for writes, but operate in a safe single-write/multi-read queue:
+## Setup and Usage
+
+### Prerequisites
+
+- Swift 5.9 or later
+- iOS 17+, macOS 14+, tvOS 17+, watchOS 6+ 
+- Xcode 15 or later
+
+### Dependencies
+
+Slate depends on:
+- Swift Argument Parser (v1.6.1+) - for the code generation tool
+- Foundation framework (built-in)
+- Core Data framework (built-in)
+
+### Installation
+
+Slate is distributed as a Swift Package. Add it to your project using Xcode's package manager or by adding the following dependency to your `Package.swift`:
 
 ```swift
-/// Perform mutations on a barrier transaction using a standard NSManagedObjectContext
-/// using your typical Core Data classes. Slate protects against mutations leaking
-/// outside of this block.
-func updateBookPageCount(bookId: UUID, newPageCount: Int) async throws {
-    try await slate.mutate { writeContext in
-        if let book = try writeContext[CoreDataBook.self]
-            .filter(where: \.id, .equals(bookId))
-            .fetchOne() 
-        {
-            book.pageCount = newPageCount
-        }
-    }
-}
+dependencies: [
+    .package(url: "https://github.com/jmfieldman/Slate", from: "1.0.0")
+]
 ```
 
-You can also stream NSFetchedResultsController updates through a Combine publisher to reactively observe a collection represented by a filter/sort query:
+### Data Model Setup
 
-```swift
-/// Creates an AnyPublisher<Slate.StreamUpdate, SlateTransactionError>.
-/// The StreamUpdate struct contains information such as the current sorted
-/// array of values, and the inserted/updated/deleted/moved indexes since
-/// the last update.
-let streamPublisher = slate.stream { request -> SlateQueryRequest<Book> in
-    // Return the request modified by filter/sort instructions
-    return request.sort(\.pageCount)
-}
-```
+1. Create a new Core Data model file (`New > File from Template > Core Data > Data Model`)
+2. Set the Codegen property of each Entity to `Manual/None` 
+3. Configure module abstraction for logical separation of entities
+4. For each entity, you can specify `struct: true` in the User Info dictionary to generate structs instead of classes
 
-## Immutable Access Tradeoffs
+### Code Generation with `slategen`
 
-*Why would you want an immutable data model access pattern for your Core Data object graph?*
-
-### Thread safety
-
-Slate immutable models guarantee Sendable conformance. They can be queried/created on a background thread, and used in any complex sorting/determination logic before sent to the main thread for UI updates. Immutable model properties do not have to be synchronized and can be directly accessed.
-  
-### Protected Snapshots
-
-Immutable models act similar to snapshots. If you have multiple features using the same underlying object graph, your features are protected from other code mutating their snapshot without their strict knowledge.  This extends to relationships -- one feature's snapshot of object relationships will not change if another feature removes them.
-
-### Unidirectional Flow of Information
-
-Immutable models help enforce unidirectional flow of information.  You cannot write methods that "update" immutable models outside of a mutation context.  Rather, mutations to the object graph *must* occur in a manner that enforces transactional updates to the object graph.
-
-*What are the downsides of immutable data models on top of Core Data?*
-
-### No More Faulting
-
-Core Data has the ability to lazy-load managed objects (faulting).  This is mutually exclusive from the
-concept of immutable data models.  All of your queried immutable objects in Slate will be completely loaded.
-
-This means that Slate will not be a good solution if your application constantly queries/updates tens of
-thousands of managed objects and you require faulting to keep that efficient.
-
-### No More Dynamic Relationships
-
-In Core Data you can access a managed object's relationships to dynamically query related objects.  In Slate
-you must pre-fetch those relationships as arrays of immutable objects since they are part of a snapshot.  The relationships cannot be fetched outside
-of a Slate query context.
-
-## How to Setup Slate
-
-### `xcdatamodel`
-
-The first step to using Slate is to create a new Data Model file. You can use `New > File from Template > Core Data > Data Model`. There is basic documentation for creating the Data Model [here](https://developer.apple.com/documentation/coredata/creating-a-core-data-model). Ultimately, you will create one or more Core Data Entities in this Data Model.  
-
-It is important to consider module abstraction at this point. If you are going to have a lot of entities in your entire app, consider creating separate Data Model files for each logical group of Entities that will be used inside of its own implementation module. The correct architecture pattern is to contain each data model and its Core Data NSManagedObject classes completely inside the single implementation module that will perform query/mutations on the Core Data context.
-
-Make sure that you set the Codegen property of each Entity to `Manual/None`, since compiler-generated classes will conflict with those created by `slategen`.
-
-#### `class` vs. `struct`
-
-Slate will derive the immutable types using `class` by default. Core Data objects are typically larger, stable objects that benefit from reference semantics when passed around your code.
-
-In a scenario where an Entity type is going to have its values constantly mutated, it may be more appropriate to use `struct` to avoid thrashing the heap each time new instantiations of the immutable type are required. You can do this per-Entity by adding the key/value pair `struct`: `true` to the Entity's User Info dictionary in the data model.
-
-### `slategen` - The Model code generator
-
-This is a Swift application used to generate both the Core Data NSManagedObject classes, and the Immutable types derived from them.
-
-You can execute `slategen` using your preferred method of running Swift package executables. We recommend [Mint](https://github.com/yonaskolb/Mint):
+Use the `slategen` command-line tool to generate both Core Data managed objects and immutable Slate models:
 
 ```bash
-$ brew install mint
-
-$ cat Mintfile
-jmfieldman/Slate
-
-# Example arguments
 $ mint run slategen gen-core-data \
   --input-model <path-to-implementation-module>/SlateTests.xcdatamodel \
   --output-core-data-entity-path <path-to-implementation-module>/DatabaseModels \
-  --output-slate-object-path <path-to-api-module>/ImmutableModels \		
+  --output-slate-object-path <path-to-api-module>/ImmutableModels \
   --cast-int \
   --core-data-file-imports "Slate, ImmutableModels"
 ```
 
-There is a practical example in the [Makefile](Makefile) for `setuptests` to generate unit test types.
+### Runtime Usage
 
-#### `--input-model`
-
-This is the path to the Data Model. On disk this path is a directory that contains a `contents` XML file. `slategen` will parse that XML file for code generation.
-
-#### `--output-core-data-entity-path`
-
-The path to emit the generated Core Data NSManagedObject classes. These should be put into an implementation module where they will be used by a `Slate` instance to modify the data model owned by that implementation.
-
-#### `--output-slate-object-path`
-
-The path to emit the slate/immutable objects derived from your Core Data entity definitions. These should be put in a broadly-accessible API module, and can be used throughout your application stack.
-
-#### `--no-int-cast`
-
-Core Data defines its integer types with specific byte counts, and uses `Int16`, `Int32` and `Int64` in its managed objects when you choose to use scalar types.
-
-Slate will automatically cast these to `Int` when converting to the immutable versions of your objects. If you do not want this automatic conversion you can pass `--no-int-cast` to keep the more strictly-sized primitives.
-
-#### `-f`
-
-Forces the creation of intermediate directories during file generation, if they are not already created.
-
-#### `--core-data-file-imports`
-
-Pass a comma-separated list of modules to import in the generated Core Data files. At the very least you must import where Slate is provided (usually `Slate`), and you must import the API module that the immutable types are generated into.
-
-#### `--name-transform`, `--file-transform`
-
-In your Core Data model, you can choose both an Entity name and a Core Data class name. The best practice is to keep the Entity name as semantically-correct as possible, e.g. "Author", "Book", etc. 
-
-Your Core Data class name can have a prefix so that you know it is the managed version, e.g. "ManagedAuthor", or "CoreDataAuthor". The Core Data classes typically do not get exposed outside of one implementation module.
-
-These generator parameters allow you to add a custom mutation of the Entity name when generating the immutable types. The string you pass in must contain "%@" which is replaced by the Entity name.
-
-For example, if you use "Slate%@" then the entity Book would become SlateBook. These parameters affect the type name, and the filename it is created in.
-
-You can ignore these parameters if you want the immutable types to have the same names as your Entities.
-
-## How to Use the Slate Library 
-
-Once your models are generated and the files are compiling properly in your application, all you need to do is instantiate a `Slate` instance in your implementation module:
-
+1. Create a `Slate` instance in your implementation module:
 ```swift
-// Can be an ivar of your manager class
 let slate = Slate()
+```
 
-// Inside your manager's init/begin; first get your data model
+2. Configure the persistent store:
+```swift
 guard 
     let momPath = Bundle.main.path(forResource: "YourDataModel", ofType: "mom"),
     let managedObjectModel = NSManagedObjectModel(contentsOf: URL(fileURLWithPath: basePath))
 else {
-    throw // no data model! -- note that it may have a .mom or .momd extension
+    throw // no data model!
 }
 
-// Create and configure the NSPersistentStoreDescription
 let persistentStoreDescription = NSPersistentStoreDescription()
 persistentStoreDescription.type = // Choose the type and set additional parameters
 
-// Configure slate. Note that it is perfectly safe for other code to call 
-// query/mutation functions on slate before configuration is complete. Those
-// functions are queued up on an inactive queue that will only activate once
-// configuration completes.
 slate.configure(
     managedObjectModel: managedObjectModel,
     persistentStoreDescription: persistentStoreDescription
 ) { desc, error in
     if let error {
-        // Error -- you can see what's wrong; if the issue is unrecoverable you can
-        // re-configure slate with new options. If a lightweight migration is failing
-        // you may need to delete the existing .sqlite file on disk before re-config.
+        // Handle configuration errors
     } else {
-        // Success -- slate is ready to be accessed.
+        // Success - slate is ready to be accessed.
     }
 }
 ```
+
+3. Query data using immutable models:
+```swift
+let books = try await slate.query { context in
+    return try context[Book.self]
+        .filter(where: \.pageCount, .greaterThan(100))
+        .fetch()
+}
+```
+
+4. Mutate data safely:
+```swift
+try await slate.mutate { writeContext in
+    if let book = try writeContext[CoreDataBook.self]
+        .filter(where: \.id, .equals(bookId))
+        .fetchOne() 
+    {
+        book.pageCount = newPageCount
+    }
+}
+```
+
+## Streaming Data
+
+Slate supports reactive streaming of data changes using Combine publishers:
+
+```swift
+let streamPublisher = slate.stream { request -> SlateQueryRequest<Book> in
+    return request.sort(\.pageCount)
+}
+```
+
+## Tradeoffs and Considerations
+
+### Advantages
+- **Thread Safety**: Immutable models guarantee Sendable conformance, making them safe for concurrent access
+- **Snapshot Isolation**: Queries operate on consistent snapshots of the data model 
+- **Unidirectional Flow**: Enforces clear separation between read and write operations
+- **Performance**: Caching of immutable objects improves performance for repeated queries
+
+### Limitations  
+- **No Faulting**: All queried objects are fully loaded, which may impact performance for large datasets
+- **No Dynamic Relationships**: Relationships must be pre-fetched as arrays of immutable objects
+
+## API Reference
+
+### Core Types
+- `Slate`: Main entry point for all operations
+- `SlateObject`: Protocol that immutable models must conform to  
+- `SlateQueryContext`: Context for read operations
+- `SlateTransactionError`: Errors that can occur during transactions
+
+### Key Methods
+- `slate.query()`: Asynchronous read operations returning immutable models
+- `slate.mutate()`: Asynchronous write operations modifying Core Data  
+- `slate.stream()`: Reactive streaming of data changes
+
+## Example Usage Patterns
+
+### Basic Query
+```swift
+let authors = try await slate.query { context in
+    return try context[Author.self].fetch()
+}
+```
+
+### Filtered Query with Sorting
+```swift
+let books = try await slate.query { context in
+    return try context[Book.self]
+        .filter(where: \.pageCount, .greaterThan(100))
+        .sort(\.title)
+        .fetch()
+}
+```
+
+### Mutation with Error Handling
+```swift
+do {
+    try await slate.mutate { context in
+        let author = try context[CoreDataAuthor.self].fetchOne()
+        author.name = "New Name"
+    }
+} catch {
+    // Handle mutation errors
+}
+```
+
+### Reactive Data Streaming
+```swift
+let publisher = slate.stream { request in
+    return request.sort(\.title)
+}
+
+publisher.sink(
+    receiveCompletion: { completion in
+        // Handle stream completion
+    },
+    receiveValue: { update in
+        // Update UI with new data and change indices
+    }
+)
+```
+
+## Contributing
+
+Contributions to Slate are welcome! Please follow these steps:
+
+1. Fork the repository
+2. Create a feature branch  
+3. Make your changes with tests
+4. Submit a pull request
+
+## License
+
+Slate is released under the MIT license. See [LICENSE.txt](LICENSE.txt) for details.
 
