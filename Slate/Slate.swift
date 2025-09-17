@@ -152,7 +152,7 @@ public protocol SlateManagedObjectRelating: SlateObject {
  consistent representation of the object graph that will not be modified in the
  middle of multiple query operations.
  */
-public final class Slate {
+public final class Slate: @unchecked Sendable {
     // MARK: Private Properties
 
     /// The NSManagedObjectModel associated with this Slate
@@ -1132,7 +1132,7 @@ private var kStreamFRCAssociationKey: UInt8 = 0
  Only a Slate instance should call `save` on the MOC internally when
  the mutation block completes.
  */
-final class _SlateManagedObjectContext: NSManagedObjectContext {
+final class _SlateManagedObjectContext: NSManagedObjectContext, @unchecked Sendable {
     /// Are we in an internal save call? Mutation blocks are
     /// used serialially inside the access queue so this should
     /// be thread safe.
