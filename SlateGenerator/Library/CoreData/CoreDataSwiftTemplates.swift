@@ -291,11 +291,11 @@ extension {CDENTITYCLASS}: SlateObjectConvertible {
     }
 }
 
-extension {SLATECLASS}: @retroactive SlateObject {
+extension {SLATECLASS}: {RETROACTIVE}SlateObject {
     public static let __slate_managedObjectType: NSManagedObject.Type = {CDENTITYCLASS}.self
 }
 
-extension {SLATECLASS}: @retroactive SlateManagedObjectRelating {
+extension {SLATECLASS}: {RETROACTIVE}SlateManagedObjectRelating {
     public typealias ManagedObjectType = {CDENTITYCLASS}
 }
 

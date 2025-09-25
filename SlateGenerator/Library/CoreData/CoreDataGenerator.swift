@@ -67,6 +67,7 @@ public enum CoreDataSwiftGenerator {
                 "PROPERTIES": properties,
                 "RELATIONS": relations,
                 "CDPUBLICMODELS": internalModels ? "" : "public ",
+                "RETROACTIVE": internalModels ? "" : "@retroactive ",
             ])
 
             let filepath = (entityPath as NSString).appendingPathComponent(filename)
