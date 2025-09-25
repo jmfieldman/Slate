@@ -42,6 +42,9 @@ struct GenCoreData: ParsableCommand {
     @Flag(name: .long, help: "All Int16, Int32, Int64 values will be cast to Int in Slate code unless this flag is set")
     var noIntCast: Bool = false
 
+    @Flag(name: .long, help: "If the generated models should be internal-only")
+    var internalModels: Bool = false
+
     @Option(name: .long, help: "Transform for generated Slate object names; %@ is replaced by the data object name.")
     var nameTransform: String = kStringArgVar
 
@@ -102,6 +105,7 @@ struct GenCoreData: ParsableCommand {
             nameTransform: nameTransform,
             fileTransform: fileTransform,
             castInt: !noIntCast,
+            internalModels: internalModels,
             outputPath: outputSlateObjectPath,
             entityPath: outputCoreDataEntityPath,
             coreDataFileImports: coreDataFileImports

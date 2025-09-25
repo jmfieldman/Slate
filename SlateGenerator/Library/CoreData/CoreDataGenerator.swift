@@ -19,6 +19,7 @@ public enum CoreDataSwiftGenerator {
         nameTransform: String,
         fileTransform: String,
         castInt: Bool,
+        internalModels: Bool,
         outputPath: String,
         entityPath: String,
         coreDataFileImports: String
@@ -43,7 +44,7 @@ public enum CoreDataSwiftGenerator {
 
             // Start a new file accumulator if uses per-class file
             fileAccumulator = generateHeader(filename: filename, imports: [entity.imports])
-            fileAccumulator += entityCode(entity: entity, castInt: castInt, className: className)
+            fileAccumulator += entityCode(entity: entity, castInt: castInt, internalModels: internalModels, className: className)
 
             // Write to file if necessary
             let filepath = (outputPath as NSString).appendingPathComponent("\(filename).swift")
@@ -65,6 +66,7 @@ public enum CoreDataSwiftGenerator {
                 "SLATECLASS": slateClassName,
                 "PROPERTIES": properties,
                 "RELATIONS": relations,
+                "CDPUBLICMODELS": internalModels ? "" : "public ",
             ])
 
             let filepath = (entityPath as NSString).appendingPathComponent(filename)
@@ -96,9 +98,10 @@ public enum CoreDataSwiftGenerator {
     static func entityCode(
         entity: CoreDataEntity,
         castInt: Bool,
+        internalModels: Bool,
         className: String
     ) -> String {
-        let classImpl = generateClassImpl(entity: entity, castInt: castInt, className: className)
+        let classImpl = generateClassImpl(entity: entity, castInt: castInt, internalModels: internalModels, className: className)
         let provider = generatePropertyProviderProtocol(entity: entity, className: className)
         let equatable = generateEquatable(entity: entity, className: className)
 
@@ -108,6 +111,7 @@ public enum CoreDataSwiftGenerator {
     static func generateClassImpl(
         entity: CoreDataEntity,
         castInt: Bool,
+        internalModels: Bool,
         className: String
     ) -> String {
         var declarations = ""
@@ -234,6 +238,7 @@ public enum CoreDataSwiftGenerator {
             "INITPARAMASSIGNMENTS": initParamAssignments.sorted(by: <).joined(separator: "\n        "),
             "SUBSTRUCTS": substruct,
             "PRIVATE": privateFunctions,
+            "PUBLICMODEL": internalModels ? "" : "public ",
         ])
     }
 
