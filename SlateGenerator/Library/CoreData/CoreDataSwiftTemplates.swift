@@ -308,7 +308,7 @@ extension {SLATECLASS}: {RETROACTIVE}SlateManagedObjectRelating {
 ///  * SLATECLASS - The name of the immutable slate class
 ///  * RELATIONSHIPS - The listing of relationship lookups
 let template_CD_Swift_SlateRelationshipResolver: String = """
-public extension SlateRelationshipResolver where SO{OBJQUAL}{SLATECLASS} {
+{PUBLIC}extension SlateRelationshipResolver where SO{OBJQUAL}{SLATECLASS} {
 {RELATIONSHIPS}
 }
 
@@ -363,7 +363,7 @@ let template_CD_Entity_Property: String = "    @NSManaged public var {VARNAME}: 
 ///  * SLATECLASS - Name of the slate class
 ///  * PROPERTIES - List of protocol properties
 let template_CD_Property_Provider_Protocol: String = """
-public extension {SLATECLASS} {
+{PUBLIC}extension {SLATECLASS} {
     protocol ManagedPropertyProviding: NSManagedObject {
         {PROPERTIES}
     }

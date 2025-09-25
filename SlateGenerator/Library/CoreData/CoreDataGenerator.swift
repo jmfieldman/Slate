@@ -57,7 +57,7 @@ public enum CoreDataSwiftGenerator {
             let coreDataImportString = importHeaderString(entity: entity, imports: coreDataFileImports)
             let slateClassName: String = nameTransform.replacingOccurrences(of: kStringArgVar, with: entity.entityName)
             let properties = generateCoreDataEntityProperties(entity: entity)
-            let relations = generateRelationships(entity: entity, className: slateClassName)
+            let relations = generateRelationships(entity: entity, className: slateClassName, internalModels: internalModels)
             let file = template_CD_Entity.replacingWithMap([
                 "FILENAME": filename,
                 "CDIMPORTS": coreDataImportString,
@@ -103,7 +103,7 @@ public enum CoreDataSwiftGenerator {
         className: String
     ) -> String {
         let classImpl = generateClassImpl(entity: entity, castInt: castInt, internalModels: internalModels, className: className)
-        let provider = generatePropertyProviderProtocol(entity: entity, className: className)
+        let provider = generatePropertyProviderProtocol(entity: entity, className: className, internalModels: internalModels)
         let equatable = generateEquatable(entity: entity, className: className)
 
         return "\(classImpl)\(provider)\(equatable)"
@@ -309,7 +309,7 @@ public enum CoreDataSwiftGenerator {
         ])
     }
 
-    static func generateRelationships(entity: CoreDataEntity, className: String) -> String {
+    static func generateRelationships(entity: CoreDataEntity, className: String, internalModels: Bool) -> String {
         var relationships = ""
         for relationship in entity.relationships {
             if relationship.toMany {
@@ -334,6 +334,7 @@ public enum CoreDataSwiftGenerator {
             "OBJQUAL": entity.useStruct ? " == " : ": ",
             "SLATECLASS": className,
             "RELATIONSHIPS": relationships,
+            "PUBLIC": internalModels ? "" : "public ",
         ])
     }
 
@@ -358,10 +359,11 @@ public enum CoreDataSwiftGenerator {
         ])
     }
 
-    static func generatePropertyProviderProtocol(entity: CoreDataEntity, className: String) -> String {
+    static func generatePropertyProviderProtocol(entity: CoreDataEntity, className: String, internalModels: Bool) -> String {
         template_CD_Property_Provider_Protocol.replacingWithMap([
             "SLATECLASS": className,
             "PROPERTIES": generateCoreDataPropertyProviderAttributes(entity: entity),
+            "PUBLIC": internalModels ? "" : "public ",
         ])
     }
 
