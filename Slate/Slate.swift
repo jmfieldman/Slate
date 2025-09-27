@@ -20,7 +20,7 @@ private let kThreadKeySlateQueryContext = "kThreadKeySlateQueryContext"
 
 // MARK: - SlateConfigError
 
-public enum SlateConfigError: Error {
+public enum SlateConfigError: Error, Sendable {
     /// This instance of a Slate is already configured.
     case alreadyConfigured
 
@@ -41,7 +41,7 @@ public enum SlateConfigError: Error {
 
 // MARK: - SlateError
 
-public enum SlateTransactionError: Error {
+public enum SlateTransactionError: Error, Sendable {
     /// The master context has not been created yet, or there was
     /// an error creating the context.
     case noMasterContext
@@ -967,7 +967,7 @@ private class SlateFetchedResultsControllerBlockDelegate: NSObject, NSFetchedRes
 }
 
 public extension Slate {
-    struct StreamUpdate<Value: SlateObject> {
+    struct StreamUpdate<Value: SlateObject>: Sendable {
         public let values: [Value]
         public let insertedIndexes: [IndexPath]
         public let updatedIndexes: [IndexPath]
@@ -1211,7 +1211,7 @@ public extension Slate {
  consistent representation of the object graph that will not be modified in the
  middle of multiple query operations.
  */
-public final class SlateQueryContext {
+public final class SlateQueryContext: @unchecked Sendable {
     /// The parent Slate
     fileprivate let slate: Slate
 
@@ -1281,7 +1281,7 @@ public final class SlateQueryContext {
  way that object queries are: as a snapshot inside of the query context they are queried
  in.
  */
-public final class SlateRelationshipResolver<SO: SlateObject> {
+public final class SlateRelationshipResolver<SO: SlateObject>: @unchecked Sendable {
     let context: SlateQueryContext
     let slateObject: SO
 
@@ -1356,7 +1356,7 @@ private extension Slate {
  context it is being called from, and will throw SlateTransactionError.queryOutsideScope
  if called outside of a query block.
  */
-public final class SlateQueryRequest<SO: SlateManagedObjectRelating> {
+public final class SlateQueryRequest<SO: SlateManagedObjectRelating>: @unchecked Sendable {
     /// The backing NSFetchRequest that will power this fetch
     private let nsFetchRequest: NSFetchRequest<SO.ManagedObjectType>
 
@@ -1600,7 +1600,7 @@ public final class SlateQueryRequest<SO: SlateManagedObjectRelating> {
  The SlateMOCFetchRequest provides a wrapping around the standard NSFetchRequest in order to
  buildable query interface.
  */
-public final class SlateMOCFetchRequest<MO: NSManagedObject> {
+public final class SlateMOCFetchRequest<MO: NSManagedObject>: @unchecked Sendable {
     /// The backing NSFetchRequest that will power this fetch
     fileprivate let nsFetchRequest: NSFetchRequest<MO>
 
