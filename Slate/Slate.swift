@@ -1419,6 +1419,35 @@ public final class SlateQueryRequest<SO: SlateManagedObjectRelating>: @unchecked
     }
 
     /**
+     An alias for `filter` - some prefer `where` as being more semantically readable.
+     */
+    public func `where`(_ predicate: NSPredicate) -> SlateQueryRequest<SO> {
+        if let currentPredicate = nsFetchRequest.predicate {
+            nsFetchRequest.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [currentPredicate, predicate])
+        } else {
+            nsFetchRequest.predicate = predicate
+        }
+        return self
+    }
+
+    /**
+     An alias for `filter` - some prefer `where` as being more semantically readable.
+     */
+    public func `where`(_ predicateString: String, _ predicateArgs: Any...) -> SlateQueryRequest<SO> {
+        let newPredicate = NSPredicate(format: predicateString, argumentArray: predicateArgs)
+        return filter(newPredicate)
+    }
+
+    /**
+     An alias for `filter` - some prefer `where` as being more semantically readable.
+     */
+    public func `where`<T>(_ keyPath: KeyPath<SO, T>, _ operator: SlatePredicateOperator<T>) -> SlateQueryRequest<SO> {
+        let keyString = String(describing: keyPath).keypathToAttribute()
+        let newPredicate = `operator`.predicate(keyPath: keyString)
+        return filter(newPredicate)
+    }
+
+    /**
      An alias for `filter`.  Semantically, it should come after an initial filter call.
      */
     public func and(_ predicate: NSPredicate) -> SlateQueryRequest<SO> {
@@ -1646,6 +1675,35 @@ public final class SlateMOCFetchRequest<MO: NSManagedObject>: @unchecked Sendabl
      Will create a compound AND predicate with any existing predicates.
      */
     public func filter<T>(where keyPath: KeyPath<MO, T>, _ operator: SlatePredicateOperator<T>) -> SlateMOCFetchRequest<MO> {
+        let keyString = String(describing: keyPath).keypathToAttribute()
+        let newPredicate = `operator`.predicate(keyPath: keyString)
+        return filter(newPredicate)
+    }
+
+    /**
+     An alias for `filter` - some prefer `where` as being more semantically readable.
+     */
+    public func `where`(_ predicate: NSPredicate) -> SlateMOCFetchRequest<MO> {
+        if let currentPredicate = nsFetchRequest.predicate {
+            nsFetchRequest.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [currentPredicate, predicate])
+        } else {
+            nsFetchRequest.predicate = predicate
+        }
+        return self
+    }
+
+    /**
+     An alias for `filter` - some prefer `where` as being more semantically readable.
+     */
+    public func `where`(_ predicateString: String, _ predicateArgs: Any...) -> SlateMOCFetchRequest<MO> {
+        let newPredicate = NSPredicate(format: predicateString, argumentArray: predicateArgs)
+        return filter(newPredicate)
+    }
+
+    /**
+     An alias for `filter` - some prefer `where` as being more semantically readable.
+     */
+    public func `where`<T>(_ keyPath: KeyPath<MO, T>, _ operator: SlatePredicateOperator<T>) -> SlateMOCFetchRequest<MO> {
         let keyString = String(describing: keyPath).keypathToAttribute()
         let newPredicate = `operator`.predicate(keyPath: keyString)
         return filter(newPredicate)
