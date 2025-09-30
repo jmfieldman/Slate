@@ -63,7 +63,7 @@ Slate provides a fluent API for querying data:
 ```swift
 let books = try await slate.query { context in
     return try context[Book.self]
-        .filter(where: \.pageCount, .greaterThan(100))
+        .where(\.pageCount, .greaterThan(100))
         .sort(\.title)
         .fetch()
 }
@@ -74,7 +74,7 @@ Mutations are performed in barrier operations:
 ```swift
 try await slate.mutate { writeContext in
     if let book = try writeContext[CoreDataBook.self]
-        .filter(where: \.id, .equals(bookId))
+        .where(\.id, .equals(bookId))
         .fetchOne() 
     {
         book.pageCount = newPageCount
@@ -162,7 +162,7 @@ slate.configure(
 ```swift
 let books = try await slate.query { context in
     return try context[Book.self]
-        .filter(where: \.pageCount, .greaterThan(100))
+        .where(\.pageCount, .greaterThan(100))
         .fetch()
 }
 ```
@@ -171,7 +171,7 @@ let books = try await slate.query { context in
 ```swift
 try await slate.mutate { writeContext in
     if let book = try writeContext[CoreDataBook.self]
-        .filter(where: \.id, .equals(bookId))
+        .where(\.id, .equals(bookId))
         .fetchOne() 
     {
         book.pageCount = newPageCount
@@ -227,7 +227,7 @@ let authors = try await slate.query { context in
 ```swift
 let books = try await slate.query { context in
     return try context[Book.self]
-        .filter(where: \.pageCount, .greaterThan(100))
+        .where(\.pageCount, .greaterThan(100))
         .sort(\.title)
         .fetch()
 }
