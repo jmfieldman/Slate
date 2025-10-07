@@ -66,13 +66,7 @@ let template_CD_Swift_SlateClassImpl: String = """
 {ATTRASSIGNMENT}
     }
 
-    /**
-     Allow the creation of a Slate-exposed class/struct with all of its parameters.
-     Note that this is internal -- this is for use only in unit tests (using the
-     @testable import directive).  You should never create values with this
-     constructor in normal code.
-     */
-    internal init(
+    {PUBLICPARAMINIT}
         {INITPARAMS}
     ) {
         // Internally created objects have no real managed object ID
@@ -87,6 +81,26 @@ let template_CD_Swift_SlateClassImpl: String = """
 }
 
 {PRIVATE}
+"""
+
+let template_CD_Swift_SlateClassImpl_ExplicitInitInternal = """
+    /**
+     Allow the creation of a Slate-exposed class/struct with all of its parameters.
+     Note that this is internal -- this is for use only in unit tests (using the
+     @testable import directive).  You should never create values with this
+     constructor in normal code.
+     */
+    internal init(
+"""
+
+let template_CD_Swift_SlateClassImpl_ExplicitInitPublic = """
+    /**
+     Allow the creation of a Slate-exposed class/struct with all of its parameters.
+     Note that this should generally be avoided -- Slate instances should only come
+     from queries. This constructor is useful for testing purposes or when creating
+     SwiftUI previews.
+     */
+    public init(
 """
 
 /// Inputs:

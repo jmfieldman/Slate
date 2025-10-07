@@ -20,6 +20,7 @@ public enum CoreDataSwiftGenerator {
         fileTransform: String,
         castInt: Bool,
         internalModels: Bool,
+        publicParamInit: Bool,
         outputPath: String,
         entityPath: String,
         coreDataFileImports: String
@@ -44,7 +45,7 @@ public enum CoreDataSwiftGenerator {
 
             // Start a new file accumulator if uses per-class file
             fileAccumulator = generateHeader(filename: filename, imports: [entity.imports])
-            fileAccumulator += entityCode(entity: entity, castInt: castInt, internalModels: internalModels, className: className)
+            fileAccumulator += entityCode(entity: entity, castInt: castInt, internalModels: internalModels, publicParamInit: publicParamInit, className: className)
 
             // Write to file if necessary
             let filepath = (outputPath as NSString).appendingPathComponent("\(filename).swift")
@@ -100,9 +101,10 @@ public enum CoreDataSwiftGenerator {
         entity: CoreDataEntity,
         castInt: Bool,
         internalModels: Bool,
+        publicParamInit: Bool,
         className: String
     ) -> String {
-        let classImpl = generateClassImpl(entity: entity, castInt: castInt, internalModels: internalModels, className: className)
+        let classImpl = generateClassImpl(entity: entity, castInt: castInt, internalModels: internalModels, publicParamInit: publicParamInit, className: className)
         let provider = generatePropertyProviderProtocol(entity: entity, className: className, internalModels: internalModels)
         let equatable = generateEquatable(entity: entity, className: className)
 
@@ -113,6 +115,7 @@ public enum CoreDataSwiftGenerator {
         entity: CoreDataEntity,
         castInt: Bool,
         internalModels: Bool,
+        publicParamInit: Bool,
         className: String
     ) -> String {
         var declarations = ""
@@ -240,6 +243,7 @@ public enum CoreDataSwiftGenerator {
             "SUBSTRUCTS": substruct,
             "PRIVATE": privateFunctions,
             "PUBLICMODEL": internalModels ? "" : "public ",
+            "PUBLICPARAMINIT": publicParamInit ? template_CD_Swift_SlateClassImpl_ExplicitInitPublic : template_CD_Swift_SlateClassImpl_ExplicitInitInternal,
         ])
     }
 

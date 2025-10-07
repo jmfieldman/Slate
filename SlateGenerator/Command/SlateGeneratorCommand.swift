@@ -45,6 +45,9 @@ struct GenCoreData: ParsableCommand {
     @Flag(name: .long, help: "If the generated models should be internal-only")
     var internalModels: Bool = false
 
+    @Flag(name: .long, help: "If the slate-object parameterized initializer should be public")
+    var publicParamInit: Bool = false
+
     @Option(name: .long, help: "Transform for generated Slate object names; %@ is replaced by the data object name.")
     var nameTransform: String = kStringArgVar
 
@@ -106,6 +109,7 @@ struct GenCoreData: ParsableCommand {
             fileTransform: fileTransform,
             castInt: !noIntCast,
             internalModels: internalModels,
+            publicParamInit: publicParamInit,
             outputPath: outputSlateObjectPath,
             entityPath: outputCoreDataEntityPath,
             coreDataFileImports: coreDataFileImports
