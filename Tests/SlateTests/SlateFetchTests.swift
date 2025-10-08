@@ -149,6 +149,44 @@ struct SlateFetchTests {
         #expect(authors.map(\.name) == ["TestName2", "TestName3"])
     }
 
+    @Test func QueryWhereMultilevelPredicate() async {
+        await ConfigureTest(
+            slate: slate,
+            mom: kMomSlateTests
+        )
+
+        slate.mutateSync { moc in
+            let newParent = CoreDataParent1(context: moc)
+            newParent.id = "1"
+            newParent.child1_has = false
+            newParent.child2_bool = true
+            newParent.child2_int64scalar = 3
+
+            let newParent2 = CoreDataParent1(context: moc)
+            newParent2.id = "2"
+            newParent2.child1_has = false
+            newParent2.child2_bool = false
+            newParent2.child2_int64scalar = 2
+
+            let newParent3 = CoreDataParent1(context: moc)
+            newParent3.id = "3"
+            newParent3.child1_has = false
+            newParent3.child2_bool = true
+            newParent3.child2_int64scalar = 1
+        }
+
+        var parents: [SlateParent1] = []
+
+        slate.querySync { context in
+            parents = try context[SlateParent1.self]
+                .where(\.child2.bool, .equals(true))
+                .sort(\.child2.int64scalar, ascending: true)
+                .fetch()
+        }
+
+        #expect(parents.map(\.child2.int64scalar) == [1, 3])
+    }
+
     @Test func QueryFilterPredicateNullability() async {
         await ConfigureTest(
             slate: slate,
