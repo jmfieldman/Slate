@@ -351,6 +351,8 @@ public final class Slate: @unchecked Sendable {
         let persistentStoreDescription = NSPersistentStoreDescription()
         persistentStoreDescription.type = persistentStoreType
         persistentStoreDescription.url = persistentStoreUrl
+        persistentStoreDescription.shouldMigrateStoreAutomatically = true
+        persistentStoreDescription.shouldInferMappingModelAutomatically = true
 
         // Verify MOM loading
         guard let managedObjectModel = NSManagedObjectModel(contentsOf: managedObjectModelUrl) else {
