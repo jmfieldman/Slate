@@ -314,7 +314,7 @@ import CoreData{CDIMPORTS}
 
 extension {CDENTITYCLASS}: SlateKeypathAttributeProviding {}
 
-extension {SLATECLASS}: SlateKeypathAttributeProviding {}
+extension {SLATECLASS}: {RETROACTIVE}SlateKeypathAttributeProviding {}
 
 extension {CDENTITYCLASS}: SlateObjectConvertible {
     /**
