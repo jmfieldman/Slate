@@ -34,7 +34,29 @@ public final class CoreDataTest: NSManagedObject, SlateTest.ManagedPropertyProvi
     @NSManaged public var uuidAttr: UUID?
 
     @NSManaged public var test2s: NSOrderedSet?
+
+    public static func keypathToAttribute(_ keypath: PartialKeyPath<CoreDataTest>) -> String {
+        switch keypath {
+        case \CoreDataTest.binAttr: "binAttr"
+        case \CoreDataTest.boolAttr: "boolAttr"
+        case \CoreDataTest.dateAttr: "dateAttr"
+        case \CoreDataTest.decAttr: "decAttr"
+        case \CoreDataTest.doubleAttr: "doubleAttr"
+        case \CoreDataTest.floatAttr: "floatAttr"
+        case \CoreDataTest.int16attr: "int16attr"
+        case \CoreDataTest.int32attr: "int32attr"
+        case \CoreDataTest.int64atttr: "int64atttr"
+        case \CoreDataTest.stringAttr: "stringAttr"
+        case \CoreDataTest.uriAttr: "uriAttr"
+        case \CoreDataTest.uuidAttr: "uuidAttr"
+        default: fatalError("Unsupported CoreDataTest key path")
+        }
+    }
 }
+
+extension CoreDataTest: SlateKeypathAttributeProviding {}
+
+extension SlateTest: SlateKeypathAttributeProviding {}
 
 extension CoreDataTest: SlateObjectConvertible {
     /**
@@ -45,11 +67,11 @@ extension CoreDataTest: SlateObjectConvertible {
     }
 }
 
-extension SlateTest: SlateObject {
-    public static var __slate_managedObjectType: NSManagedObject.Type = CoreDataTest.self
+extension SlateTest: @retroactive SlateObject {
+    public static let __slate_managedObjectType: NSManagedObject.Type = CoreDataTest.self
 }
 
-extension SlateTest: SlateManagedObjectRelating {
+extension SlateTest: @retroactive SlateManagedObjectRelating {
     public typealias ManagedObjectType = CoreDataTest
 }
 

@@ -26,7 +26,21 @@ public final class CoreDataBook: NSManagedObject, SlateBook.ManagedPropertyProvi
     @NSManaged public var title: String?
 
     @NSManaged public var author: CoreDataAuthor
+
+    public static func keypathToAttribute(_ keypath: PartialKeyPath<CoreDataBook>) -> String {
+        switch keypath {
+        case \CoreDataBook.likeCount: "likeCount"
+        case \CoreDataBook.loading: "loading"
+        case \CoreDataBook.subtitle: "subtitle"
+        case \CoreDataBook.title: "title"
+        default: fatalError("Unsupported CoreDataBook key path")
+        }
+    }
 }
+
+extension CoreDataBook: SlateKeypathAttributeProviding {}
+
+extension SlateBook: SlateKeypathAttributeProviding {}
 
 extension CoreDataBook: SlateObjectConvertible {
     /**
@@ -37,11 +51,11 @@ extension CoreDataBook: SlateObjectConvertible {
     }
 }
 
-extension SlateBook: SlateObject {
-    public static var __slate_managedObjectType: NSManagedObject.Type = CoreDataBook.self
+extension SlateBook: @retroactive SlateObject {
+    public static let __slate_managedObjectType: NSManagedObject.Type = CoreDataBook.self
 }
 
-extension SlateBook: SlateManagedObjectRelating {
+extension SlateBook: @retroactive SlateManagedObjectRelating {
     public typealias ManagedObjectType = CoreDataBook
 }
 

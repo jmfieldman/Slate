@@ -42,6 +42,24 @@ public final class SlateTest: Sendable {
         public static let test2s = "test2s"
     }
 
+    public static func keypathToAttribute(_ keypath: PartialKeyPath<SlateTest>) -> String {
+        switch keypath {
+        case \SlateTest.binAttr: "binAttr"
+        case \SlateTest.boolAttr: "boolAttr"
+        case \SlateTest.dateAttr: "dateAttr"
+        case \SlateTest.decAttr: "decAttr"
+        case \SlateTest.doubleAttr: "doubleAttr"
+        case \SlateTest.floatAttr: "floatAttr"
+        case \SlateTest.int16attr: "int16attr"
+        case \SlateTest.int32attr: "int32attr"
+        case \SlateTest.int64atttr: "int64atttr"
+        case \SlateTest.stringAttr: "stringAttr"
+        case \SlateTest.uriAttr: "uriAttr"
+        case \SlateTest.uuidAttr: "uuidAttr"
+        default: fatalError("Unsupported SlateTest key path")
+        }
+    }
+
     /**
       Each immutable data model object should have an associated SlateID (in the
       core data case, the NSManagedObjectID.  This is a cross-mutation identifier

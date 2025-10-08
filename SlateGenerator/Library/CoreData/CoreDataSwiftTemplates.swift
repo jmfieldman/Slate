@@ -41,6 +41,13 @@ let template_CD_Swift_SlateClassImpl: String = """
 {RELNAMES}
     }
 
+    public static func keypathToAttribute(_ keypath: PartialKeyPath<{SLATECLASS}>) -> String {
+        switch keypath {
+        {KEYPATHCASES}
+        default: fatalError("Unsupported {SLATECLASS} key path")
+        }
+    }
+
     /**
      Each immutable data model object should have an associated SlateID (in the
      core data case, the NSManagedObjectID.  This is a cross-mutation identifier
@@ -216,6 +223,8 @@ let template_CD_Swift_AttrDeclaration: String = "    {ACCESS} let {ATTR}: {TYPE}
 ///  * OPTIONAL - Use `?` to indicate that this attribute is optional
 let template_CD_Swift_SubstructAttrDeclaration: String = "        {ACCESS} let {ATTR}: {TYPE}{OPTIONAL}\n"
 
+let template_CD_Swift_Keypath = "        case \\{SLATECLASS}.{ATTRPATH}: return \"{ATTRSTR}\"\n"
+
 /// Inputs:
 ///  * SLATECLASS - The name of the immutable slate class
 ///  * ATTRS - Equatable attributes
@@ -294,7 +303,18 @@ import CoreData{CDIMPORTS}
     }
 
 {PROPERTIES}
+
+    public static func keypathToAttribute(_ keypath: PartialKeyPath<{CDENTITYCLASS}>) -> String {
+        switch keypath {
+        {KEYPATHCASES}
+        default: fatalError("Unsupported {CDENTITYCLASS} key path")
+        }
+    }
 }
+
+extension {CDENTITYCLASS}: SlateKeypathAttributeProviding {}
+
+extension {SLATECLASS}: SlateKeypathAttributeProviding {}
 
 extension {CDENTITYCLASS}: SlateObjectConvertible {
     /**
@@ -372,6 +392,8 @@ let template_CD_Swift_SlateRelationshipToOne: String = """
 ///  * TYPE - The property type
 ///  * OPTIONAL - The string "?" if the type is optional
 let template_CD_Entity_Property: String = "    @NSManaged public var {VARNAME}: {TYPE}{OPTIONAL}\n"
+
+let template_CD_Entity_Keypath = "        case \\{COREDATACLASS}.{ATTRNAME}: return \"{ATTRNAME}\"\n"
 
 /// Inputs:
 ///  * SLATECLASS - Name of the slate class

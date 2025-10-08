@@ -1414,8 +1414,11 @@ public final class SlateQueryRequest<SO: SlateManagedObjectRelating>: @unchecked
 
      Will create a compound AND predicate with any existing predicates.
      */
-    public func filter<T>(where keyPath: KeyPath<SO, T>, _ operator: SlatePredicateOperator<T>) -> SlateQueryRequest<SO> {
-        let keyString = String(describing: keyPath).keypathToAttribute()
+    public func filter<T>(
+        where keyPath: KeyPath<SO, T>,
+        _ operator: SlatePredicateOperator<T>
+    ) -> SlateQueryRequest<SO> where SO: SlateKeypathAttributeProviding {
+        let keyString = SO.keypathToAttribute(keyPath)
         let newPredicate = `operator`.predicate(keyPath: keyString)
         return filter(newPredicate)
     }
@@ -1443,8 +1446,10 @@ public final class SlateQueryRequest<SO: SlateManagedObjectRelating>: @unchecked
     /**
      An alias for `filter` - some prefer `where` as being more semantically readable.
      */
-    public func `where`<T>(_ keyPath: KeyPath<SO, T>, _ operator: SlatePredicateOperator<T>) -> SlateQueryRequest<SO> {
-        let keyString = String(describing: keyPath).keypathToAttribute()
+    public func `where`<T>(
+        _ keyPath: KeyPath<SO, T>, _ operator: SlatePredicateOperator<T>
+    ) -> SlateQueryRequest<SO> where SO: SlateKeypathAttributeProviding {
+        let keyString = SO.keypathToAttribute(keyPath)
         let newPredicate = `operator`.predicate(keyPath: keyString)
         return filter(newPredicate)
     }
@@ -1467,8 +1472,11 @@ public final class SlateQueryRequest<SO: SlateManagedObjectRelating>: @unchecked
     /**
      An alias for `filter`.  Semantically, it should come after an initial filter call.
      */
-    public func and<T>(where keyPath: KeyPath<SO, T>, _ operator: SlatePredicateOperator<T>) -> SlateQueryRequest<SO> {
-        let keyString = String(describing: keyPath).keypathToAttribute()
+    public func and<T>(
+        where keyPath: KeyPath<SO, T>,
+        _ operator: SlatePredicateOperator<T>
+    ) -> SlateQueryRequest<SO> where SO: SlateKeypathAttributeProviding {
+        let keyString = SO.keypathToAttribute(keyPath)
         let newPredicate = `operator`.predicate(keyPath: keyString)
         return and(newPredicate)
     }
@@ -1496,8 +1504,11 @@ public final class SlateQueryRequest<SO: SlateManagedObjectRelating>: @unchecked
     /**
      Creates an OR compound predicate with an existing predicate.
      */
-    public func or<T>(where keyPath: KeyPath<SO, T>, _ operator: SlatePredicateOperator<T>) -> SlateQueryRequest<SO> {
-        let keyString = String(describing: keyPath).keypathToAttribute()
+    public func or<T>(
+        where keyPath: KeyPath<SO, T>,
+        _ operator: SlatePredicateOperator<T>
+    ) -> SlateQueryRequest<SO> where SO: SlateKeypathAttributeProviding {
+        let keyString = SO.keypathToAttribute(keyPath)
         let newPredicate = `operator`.predicate(keyPath: keyString)
         return or(newPredicate)
     }
@@ -1515,8 +1526,11 @@ public final class SlateQueryRequest<SO: SlateManagedObjectRelating>: @unchecked
     /**
      Attach a sort descriptor to the fetch using key and ascending.
      */
-    public func sort(_ keyPath: KeyPath<SO, some Any>, ascending: Bool = true) -> SlateQueryRequest<SO> {
-        let keyString = String(describing: keyPath).keypathToAttribute()
+    public func sort(
+        _ keyPath: KeyPath<SO, some Any>,
+        ascending: Bool = true
+    ) -> SlateQueryRequest<SO> where SO: SlateKeypathAttributeProviding {
+        let keyString = SO.keypathToAttribute(keyPath)
         let descriptor = NSSortDescriptor(key: keyString, ascending: ascending)
         return sort(descriptor)
     }
@@ -1676,8 +1690,11 @@ public final class SlateMOCFetchRequest<MO: NSManagedObject>: @unchecked Sendabl
 
      Will create a compound AND predicate with any existing predicates.
      */
-    public func filter<T>(where keyPath: KeyPath<MO, T>, _ operator: SlatePredicateOperator<T>) -> SlateMOCFetchRequest<MO> {
-        let keyString = String(describing: keyPath).keypathToAttribute()
+    public func filter<T>(
+        where keyPath: KeyPath<MO, T>,
+        _ operator: SlatePredicateOperator<T>
+    ) -> SlateMOCFetchRequest<MO> where MO: SlateKeypathAttributeProviding {
+        let keyString = MO.keypathToAttribute(keyPath)
         let newPredicate = `operator`.predicate(keyPath: keyString)
         return filter(newPredicate)
     }
@@ -1705,8 +1722,11 @@ public final class SlateMOCFetchRequest<MO: NSManagedObject>: @unchecked Sendabl
     /**
      An alias for `filter` - some prefer `where` as being more semantically readable.
      */
-    public func `where`<T>(_ keyPath: KeyPath<MO, T>, _ operator: SlatePredicateOperator<T>) -> SlateMOCFetchRequest<MO> {
-        let keyString = String(describing: keyPath).keypathToAttribute()
+    public func `where`<T>(
+        _ keyPath: KeyPath<MO, T>,
+        _ operator: SlatePredicateOperator<T>
+    ) -> SlateMOCFetchRequest<MO> where MO: SlateKeypathAttributeProviding {
+        let keyString = MO.keypathToAttribute(keyPath)
         let newPredicate = `operator`.predicate(keyPath: keyString)
         return filter(newPredicate)
     }
@@ -1729,8 +1749,11 @@ public final class SlateMOCFetchRequest<MO: NSManagedObject>: @unchecked Sendabl
     /**
      An alias for `filter`.  Semantically, it should come after an initial filter call.
      */
-    public func and<T>(where keyPath: KeyPath<MO, T>, _ operator: SlatePredicateOperator<T>) -> SlateMOCFetchRequest<MO> {
-        let keyString = String(describing: keyPath).keypathToAttribute()
+    public func and<T>(
+        where keyPath: KeyPath<MO, T>,
+        _ operator: SlatePredicateOperator<T>
+    ) -> SlateMOCFetchRequest<MO> where MO: SlateKeypathAttributeProviding {
+        let keyString = MO.keypathToAttribute(keyPath)
         let newPredicate = `operator`.predicate(keyPath: keyString)
         return and(newPredicate)
     }
@@ -1758,8 +1781,11 @@ public final class SlateMOCFetchRequest<MO: NSManagedObject>: @unchecked Sendabl
     /**
      Creates an OR compound predicate with an existing predicate.
      */
-    public func or<T>(where keyPath: KeyPath<MO, T>, _ operator: SlatePredicateOperator<T>) -> SlateMOCFetchRequest<MO> {
-        let keyString = String(describing: keyPath).keypathToAttribute()
+    public func or<T>(
+        where keyPath: KeyPath<MO, T>,
+        _ operator: SlatePredicateOperator<T>
+    ) -> SlateMOCFetchRequest<MO> where MO: SlateKeypathAttributeProviding {
+        let keyString = MO.keypathToAttribute(keyPath)
         let newPredicate = `operator`.predicate(keyPath: keyString)
         return or(newPredicate)
     }
@@ -1777,8 +1803,11 @@ public final class SlateMOCFetchRequest<MO: NSManagedObject>: @unchecked Sendabl
     /**
      Attach a sort descriptor to the fetch using key and ascending.
      */
-    public func sort(_ keyPath: KeyPath<MO, some Any>, ascending: Bool = true) -> SlateMOCFetchRequest<MO> {
-        let keyString = String(describing: keyPath).keypathToAttribute()
+    public func sort(
+        _ keyPath: KeyPath<MO, some Any>,
+        ascending: Bool = true
+    ) -> SlateMOCFetchRequest<MO> where MO: SlateKeypathAttributeProviding {
+        let keyString = MO.keypathToAttribute(keyPath)
         let descriptor = NSSortDescriptor(key: keyString, ascending: ascending)
         return sort(descriptor)
     }
@@ -1903,18 +1932,6 @@ extension Slate {
         }
 
         return immResults
-    }
-}
-
-private extension String {
-    /// Converts a SlateObject keypath \SlateObjectName.path1.path2 to a valid
-    /// Core Data attribute name path1_path2
-    func keypathToAttribute() -> String {
-        guard case let comps = components(separatedBy: "."), comps.count > 1 else {
-            return self
-        }
-
-        return comps.dropFirst().joined(separator: "_")
     }
 }
 
@@ -2145,4 +2162,10 @@ public struct SlatePredicateOperator<T> {
             NSPredicate(format: "%K MATCHES\(insensitivities) %@", argumentArray: [keyPath, value])
         }
     }
+}
+
+/// Any generated class must provide this protocol
+public protocol SlateKeypathAttributeProviding {
+    /// Converts a keypath to its attributes to the attribute string.
+    static func keypathToAttribute(_ keypath: PartialKeyPath<Self>) -> String
 }

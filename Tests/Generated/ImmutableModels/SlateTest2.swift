@@ -20,6 +20,14 @@ public struct SlateTest2: Sendable {
         public static let test = "test"
     }
 
+    public static func keypathToAttribute(_ keypath: PartialKeyPath<SlateTest2>) -> String {
+        switch keypath {
+        case \SlateTest2.qnty: "qnty"
+
+        default: fatalError("Unsupported SlateTest2 key path")
+        }
+    }
+
     /**
       Each immutable data model object should have an associated SlateID (in the
       core data case, the NSManagedObjectID.  This is a cross-mutation identifier

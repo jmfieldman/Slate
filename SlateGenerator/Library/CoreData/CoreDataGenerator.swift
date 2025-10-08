@@ -58,6 +58,7 @@ public enum CoreDataSwiftGenerator {
             let coreDataImportString = importHeaderString(entity: entity, imports: coreDataFileImports)
             let slateClassName: String = nameTransform.replacingOccurrences(of: kStringArgVar, with: entity.entityName)
             let properties = generateCoreDataEntityProperties(entity: entity)
+            let keypathCases = generateCoreDataKeypathCases(entity: entity)
             let relations = generateRelationships(entity: entity, className: slateClassName, internalModels: internalModels)
             let file = template_CD_Entity.replacingWithMap([
                 "FILENAME": filename,
@@ -67,6 +68,7 @@ public enum CoreDataSwiftGenerator {
                 "SLATECLASS": slateClassName,
                 "PROPERTIES": properties,
                 "RELATIONS": relations,
+                "KEYPATHCASES": keypathCases,
                 "CDPUBLICMODELS": internalModels ? "" : "public ",
                 "RETROACTIVE": internalModels ? "" : "@retroactive ",
             ])
@@ -120,6 +122,7 @@ public enum CoreDataSwiftGenerator {
     ) -> String {
         var declarations = ""
         var assignments = ""
+        var keypathAttrs = ""
         var attributeNames: [String] = []
         var relationshipNames: [String] = []
         var initParams: [String] = []
@@ -192,6 +195,11 @@ public enum CoreDataSwiftGenerator {
 
             initParams += ["\(attr.name): \(initType)\(initTypeOptional ? "?" : "")"]
             initParamAssignments += ["self.\(attr.name) = \(attr.name)"]
+            keypathAttrs += template_CD_Swift_Keypath.replacingWithMap([
+                "SLATECLASS": className,
+                "ATTRPATH": attr.name,
+                "ATTRSTR": attr.name,
+            ])
         }
 
         for relationship in entity.relationships {
@@ -223,6 +231,14 @@ public enum CoreDataSwiftGenerator {
 
             initParams += ["\(substruct.varName): \(substructType)\(substruct.optional ? "?" : "")"]
             initParamAssignments += ["self.\(substruct.varName) = \(substruct.varName)"]
+
+            for subattr in substruct.attributes {
+                keypathAttrs += template_CD_Swift_Keypath.replacingWithMap([
+                    "SLATECLASS": className + "." + substruct.varName + (substruct.optional ? "?" : ""),
+                    "ATTRPATH": subattr.name,
+                    "ATTRSTR": "\(substruct.varName)_\(subattr.name)",
+                ])
+            }
         }
 
         let privateFunctionsConvertInt: String = hasIntEnum ? template_Conversion_Int : ""
@@ -238,6 +254,7 @@ public enum CoreDataSwiftGenerator {
             "ATTRDECLARATIONS": declarations,
             "ATTRNAMES": attributeNames.sorted(by: <).reduce("") { $0 + template_CD_Swift_AttrName.replacingWithMap(["ATTR": $1]) },
             "RELNAMES": relationshipNames.sorted(by: <).reduce("") { $0 + template_CD_Swift_RelName.replacingWithMap(["REL": $1]) },
+            "KEYPATHCASES": keypathAttrs,
             "INITPARAMS": initParams.sorted(by: <).joined(separator: ",\n        "),
             "INITPARAMASSIGNMENTS": initParamAssignments.sorted(by: <).joined(separator: "\n        "),
             "SUBSTRUCTS": substruct,
@@ -372,6 +389,28 @@ public enum CoreDataSwiftGenerator {
     }
 
     // ----- Core Data Entities -----
+
+    static func generateCoreDataKeypathCases(entity: CoreDataEntity) -> String {
+        var keypathCases = ""
+
+        for attribute in entity.attributes {
+            keypathCases += template_CD_Entity_Keypath.replacingWithMap([
+                "COREDATACLASS": entity.codeClass,
+                "ATTRNAME": attribute.name,
+            ])
+        }
+
+        for substruct in entity.substructs {
+            for attribute in substruct.attributes {
+                keypathCases += template_CD_Entity_Keypath.replacingWithMap([
+                    "COREDATACLASS": entity.codeClass,
+                    "ATTRNAME": substruct.varName + "_" + attribute.name,
+                ])
+            }
+        }
+
+        return keypathCases
+    }
 
     static func generateCoreDataEntityProperties(entity: CoreDataEntity) -> String {
         var properties = ""

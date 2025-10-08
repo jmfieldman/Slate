@@ -23,7 +23,19 @@ public final class CoreDataTest2: NSManagedObject, SlateTest2.ManagedPropertyPro
     @NSManaged public var qnty: Int64
 
     @NSManaged public var test: CoreDataTest?
+
+    public static func keypathToAttribute(_ keypath: PartialKeyPath<CoreDataTest2>) -> String {
+        switch keypath {
+        case \CoreDataTest2.qnty: "qnty"
+
+        default: fatalError("Unsupported CoreDataTest2 key path")
+        }
+    }
 }
+
+extension CoreDataTest2: SlateKeypathAttributeProviding {}
+
+extension SlateTest2: SlateKeypathAttributeProviding {}
 
 extension CoreDataTest2: SlateObjectConvertible {
     /**
@@ -34,11 +46,11 @@ extension CoreDataTest2: SlateObjectConvertible {
     }
 }
 
-extension SlateTest2: SlateObject {
-    public static var __slate_managedObjectType: NSManagedObject.Type = CoreDataTest2.self
+extension SlateTest2: @retroactive SlateObject {
+    public static let __slate_managedObjectType: NSManagedObject.Type = CoreDataTest2.self
 }
 
-extension SlateTest2: SlateManagedObjectRelating {
+extension SlateTest2: @retroactive SlateManagedObjectRelating {
     public typealias ManagedObjectType = CoreDataTest2
 }
 

@@ -39,6 +39,23 @@ public final class SlateEnumUser: Sendable {
 
     public struct Relationships {}
 
+    public static func keypathToAttribute(_ keypath: PartialKeyPath<SlateEnumUser>) -> String {
+        switch keypath {
+        case \SlateEnumUser.id: "id"
+        case \SlateEnumUser.intEnumNonOptIntNoDef: "intEnumNonOptIntNoDef"
+        case \SlateEnumUser.intEnumNonOptIntYesDef: "intEnumNonOptIntYesDef"
+        case \SlateEnumUser.intEnumNonOptNSNumberNoDef: "intEnumNonOptNSNumberNoDef"
+        case \SlateEnumUser.intEnumNonOptNSNumberYesDef: "intEnumNonOptNSNumberYesDef"
+        case \SlateEnumUser.intEnumOptNSNumberNoDef: "intEnumOptNSNumberNoDef"
+        case \SlateEnumUser.intEnumOptNSNumberYesDef: "intEnumOptNSNumberYesDef"
+        case \SlateEnumUser.stringEnumNonOptStringNoDef: "stringEnumNonOptStringNoDef"
+        case \SlateEnumUser.stringEnumNonOptStringYesDef: "stringEnumNonOptStringYesDef"
+        case \SlateEnumUser.stringEnumOptStringNoDef: "stringEnumOptStringNoDef"
+        case \SlateEnumUser.stringEnumOptStringYesDef: "stringEnumOptStringYesDef"
+        default: fatalError("Unsupported SlateEnumUser key path")
+        }
+    }
+
     /**
       Each immutable data model object should have an associated SlateID (in the
       core data case, the NSManagedObjectID.  This is a cross-mutation identifier

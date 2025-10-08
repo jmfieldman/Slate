@@ -24,7 +24,21 @@ public final class CoreDataAuthor: NSManagedObject, SlateAuthor.ManagedPropertyP
     @NSManaged public var name: String?
 
     @NSManaged public var books: NSSet?
+
+    public static func keypathToAttribute(_ keypath: PartialKeyPath<CoreDataAuthor>) -> String {
+        switch keypath {
+        case \CoreDataAuthor.age: "age"
+
+        case \CoreDataAuthor.name: "name"
+
+        default: fatalError("Unsupported CoreDataAuthor key path")
+        }
+    }
 }
+
+extension CoreDataAuthor: SlateKeypathAttributeProviding {}
+
+extension SlateAuthor: SlateKeypathAttributeProviding {}
 
 extension CoreDataAuthor: SlateObjectConvertible {
     /**
@@ -35,11 +49,11 @@ extension CoreDataAuthor: SlateObjectConvertible {
     }
 }
 
-extension SlateAuthor: SlateObject {
-    public static var __slate_managedObjectType: NSManagedObject.Type = CoreDataAuthor.self
+extension SlateAuthor: @retroactive SlateObject {
+    public static let __slate_managedObjectType: NSManagedObject.Type = CoreDataAuthor.self
 }
 
-extension SlateAuthor: SlateManagedObjectRelating {
+extension SlateAuthor: @retroactive SlateManagedObjectRelating {
     public typealias ManagedObjectType = CoreDataAuthor
 }
 

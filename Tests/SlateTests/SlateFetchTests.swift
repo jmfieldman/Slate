@@ -164,7 +164,8 @@ struct SlateFetchTests {
 
             let newParent2 = CoreDataParent1(context: moc)
             newParent2.id = "2"
-            newParent2.child1_has = false
+            newParent2.child1_has = true
+            newParent2.child1_optString = "hi"
             newParent2.child2_bool = false
             newParent2.child2_int64scalar = 2
 
@@ -185,6 +186,15 @@ struct SlateFetchTests {
         }
 
         #expect(parents.map(\.child2.int64scalar) == [1, 3])
+
+        slate.querySync { context in
+            parents = try context[SlateParent1.self]
+                .where(\.child1?.optString, .equals("hi"))
+                .sort(\.child2.int64scalar, ascending: true)
+                .fetch()
+        }
+
+        #expect(parents.map(\.id) == ["2"])
     }
 
     @Test func QueryFilterPredicateNullability() async {

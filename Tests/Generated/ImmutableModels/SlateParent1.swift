@@ -27,6 +27,20 @@ public final class SlateParent1: Sendable {
 
     public struct Relationships {}
 
+    public static func keypathToAttribute(_ keypath: PartialKeyPath<SlateParent1>) -> String {
+        switch keypath {
+        case \SlateParent1.id: "id"
+        case \SlateParent1.child1?.optString: "child1_optString"
+        case \SlateParent1.child1?.propInt64scalar: "child1_propInt64scalar"
+        case \SlateParent1.child1?.string: "child1_string"
+        case \SlateParent1.child2.bool: "child2_bool"
+        case \SlateParent1.child2.int64scalar: "child2_int64scalar"
+        case \SlateParent1.child2.optBool: "child2_optBool"
+        case \SlateParent1.child2.optString: "child2_optString"
+        default: fatalError("Unsupported SlateParent1 key path")
+        }
+    }
+
     /**
       Each immutable data model object should have an associated SlateID (in the
       core data case, the NSManagedObjectID.  This is a cross-mutation identifier

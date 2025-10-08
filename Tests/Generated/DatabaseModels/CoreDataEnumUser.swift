@@ -31,7 +31,28 @@ public final class CoreDataEnumUser: NSManagedObject, SlateEnumUser.ManagedPrope
     @NSManaged public var stringEnumNonOptStringYesDef: String?
     @NSManaged public var stringEnumOptStringNoDef: String?
     @NSManaged public var stringEnumOptStringYesDef: String?
+
+    public static func keypathToAttribute(_ keypath: PartialKeyPath<CoreDataEnumUser>) -> String {
+        switch keypath {
+        case \CoreDataEnumUser.id: "id"
+        case \CoreDataEnumUser.intEnumNonOptIntNoDef: "intEnumNonOptIntNoDef"
+        case \CoreDataEnumUser.intEnumNonOptIntYesDef: "intEnumNonOptIntYesDef"
+        case \CoreDataEnumUser.intEnumNonOptNSNumberNoDef: "intEnumNonOptNSNumberNoDef"
+        case \CoreDataEnumUser.intEnumNonOptNSNumberYesDef: "intEnumNonOptNSNumberYesDef"
+        case \CoreDataEnumUser.intEnumOptNSNumberNoDef: "intEnumOptNSNumberNoDef"
+        case \CoreDataEnumUser.intEnumOptNSNumberYesDef: "intEnumOptNSNumberYesDef"
+        case \CoreDataEnumUser.stringEnumNonOptStringNoDef: "stringEnumNonOptStringNoDef"
+        case \CoreDataEnumUser.stringEnumNonOptStringYesDef: "stringEnumNonOptStringYesDef"
+        case \CoreDataEnumUser.stringEnumOptStringNoDef: "stringEnumOptStringNoDef"
+        case \CoreDataEnumUser.stringEnumOptStringYesDef: "stringEnumOptStringYesDef"
+        default: fatalError("Unsupported CoreDataEnumUser key path")
+        }
+    }
 }
+
+extension CoreDataEnumUser: SlateKeypathAttributeProviding {}
+
+extension SlateEnumUser: SlateKeypathAttributeProviding {}
 
 extension CoreDataEnumUser: SlateObjectConvertible {
     /**
@@ -42,11 +63,11 @@ extension CoreDataEnumUser: SlateObjectConvertible {
     }
 }
 
-extension SlateEnumUser: SlateObject {
-    public static var __slate_managedObjectType: NSManagedObject.Type = CoreDataEnumUser.self
+extension SlateEnumUser: @retroactive SlateObject {
+    public static let __slate_managedObjectType: NSManagedObject.Type = CoreDataEnumUser.self
 }
 
-extension SlateEnumUser: SlateManagedObjectRelating {
+extension SlateEnumUser: @retroactive SlateManagedObjectRelating {
     public typealias ManagedObjectType = CoreDataEnumUser
 }
 

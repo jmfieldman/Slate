@@ -22,6 +22,16 @@ public final class SlateAuthor: Sendable {
         public static let books = "books"
     }
 
+    public static func keypathToAttribute(_ keypath: PartialKeyPath<SlateAuthor>) -> String {
+        switch keypath {
+        case \SlateAuthor.age: "age"
+
+        case \SlateAuthor.name: "name"
+
+        default: fatalError("Unsupported SlateAuthor key path")
+        }
+    }
+
     /**
       Each immutable data model object should have an associated SlateID (in the
       core data case, the NSManagedObjectID.  This is a cross-mutation identifier

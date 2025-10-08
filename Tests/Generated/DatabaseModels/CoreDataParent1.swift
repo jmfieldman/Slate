@@ -31,7 +31,25 @@ public final class CoreDataParent1: NSManagedObject, SlateParent1.ManagedPropert
     @NSManaged public var child2_int64scalar: Int64
     @NSManaged public var child2_optBool: NSNumber?
     @NSManaged public var child2_optString: String?
+
+    public static func keypathToAttribute(_ keypath: PartialKeyPath<CoreDataParent1>) -> String {
+        switch keypath {
+        case \CoreDataParent1.id: "id"
+        case \CoreDataParent1.child1_optString: "child1_optString"
+        case \CoreDataParent1.child1_propInt64scalar: "child1_propInt64scalar"
+        case \CoreDataParent1.child1_string: "child1_string"
+        case \CoreDataParent1.child2_bool: "child2_bool"
+        case \CoreDataParent1.child2_int64scalar: "child2_int64scalar"
+        case \CoreDataParent1.child2_optBool: "child2_optBool"
+        case \CoreDataParent1.child2_optString: "child2_optString"
+        default: fatalError("Unsupported CoreDataParent1 key path")
+        }
+    }
 }
+
+extension CoreDataParent1: SlateKeypathAttributeProviding {}
+
+extension SlateParent1: SlateKeypathAttributeProviding {}
 
 extension CoreDataParent1: SlateObjectConvertible {
     /**
@@ -42,11 +60,11 @@ extension CoreDataParent1: SlateObjectConvertible {
     }
 }
 
-extension SlateParent1: SlateObject {
-    public static var __slate_managedObjectType: NSManagedObject.Type = CoreDataParent1.self
+extension SlateParent1: @retroactive SlateObject {
+    public static let __slate_managedObjectType: NSManagedObject.Type = CoreDataParent1.self
 }
 
-extension SlateParent1: SlateManagedObjectRelating {
+extension SlateParent1: @retroactive SlateManagedObjectRelating {
     public typealias ManagedObjectType = CoreDataParent1
 }
 
