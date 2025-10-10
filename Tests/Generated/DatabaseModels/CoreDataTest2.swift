@@ -35,7 +35,7 @@ public final class CoreDataTest2: NSManagedObject, SlateTest2.ManagedPropertyPro
 
 extension CoreDataTest2: SlateKeypathAttributeProviding {}
 
-extension SlateTest2: SlateKeypathAttributeProviding {}
+extension SlateTest2: @retroactive SlateKeypathAttributeProviding {}
 
 extension CoreDataTest2: SlateObjectConvertible {
     /**

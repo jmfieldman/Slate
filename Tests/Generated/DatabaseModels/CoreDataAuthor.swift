@@ -38,7 +38,7 @@ public final class CoreDataAuthor: NSManagedObject, SlateAuthor.ManagedPropertyP
 
 extension CoreDataAuthor: SlateKeypathAttributeProviding {}
 
-extension SlateAuthor: SlateKeypathAttributeProviding {}
+extension SlateAuthor: @retroactive SlateKeypathAttributeProviding {}
 
 extension CoreDataAuthor: SlateObjectConvertible {
     /**

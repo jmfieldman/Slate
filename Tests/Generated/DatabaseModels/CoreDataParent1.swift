@@ -49,7 +49,7 @@ public final class CoreDataParent1: NSManagedObject, SlateParent1.ManagedPropert
 
 extension CoreDataParent1: SlateKeypathAttributeProviding {}
 
-extension SlateParent1: SlateKeypathAttributeProviding {}
+extension SlateParent1: @retroactive SlateKeypathAttributeProviding {}
 
 extension CoreDataParent1: SlateObjectConvertible {
     /**

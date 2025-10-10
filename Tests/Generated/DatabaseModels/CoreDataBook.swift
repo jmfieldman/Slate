@@ -40,7 +40,7 @@ public final class CoreDataBook: NSManagedObject, SlateBook.ManagedPropertyProvi
 
 extension CoreDataBook: SlateKeypathAttributeProviding {}
 
-extension SlateBook: SlateKeypathAttributeProviding {}
+extension SlateBook: @retroactive SlateKeypathAttributeProviding {}
 
 extension CoreDataBook: SlateObjectConvertible {
     /**

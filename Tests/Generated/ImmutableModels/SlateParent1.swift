@@ -43,7 +43,7 @@ public final class SlateParent1: Sendable {
 
     /**
       Each immutable data model object should have an associated SlateID (in the
-      core data case, the NSManagedObjectID.  This is a cross-mutation identifier
+      core data case, the NSManagedObjectID. This is a cross-mutation identifier
       for the object.
      */
     public let slateID: NSManagedObjectID
@@ -73,7 +73,7 @@ public final class SlateParent1: Sendable {
     /**
      Allow the creation of a Slate-exposed class/struct with all of its parameters.
      Note that this is internal -- this is for use only in unit tests (using the
-     @testable import directive).  You should never create values with this
+     @testable import directive). You should never create values with this
      constructor in normal code.
      */
     init(
@@ -115,7 +115,7 @@ public final class SlateParent1: Sendable {
         /**
           Allow the creation of a Slate-exposed class/struct with all of its parameters.
           Note that this is internal -- this is for use only in unit tests (using the
-          @testable import directive).  You should never create values with this
+          @testable import directive). You should never create values with this
           constructor in normal code.
          */
         init(
@@ -153,7 +153,7 @@ public final class SlateParent1: Sendable {
         /**
           Allow the creation of a Slate-exposed class/struct with all of its parameters.
           Note that this is internal -- this is for use only in unit tests (using the
-          @testable import directive).  You should never create values with this
+          @testable import directive). You should never create values with this
           constructor in normal code.
          */
         init(

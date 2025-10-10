@@ -52,7 +52,7 @@ public final class CoreDataEnumUser: NSManagedObject, SlateEnumUser.ManagedPrope
 
 extension CoreDataEnumUser: SlateKeypathAttributeProviding {}
 
-extension SlateEnumUser: SlateKeypathAttributeProviding {}
+extension SlateEnumUser: @retroactive SlateKeypathAttributeProviding {}
 
 extension CoreDataEnumUser: SlateObjectConvertible {
     /**
