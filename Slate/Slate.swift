@@ -1964,30 +1964,22 @@ public struct SlatePredicateOperator<T> {
     let `operator`: Operator
     let value: Any
 
-    @_disfavoredOverload
     public static func equals(
         _ value: T
     ) -> SlatePredicateOperator<T> where T: Equatable {
-        SlatePredicateOperator(operator: .equals, value: value)
-    }
-
-    @_disfavoredOverload
-    public static func notEquals(
-        _ value: T
-    ) -> SlatePredicateOperator<T> where T: Equatable {
-        SlatePredicateOperator(operator: .notEquals, value: value)
-    }
-
-    public static func equals(
-        _ value: T
-    ) -> SlatePredicateOperator<T> where T: Equatable, T: RawRepresentable {
-        SlatePredicateOperator(operator: .equals, value: value.rawValue)
+        if let rawValue = (value as? any RawRepresentable)?.rawValue {
+            return SlatePredicateOperator(operator: .equals, value: rawValue)
+        }
+        return SlatePredicateOperator(operator: .equals, value: value)
     }
 
     public static func notEquals(
         _ value: T
-    ) -> SlatePredicateOperator<T> where T: Equatable, T: RawRepresentable {
-        SlatePredicateOperator(operator: .notEquals, value: value.rawValue)
+    ) -> SlatePredicateOperator<T> where T: Equatable {
+        if let rawValue = (value as? any RawRepresentable)?.rawValue {
+            return SlatePredicateOperator(operator: .notEquals, value: rawValue)
+        }
+        return SlatePredicateOperator(operator: .notEquals, value: value)
     }
 
     public static func lessThan(
