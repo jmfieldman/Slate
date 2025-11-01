@@ -2021,13 +2021,13 @@ public struct SlatePredicateOperator<T> {
     }
 
     public static func `in`(
-        _ value: any Collection<T>
+        _ value: some Collection<T>
     ) -> SlatePredicateOperator<T> where T: Equatable {
         SlatePredicateOperator(operator: .in, value: value)
     }
 
     public static func notIn(
-        _ value: any Collection<T>
+        _ value: some Collection<T>
     ) -> SlatePredicateOperator<T> where T: Equatable {
         SlatePredicateOperator(operator: .notIn, value: value)
     }
