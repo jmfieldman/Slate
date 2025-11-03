@@ -1006,16 +1006,16 @@ public extension Slate {
                 ).eraseToAnyPublisher()
             }
 
-            // This is the passthrough subject that will propagate to subscribers
-            let passthroughSubject = PassthroughSubject<StreamUpdate<Value>, SlateTransactionError>()
+            // This is the subject that will propagate to subscribers
+            let subject = CurrentValueSubject<StreamUpdate<Value>?, SlateTransactionError>(nil)
 
             // This is the results controller that we will extract from our query
             var resultsController: NSFetchedResultsController<Value.ManagedObjectType>?
 
-            let delegate = SlateFetchedResultsControllerBlockDelegate { [weak self, weak passthroughSubject] inserted, updated, deleted, moved in
+            let delegate = SlateFetchedResultsControllerBlockDelegate { [weak self, weak subject] inserted, updated, deleted, moved in
                 guard
                     let self,
-                    let passthroughSubject,
+                    let subject,
                     let resultsController,
                     let fetchedObjects = resultsController.fetchedObjects
                 else {
@@ -1037,9 +1037,9 @@ public extension Slate {
                         initialUpdate: false
                     )
 
-                    passthroughSubject.send(streamUpdate)
+                    subject.send(streamUpdate)
                 } catch {
-                    passthroughSubject.send(
+                    subject.send(
                         completion: .failure(
                             (error as? SlateTransactionError).flatMap { $0 } ?? .underlying(error)
                         )
@@ -1049,7 +1049,7 @@ public extension Slate {
 
             // Bind the delegate to the lifetime of our subject
             objc_setAssociatedObject(
-                passthroughSubject,
+                subject,
                 &kStreamDelegateAssociationKey,
                 delegate,
                 .OBJC_ASSOCIATION_RETAIN_NONATOMIC
@@ -1074,7 +1074,7 @@ public extension Slate {
 
                 // Bind the FRC to the passthrough subject
                 objc_setAssociatedObject(
-                    passthroughSubject,
+                    subject,
                     &kStreamFRCAssociationKey,
                     fetchResultsController,
                     .OBJC_ASSOCIATION_RETAIN_NONATOMIC
@@ -1106,16 +1106,16 @@ public extension Slate {
                     initialUpdate: true
                 )
 
-                passthroughSubject.send(streamUpdate)
+                subject.send(streamUpdate)
             }.catch { error in
-                passthroughSubject.send(
+                subject.send(
                     completion: .failure(
                         (error as? SlateTransactionError).flatMap { $0 } ?? .underlying(error)
                     )
                 )
             }
 
-            return passthroughSubject.eraseToAnyPublisher()
+            return subject.compactMap(\.self).eraseToAnyPublisher()
         }.eraseToAnyPublisher()
     }
 }
