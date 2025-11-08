@@ -20,6 +20,7 @@ public enum CoreDataSwiftGenerator {
         fileTransform: String,
         castInt: Bool,
         internalModels: Bool,
+        noRetroactive: Bool,
         publicParamInit: Bool,
         outputPath: String,
         entityPath: String,
@@ -70,7 +71,7 @@ public enum CoreDataSwiftGenerator {
                 "RELATIONS": relations,
                 "KEYPATHCASES": keypathCases,
                 "CDPUBLICMODELS": internalModels ? "" : "public ",
-                "RETROACTIVE": internalModels ? "" : "@retroactive ",
+                "RETROACTIVE": (noRetroactive || internalModels) ? "" : "@retroactive ",
             ])
 
             let filepath = (entityPath as NSString).appendingPathComponent(filename)

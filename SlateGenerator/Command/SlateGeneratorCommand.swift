@@ -48,6 +48,9 @@ struct GenCoreData: ParsableCommand {
     @Flag(name: .long, help: "If the slate-object parameterized initializer should be public")
     var publicParamInit: Bool = false
 
+    @Flag(name: .long, help: "Set this flag to remove the @retroactive keyword from internal db models")
+    var noRetroactive: Bool = false
+
     @Option(name: .long, help: "Transform for generated Slate object names; %@ is replaced by the data object name.")
     var nameTransform: String = kStringArgVar
 
@@ -109,6 +112,7 @@ struct GenCoreData: ParsableCommand {
             fileTransform: fileTransform,
             castInt: !noIntCast,
             internalModels: internalModels,
+            noRetroactive: noRetroactive,
             publicParamInit: publicParamInit,
             outputPath: outputSlateObjectPath,
             entityPath: outputCoreDataEntityPath,
