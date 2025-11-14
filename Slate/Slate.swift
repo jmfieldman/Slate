@@ -620,7 +620,7 @@ public final class Slate: @unchecked Sendable {
      listener blocks are called synchronously after the call to `mutateSync` and
      will also act as barriers to futher read/write operations.
      */
-    @discardableResult public func mutateSync(block: (NSManagedObjectContext) throws -> Void) -> _SlateCatchBlock {
+    @discardableResult public func mutateSync(block: (SlateMutateContext) throws -> Void) -> _SlateCatchBlock {
         let catchBlock = _SlateCatchBlock(slate: self)
 
         accessQueue.sync(flags: .barrier) {
@@ -633,7 +633,7 @@ public final class Slate: @unchecked Sendable {
             // TODO: Protect against saving or other invalid MOC operations?
             masterContext.performAndWait {
                 do {
-                    try block(masterContext)
+                    try block(SlateMutateContext(managedObjectContext: masterContext))
                 } catch {
                     catchBlock.error = error
                     masterContext.reset()
@@ -684,7 +684,7 @@ public final class Slate: @unchecked Sendable {
      the mutation results WITHIN THE MOC'S `performAndWait` context.  This means that
      listener blocks will also act as barriers to futher read/write operations.
      */
-    @discardableResult public func mutateAsync(block: @escaping (NSManagedObjectContext) throws -> Void) -> _SlateCatchBlock {
+    @discardableResult public func mutateAsync(block: @escaping (SlateMutateContext) throws -> Void) -> _SlateCatchBlock {
         let catchBlock = _SlateCatchBlock(slate: self)
 
         accessQueue.async(flags: .barrier) {
@@ -697,7 +697,7 @@ public final class Slate: @unchecked Sendable {
             // TODO: Protect against saving or other invalid MOC operations?
             masterContext.performAndWait {
                 do {
-                    try block(masterContext)
+                    try block(SlateMutateContext(managedObjectContext: masterContext))
                 } catch {
                     catchBlock.error = error
                     masterContext.reset()
@@ -748,7 +748,7 @@ public final class Slate: @unchecked Sendable {
      queue, that it cannot be async itself.
      */
     @discardableResult public func mutate<Output: Sendable>(
-        block: @escaping (NSManagedObjectContext) throws -> Output
+        block: @escaping (SlateMutateContext) throws -> Output
     ) async throws(SlateTransactionError) -> Output {
         do {
             return try await withCheckedThrowingContinuation { continuation in
@@ -766,7 +766,7 @@ public final class Slate: @unchecked Sendable {
                     // TODO: Protect against saving or other invalid MOC operations?
                     masterContext.performAndWait {
                         do {
-                            result = try .success(block(masterContext))
+                            result = try .success(block(SlateMutateContext(managedObjectContext: masterContext)))
                         } catch {
                             result = .failure(error)
                             masterContext.reset()
@@ -1066,7 +1066,7 @@ public extension Slate {
 
                 // Make an artificial read-context from this MOC, pass it through
                 // to get the final request, and then create a controller for it.
-                let queryContext = SlateQueryContext(slate: self, managedObjectContext: moc)
+                let queryContext = SlateQueryContext(slate: self, managedObjectContext: moc.managedObjectContext)
                 let fetchRequest = queryFilter(queryContext.query(Value.self))
                 let fetchResultsController = fetchRequest.fetchedResultsController
                 fetchResultsController.delegate = delegate
@@ -1269,6 +1269,42 @@ public final class SlateQueryContext: @unchecked Sendable {
      */
     public subscript<SO: SlateObject>(_ slateObject: SO) -> SlateRelationshipResolver<SO> {
         SlateRelationshipResolver<SO>(context: self, object: slateObject)
+    }
+}
+
+// MARK: - SlateMutateContext
+
+/// Carries the NSManagedObjectContext for slate mutations
+public final class SlateMutateContext: @unchecked Sendable {
+    fileprivate let managedObjectContext: NSManagedObjectContext
+
+    fileprivate init(managedObjectContext: NSManagedObjectContext) {
+        self.managedObjectContext = managedObjectContext
+    }
+
+    /**
+     Create a new instance of an NSManagedObject inside of the mutate context.
+     */
+    public func create<MO: NSManagedObject>(_ objectClass: MO.Type) -> MO {
+        objectClass.init(context: managedObjectContext)
+    }
+
+    /**
+     Begin an object query, e.g. to query for ImmObject:
+
+     context.query(ImmObject.self).filter(...).fetch()
+     */
+    public func query<MO: NSManagedObject>(_ objectClass: MO.Type) -> SlateMOCFetchRequest<MO> {
+        SlateMOCFetchRequest<MO>(moc: managedObjectContext)
+    }
+
+    /**
+     A subscript shortcut to begin an object query, e.g. to query for ImmObject:
+
+     context[ImmObject.self].filter(...).fetch()
+     */
+    public subscript<MO: NSManagedObject>(_ objectClass: MO.Type) -> SlateMOCFetchRequest<MO> {
+        SlateMOCFetchRequest<MO>(moc: managedObjectContext)
     }
 }
 
@@ -1893,26 +1929,6 @@ public final class SlateMOCFetchRequest<MO: NSManagedObject>: @unchecked Sendabl
             NSManagedObjectContext.mergeChanges(fromRemoteContextSave: changes, into: [moc])
         }
         return objectIDArray?.count ?? 0
-    }
-}
-
-public extension NSManagedObjectContext {
-    /**
-     Begin an object query, e.g. to query for ImmObject:
-
-     context.query(ImmObject.self).filter(...).fetch()
-     */
-    func query<MO: NSManagedObject>(_ objectClass: MO.Type) -> SlateMOCFetchRequest<MO> {
-        SlateMOCFetchRequest<MO>(moc: self)
-    }
-
-    /**
-     A subscript shortcut to begin an object query, e.g. to query for ImmObject:
-
-     context[ImmObject.self].filter(...).fetch()
-     */
-    subscript<MO: NSManagedObject>(_ objectClass: MO.Type) -> SlateMOCFetchRequest<MO> {
-        SlateMOCFetchRequest<MO>(moc: self)
     }
 }
 

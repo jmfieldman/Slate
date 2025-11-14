@@ -26,9 +26,9 @@ struct SlateEnumTests {
             mom: kMomSlateTests
         )
 
-        slate.mutateSync { moc in
+        slate.mutateSync { context in
             // Test normal assignment
-            let newEnumUser = CoreDataEnumUser(context: moc)
+            let newEnumUser = context.create(CoreDataEnumUser.self)
             newEnumUser.id = 1
             newEnumUser.intEnumNonOptIntNoDef = 1
             newEnumUser.intEnumNonOptIntYesDef = 1
@@ -42,11 +42,11 @@ struct SlateEnumTests {
             newEnumUser.stringEnumOptStringYesDef = "world"
 
             // Test what happens when there are zero values assigned
-            let newEnumUser2 = CoreDataEnumUser(context: moc)
+            let newEnumUser2 = context.create(CoreDataEnumUser.self)
             newEnumUser2.id = 2
 
             // Test what happens when there are completely incorrect assignments
-            let newEnumUser3 = CoreDataEnumUser(context: moc)
+            let newEnumUser3 = context.create(CoreDataEnumUser.self)
             newEnumUser3.id = 3
             newEnumUser3.intEnumNonOptIntNoDef = 10
             newEnumUser3.intEnumNonOptIntYesDef = 10

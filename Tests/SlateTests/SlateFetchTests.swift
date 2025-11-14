@@ -19,14 +19,14 @@ struct SlateFetchTests {
             mom: kMomSlateTests
         )
 
-        slate.mutateSync { moc in
-            let newAuthor = CoreDataAuthor(context: moc)
+        slate.mutateSync { context in
+            let newAuthor = context.create(CoreDataAuthor.self)
             newAuthor.name = "TestName1"
 
-            let newAuthor2 = CoreDataAuthor(context: moc)
+            let newAuthor2 = context.create(CoreDataAuthor.self)
             newAuthor2.name = "TestName3"
 
-            let newAuthor3 = CoreDataAuthor(context: moc)
+            let newAuthor3 = context.create(CoreDataAuthor.self)
             newAuthor3.name = "TestName2"
         }
 
@@ -51,24 +51,24 @@ struct SlateFetchTests {
             mom: kMomSlateTests
         )
 
-        slate.mutateSync { moc in
-            let newAuthor = CoreDataAuthor(context: moc)
+        slate.mutateSync { context in
+            let newAuthor = context.create(CoreDataAuthor.self)
             newAuthor.name = "TestName1"
 
-            let newAuthor2 = CoreDataAuthor(context: moc)
+            let newAuthor2 = context.create(CoreDataAuthor.self)
             newAuthor2.name = "TestName3"
 
-            let newAuthor3 = CoreDataAuthor(context: moc)
+            let newAuthor3 = context.create(CoreDataAuthor.self)
             newAuthor3.name = "TestName2"
 
             // Sorting inside of a mutable block should know about all
             // objects instantiated inside of this block already.
-            let authors = try! moc[CoreDataAuthor.self].sort(\.name).fetch()
+            let authors = try! context[CoreDataAuthor.self].sort(\.name).fetch()
             #expect(authors.map(\.name) == ["TestName1", "TestName2", "TestName3"])
         }
 
-        slate.mutateSync { moc in
-            let authors = try! moc[CoreDataAuthor.self].sort(SlateAuthor.Attributes.name).fetch()
+        slate.mutateSync { context in
+            let authors = try! context[CoreDataAuthor.self].sort(SlateAuthor.Attributes.name).fetch()
             #expect(authors.map(\.name) == ["TestName1", "TestName2", "TestName3"])
         }
     }
@@ -79,14 +79,14 @@ struct SlateFetchTests {
             mom: kMomSlateTests
         )
 
-        slate.mutateSync { moc in
-            let newAuthor = CoreDataAuthor(context: moc)
+        slate.mutateSync { context in
+            let newAuthor = context.create(CoreDataAuthor.self)
             newAuthor.name = "TestName1"
 
-            let newAuthor2 = CoreDataAuthor(context: moc)
+            let newAuthor2 = context.create(CoreDataAuthor.self)
             newAuthor2.name = "TestName3"
 
-            let newAuthor3 = CoreDataAuthor(context: moc)
+            let newAuthor3 = context.create(CoreDataAuthor.self)
             newAuthor3.name = "TestName2"
         }
 
@@ -117,14 +117,14 @@ struct SlateFetchTests {
             mom: kMomSlateTests
         )
 
-        slate.mutateSync { moc in
-            let newAuthor = CoreDataAuthor(context: moc)
+        slate.mutateSync { context in
+            let newAuthor = context.create(CoreDataAuthor.self)
             newAuthor.name = "TestName1"
 
-            let newAuthor2 = CoreDataAuthor(context: moc)
+            let newAuthor2 = context.create(CoreDataAuthor.self)
             newAuthor2.name = "TestName3"
 
-            let newAuthor3 = CoreDataAuthor(context: moc)
+            let newAuthor3 = context.create(CoreDataAuthor.self)
             newAuthor3.name = "TestName2"
         }
 
@@ -155,21 +155,21 @@ struct SlateFetchTests {
             mom: kMomSlateTests
         )
 
-        slate.mutateSync { moc in
-            let newParent = CoreDataParent1(context: moc)
+        slate.mutateSync { context in
+            let newParent = context.create(CoreDataParent1.self)
             newParent.id = "1"
             newParent.child1_has = false
             newParent.child2_bool = true
             newParent.child2_int64scalar = 3
 
-            let newParent2 = CoreDataParent1(context: moc)
+            let newParent2 = context.create(CoreDataParent1.self)
             newParent2.id = "2"
             newParent2.child1_has = true
             newParent2.child1_optString = "hi"
             newParent2.child2_bool = false
             newParent2.child2_int64scalar = 2
 
-            let newParent3 = CoreDataParent1(context: moc)
+            let newParent3 = context.create(CoreDataParent1.self)
             newParent3.id = "3"
             newParent3.child1_has = false
             newParent3.child2_bool = true
@@ -203,19 +203,19 @@ struct SlateFetchTests {
             mom: kMomSlateTests
         )
 
-        slate.mutateSync { moc in
-            let newAuthor = CoreDataAuthor(context: moc)
+        slate.mutateSync { context in
+            let newAuthor = context.create(CoreDataAuthor.self)
             newAuthor.name = "TestName1"
 
-            let newBook = CoreDataBook(context: moc)
+            let newBook = context.create(CoreDataBook.self)
             newBook.author = newAuthor
             newBook.title = "TestBook1"
 
-            let newBook2 = CoreDataBook(context: moc)
+            let newBook2 = context.create(CoreDataBook.self)
             newBook2.author = newAuthor
             newBook2.title = "TestBook2"
 
-            let newBook3 = CoreDataBook(context: moc)
+            let newBook3 = context.create(CoreDataBook.self)
             newBook3.author = newAuthor
             newBook3.title = "TestBook3"
             newBook3.subtitle = "Subtitle3"
@@ -266,20 +266,20 @@ struct SlateFetchTests {
             mom: kMomSlateTests
         )
 
-        slate.mutateSync { moc in
-            let newAuthor = CoreDataAuthor(context: moc)
+        slate.mutateSync { context in
+            let newAuthor = context.create(CoreDataAuthor.self)
             newAuthor.name = "TestName1"
             newAuthor.age = 10
 
-            let newAuthor2 = CoreDataAuthor(context: moc)
+            let newAuthor2 = context.create(CoreDataAuthor.self)
             newAuthor2.name = "TestName2"
             newAuthor2.age = 20
 
-            let newAuthor3 = CoreDataAuthor(context: moc)
+            let newAuthor3 = context.create(CoreDataAuthor.self)
             newAuthor3.name = "TestName3"
             newAuthor3.age = 30
 
-            let newAuthor4 = CoreDataAuthor(context: moc)
+            let newAuthor4 = context.create(CoreDataAuthor.self)
             newAuthor4.name = "TestName4"
             newAuthor4.age = 40
         }
@@ -327,20 +327,20 @@ struct SlateFetchTests {
             mom: kMomSlateTests
         )
 
-        slate.mutateSync { moc in
-            let newAuthor = CoreDataAuthor(context: moc)
+        slate.mutateSync { context in
+            let newAuthor = context.create(CoreDataAuthor.self)
             newAuthor.name = "TestName1"
             newAuthor.age = 10
 
-            let newAuthor2 = CoreDataAuthor(context: moc)
+            let newAuthor2 = context.create(CoreDataAuthor.self)
             newAuthor2.name = "TestName2"
             newAuthor2.age = 20
 
-            let newAuthor3 = CoreDataAuthor(context: moc)
+            let newAuthor3 = context.create(CoreDataAuthor.self)
             newAuthor3.name = "TestName3"
             newAuthor3.age = 30
 
-            let newAuthor4 = CoreDataAuthor(context: moc)
+            let newAuthor4 = context.create(CoreDataAuthor.self)
             newAuthor4.name = "TestName4"
             newAuthor4.age = 40
         }
@@ -374,20 +374,20 @@ struct SlateFetchTests {
             mom: kMomSlateTests
         )
 
-        slate.mutateSync { moc in
-            let newAuthor = CoreDataAuthor(context: moc)
+        slate.mutateSync { context in
+            let newAuthor = context.create(CoreDataAuthor.self)
             newAuthor.name = "TestName1"
             newAuthor.age = 10
 
-            let newAuthor2 = CoreDataAuthor(context: moc)
+            let newAuthor2 = context.create(CoreDataAuthor.self)
             newAuthor2.name = "TestName2"
             newAuthor2.age = 20
 
-            let newAuthor3 = CoreDataAuthor(context: moc)
+            let newAuthor3 = context.create(CoreDataAuthor.self)
             newAuthor3.name = "TestName3"
             newAuthor3.age = 30
 
-            let newAuthor4 = CoreDataAuthor(context: moc)
+            let newAuthor4 = context.create(CoreDataAuthor.self)
             newAuthor4.name = "TestName4"
             newAuthor4.age = 40
         }
@@ -421,19 +421,19 @@ struct SlateFetchTests {
             mom: kMomSlateTests
         )
 
-        slate.mutateSync { moc in
-            let newAuthor = CoreDataAuthor(context: moc)
+        slate.mutateSync { context in
+            let newAuthor = context.create(CoreDataAuthor.self)
             newAuthor.name = "TestName1"
 
-            let newBook = CoreDataBook(context: moc)
+            let newBook = context.create(CoreDataBook.self)
             newBook.author = newAuthor
             newBook.title = "TestBook1"
 
-            let newBook2 = CoreDataBook(context: moc)
+            let newBook2 = context.create(CoreDataBook.self)
             newBook2.author = newAuthor
             newBook2.title = "TestBook2"
 
-            let newBook3 = CoreDataBook(context: moc)
+            let newBook3 = context.create(CoreDataBook.self)
             newBook3.author = newAuthor
             newBook3.title = "TestBook3"
             newBook3.subtitle = "Subtitle3"
@@ -477,17 +477,17 @@ struct SlateFetchTests {
 
         var executed = false
 
-        slate.mutateSync { moc in
-            let newAuthor = CoreDataAuthor(context: moc)
+        slate.mutateSync { context in
+            let newAuthor = context.create(CoreDataAuthor.self)
             newAuthor.name = "TestName1"
 
-            let newAuthor2 = CoreDataAuthor(context: moc)
+            let newAuthor2 = context.create(CoreDataAuthor.self)
             newAuthor2.name = "TestName3"
 
-            let newAuthor3 = CoreDataAuthor(context: moc)
+            let newAuthor3 = context.create(CoreDataAuthor.self)
             newAuthor3.name = "TestName2"
 
-            let authors = try! moc[CoreDataAuthor.self]
+            let authors = try! context[CoreDataAuthor.self]
                 .filter(where: \.name, .equals("TestName1"))
                 .sort(\.name)
                 .fetch()

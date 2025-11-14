@@ -26,11 +26,11 @@ struct SlateStreamTests {
             mom: kMomSlateTests
         )
 
-        slate.mutateSync { moc in
-            let newAuthor = CoreDataAuthor(context: moc)
+        slate.mutateSync { context in
+            let newAuthor = context.create(CoreDataAuthor.self)
             newAuthor.name = "TestNameAAA"
 
-            let newAuthor2 = CoreDataAuthor(context: moc)
+            let newAuthor2 = context.create(CoreDataAuthor.self)
             newAuthor2.name = "TestNameCCC"
         }
 
@@ -52,8 +52,8 @@ struct SlateStreamTests {
 
             cancellables.insert(cancellable)
 
-            slate.mutateAsync { moc in
-                let newAuthor = CoreDataAuthor(context: moc)
+            slate.mutateAsync { context in
+                let newAuthor = context.create(CoreDataAuthor.self)
                 newAuthor.name = "TestNameBBB"
             }
         }
@@ -89,11 +89,11 @@ struct SlateStreamTests {
             mom: kMomSlateTests
         )
 
-        slate.mutateSync { moc in
-            let newAuthor = CoreDataAuthor(context: moc)
+        slate.mutateSync { context in
+            let newAuthor = context.create(CoreDataAuthor.self)
             newAuthor.name = "TestNameAAA"
 
-            let newAuthor2 = CoreDataAuthor(context: moc)
+            let newAuthor2 = context.create(CoreDataAuthor.self)
             newAuthor2.name = "TestNameCCC"
         }
 
@@ -119,8 +119,8 @@ struct SlateStreamTests {
 
             Thread.sleep(forTimeInterval: 0.1)
 
-            slate.mutateAsync { moc in
-                let newAuthor = CoreDataAuthor(context: moc)
+            slate.mutateAsync { context in
+                let newAuthor = context.create(CoreDataAuthor.self)
                 newAuthor.name = "TestNameBBB"
             }
         }
@@ -128,8 +128,8 @@ struct SlateStreamTests {
         cancellables = []
 
         await withCheckedContinuation { continuation in
-            slate.mutateAsync { moc in
-                let newAuthor = CoreDataAuthor(context: moc)
+            slate.mutateAsync { context in
+                let newAuthor = context.create(CoreDataAuthor.self)
                 newAuthor.name = "TestNameDDD"
             }
 

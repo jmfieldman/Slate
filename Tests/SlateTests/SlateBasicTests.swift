@@ -20,8 +20,8 @@ struct SlateBasicTests {
         )
 
         let inserted: Bool = await withCheckedContinuation { continuation in
-            slate.mutateAsync { moc in
-                let newAuthor = CoreDataAuthor(context: moc)
+            slate.mutateAsync { context in
+                let newAuthor = context.create(CoreDataAuthor.self)
                 newAuthor.name = "TestName"
 
                 continuation.resume(returning: true)
@@ -46,8 +46,8 @@ struct SlateBasicTests {
             mom: kMomSlateTests
         )
 
-        slate.mutateSync { moc in
-            let newAuthor = CoreDataAuthor(context: moc)
+        slate.mutateSync { context in
+            let newAuthor = context.create(CoreDataAuthor.self)
             newAuthor.name = "TestName"
         }
 
@@ -67,8 +67,8 @@ struct SlateBasicTests {
             mom: kMomSlateTests
         )
 
-        slate.mutateSync { moc in
-            let newAuthor = CoreDataAuthor(context: moc)
+        slate.mutateSync { context in
+            let newAuthor = context.create(CoreDataAuthor.self)
             newAuthor.name = "TestName"
         }
 
@@ -89,8 +89,8 @@ struct SlateBasicTests {
         )
 
         let inserted: Bool = await withCheckedContinuation { continuation in
-            slate.mutateAsync { moc in
-                let newAuthor = CoreDataAuthor(context: moc)
+            slate.mutateAsync { context in
+                let newAuthor = context.create(CoreDataAuthor.self)
                 newAuthor.name = "TestName"
 
                 continuation.resume(returning: true)
@@ -112,15 +112,15 @@ struct SlateBasicTests {
             mom: kMomSlateTests
         )
 
-        try await slate.mutate { moc in
-            let newAuthor = CoreDataAuthor(context: moc)
+        try await slate.mutate { context in
+            let newAuthor = context.create(CoreDataAuthor.self)
             newAuthor.name = "TestName"
         }
 
-        let checkResult = try await slate.mutate { moc in
-            let author = try moc[CoreDataAuthor.self].fetchOne()!
+        let checkResult = try await slate.mutate { context in
+            let author = try context[CoreDataAuthor.self].fetchOne()!
 
-            let newBook = CoreDataBook(context: moc)
+            let newBook = context.create(CoreDataBook.self)
             newBook.title = "BookName"
             newBook.author = author
             return 42
@@ -147,8 +147,8 @@ struct SlateBasicTests {
         )
 
         let inserted: Bool = await withCheckedContinuation { continuation in
-            slate.mutateAsync { moc in
-                let newAuthor = CoreDataAuthor(context: moc)
+            slate.mutateAsync { context in
+                let newAuthor = context.create(CoreDataAuthor.self)
                 newAuthor.name = "TestName"
 
                 continuation.resume(returning: true)
