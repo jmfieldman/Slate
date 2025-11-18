@@ -208,7 +208,7 @@ public enum CoreDataSwiftGenerator {
         }
 
         let substruct = entity.substructs.reduce("") {
-            $0 + generateSubstructImpl(substruct: $1, baseEntityClass: entity.codeClass, castInt: castInt)
+            $0 + generateSubstructImpl(substruct: $1, baseEntityClass: entity.codeClass, castInt: castInt, publicParamInit: publicParamInit)
         }
 
         for substruct in entity.substructs {
@@ -268,7 +268,8 @@ public enum CoreDataSwiftGenerator {
     static func generateSubstructImpl(
         substruct: CoreDataSubstruct,
         baseEntityClass: String,
-        castInt: Bool
+        castInt: Bool,
+        publicParamInit: Bool
     ) -> String {
         var declarations = ""
         var assignments = ""
@@ -328,6 +329,7 @@ public enum CoreDataSwiftGenerator {
             "ATTRDECLARATIONS": declarations,
             "INITPARAMS": initParams.sorted(by: <).joined(separator: ",\n            "),
             "INITPARAMASSIGNMENTS": initParamAssignments.sorted(by: <).joined(separator: "\n            "),
+            "PUBLICPARAMINIT": publicParamInit ? template_CD_Swift_SlateClassImpl_ExplicitInitPublic : template_CD_Swift_SlateClassImpl_ExplicitInitInternal,
         ])
     }
 
