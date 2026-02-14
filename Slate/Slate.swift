@@ -1017,7 +1017,10 @@ public extension Slate {
                     let self,
                     let subject,
                     let resultsController,
-                    let fetchedObjects = resultsController.fetchedObjects
+
+                    // Our queries currently only use one section
+                    let section = resultsController.sections?.first,
+                    let objects = section.objects as? [Value.ManagedObjectType]
                 else {
                     return
                 }
@@ -1025,7 +1028,7 @@ public extension Slate {
                 do {
                     let queryContext = SlateQueryContext(slate: self, managedObjectContext: resultsController.managedObjectContext)
                     let oldQueryContext = Thread.current.setInsideQueryContext(queryContext)
-                    let slateObjects: [Value] = try convert(managedObjects: fetchedObjects)
+                    let slateObjects: [Value] = try convert(managedObjects: objects)
                     Thread.current.setInsideQueryContext(oldQueryContext)
 
                     let streamUpdate = StreamUpdate(
