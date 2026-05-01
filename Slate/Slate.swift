@@ -660,6 +660,7 @@ public final class Slate: @unchecked Sendable {
                     try masterContext.safeSave()
                 } catch {
                     catchBlock.error = error
+                    masterContext.reset()
                     return
                 }
             }
@@ -724,6 +725,7 @@ public final class Slate: @unchecked Sendable {
                     try masterContext.safeSave()
                 } catch {
                     catchBlock.error = error
+                    masterContext.reset()
                     return
                 }
             }
@@ -793,6 +795,7 @@ public final class Slate: @unchecked Sendable {
                             try masterContext.safeSave()
                         } catch {
                             result = .failure(error)
+                            masterContext.reset()
                             return
                         }
                     }
@@ -1025,9 +1028,9 @@ public extension Slate {
                     return
                 }
 
+                let queryContext = SlateQueryContext(slate: self, managedObjectContext: resultsController.managedObjectContext)
+                let oldQueryContext = Thread.current.setInsideQueryContext(queryContext)
                 do {
-                    let queryContext = SlateQueryContext(slate: self, managedObjectContext: resultsController.managedObjectContext)
-                    let oldQueryContext = Thread.current.setInsideQueryContext(queryContext)
                     let slateObjects: [Value] = try convert(managedObjects: objects)
                     Thread.current.setInsideQueryContext(oldQueryContext)
 
@@ -1042,6 +1045,7 @@ public extension Slate {
 
                     subject.send(streamUpdate)
                 } catch {
+                    Thread.current.setInsideQueryContext(oldQueryContext)
                     subject.send(
                         completion: .failure(
                             (error as? SlateTransactionError).flatMap { $0 } ?? .underlying(error)
@@ -1147,8 +1151,8 @@ final class _SlateManagedObjectContext: NSManagedObjectContext, @unchecked Senda
     /// protections since this only run in the MOC perform queue
     fileprivate func safeSave() throws {
         inSafeSave = true
+        defer { inSafeSave = false }
         try save()
-        inSafeSave = false
     }
 
     /// Override save to make sure we are inside a safe save.
