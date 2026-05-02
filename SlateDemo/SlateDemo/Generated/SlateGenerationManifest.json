@@ -1,0 +1,13 @@
+{
+  "files" : [
+    "Author+SlateBridge.swift",
+    "Book+SlateBridge.swift",
+    "DatabaseAuthor.swift",
+    "DatabaseBook.swift",
+    "DatabaseLibrary.swift",
+    "DemoSlateSchema.swift",
+    "Library+SlateBridge.swift"
+  ],
+  "generatorVersion" : 1,
+  "schemaFingerprint" : "diagnostic:ec94c3ad7ffd05c7"
+}

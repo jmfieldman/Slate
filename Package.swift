@@ -1,97 +1,107 @@
-// swift-tools-version:5.9
-// The swift-tools-version declares the minimum version of Swift required to build this package.
+// swift-tools-version: 6.0
 
+import CompilerPluginSupport
 import PackageDescription
 
 let package = Package(
     name: "Slate",
-    platforms: [.iOS(.v17), .macOS(.v14), .tvOS(.v17), .watchOS(.v6)],
-
-    // MARK: - Products
-
+    platforms: [
+        .iOS(.v17),
+        .macOS(.v14),
+        .tvOS(.v17),
+        .watchOS(.v10),
+    ],
     products: [
-        // MARK: Executables
-
-        /** Generates slate files from a Core Data xcdatamodel file */
-        .executable(name: "slategen", targets: ["SlateGenerator"]),
-
-        // MARK: Libraries
-
-        /** The actual Slate library */
         .library(name: "Slate", targets: ["Slate"]),
+        .library(name: "SlateSchema", targets: ["SlateSchema"]),
+        .executable(name: "slate-generator", targets: ["SlateGenerator"]),
     ],
-
-    // MARK: - Dependencies
-
     dependencies: [
-        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.6.1"),
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
+        .package(url: "https://github.com/apple/swift-syntax.git", exact: "603.0.0"),
     ],
-
-    // MARK: - Targets
-
     targets: [
-        // MARK: Executables
-
+        .target(
+            name: "Slate",
+            dependencies: ["SlateSchema"],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
+            ]
+        ),
+        .target(
+            name: "SlateSchema",
+            dependencies: ["SlateSchemaMacros"],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
+            ]
+        ),
+        .macro(
+            name: "SlateSchemaMacros",
+            dependencies: [
+                .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
+                .product(name: "SwiftSyntax", package: "swift-syntax"),
+                .product(name: "SwiftSyntaxBuilder", package: "swift-syntax"),
+                .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+                .product(name: "SwiftDiagnostics", package: "swift-syntax"),
+            ]
+        ),
+        .target(
+            name: "SlateGeneratorLib",
+            dependencies: [
+                .product(name: "SwiftParser", package: "swift-syntax"),
+                .product(name: "SwiftSyntax", package: "swift-syntax"),
+            ],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
+            ]
+        ),
         .executableTarget(
             name: "SlateGenerator",
             dependencies: [
-                .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 "SlateGeneratorLib",
-            ],
-            path: "SlateGenerator/Command"
-        ),
-
-        // MARK: Libraries
-
-        .target(
-            name: "Slate",
-            dependencies: [],
-            path: "Slate"
-        ),
-
-        .target(
-            name: "SlateGeneratorLib",
-            dependencies: [],
-            path: "SlateGenerator/Library",
-            exclude: [
-                "External/SwiftyXMLParser/LICENSE.txt",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
         ),
-
-        // MARK: Tests
-
         .testTarget(
             name: "SlateTests",
             dependencies: [
                 "Slate",
-                "DatabaseModels",
-                "ImmutableModels",
-            ],
-            path: "Tests/SlateTests",
-            resources: [.process("DataModel/SlateTests.xcdatamodel")]
+                "SlateFixturePatientModels",
+                "SlateFixturePatientPersistence",
+            ]
         ),
-
-        .target(
-            name: "DatabaseModels",
+        .testTarget(
+            name: "SlateSchemaMacroTests",
             dependencies: [
-                "ImmutableModels",
+                "SlateSchemaMacros",
+                .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax"),
+            ]
+        ),
+        .testTarget(
+            name: "SlateGeneratorTests",
+            dependencies: [
+                "SlateGeneratorLib",
+                "SlateFixturePatientModels",
+                "SlateFixturePatientPersistence",
+            ]
+        ),
+        .target(
+            name: "SlateFixturePatientModels",
+            dependencies: ["SlateSchema"],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
+            ]
+        ),
+        .target(
+            name: "SlateFixturePatientPersistence",
+            dependencies: [
                 "Slate",
+                "SlateSchema",
+                "SlateFixturePatientModels",
             ],
-            path: "Tests/Generated/DatabaseModels"
-        ),
-        .target(
-            name: "ImmutableModels",
-            dependencies: [
-                "Slate",
-                "ExampleEnums",
-            ],
-            path: "Tests/Generated/ImmutableModels"
-        ),
-        .target(
-            name: "ExampleEnums",
-            dependencies: [
-            ],
-            path: "Tests/Generated/ExampleEnums"
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
+            ]
         ),
     ]
 )
