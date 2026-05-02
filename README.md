@@ -4,14 +4,21 @@ A Swift Core Data framework that gives you immutable, `Sendable` data
 models, a single-writer / multi-reader transaction model, and FRC-backed
 streams — without ever touching a `.xcdatamodeld` file.
 
-Slate 3 is an evolution of the original
-[Slate](https://github.com/jmfieldman/Slate). The design goals are the
+Slate 3 is an evolution of
+[Slate 2](https://github.com/jmfieldman/Slate/tree/slate2). The design goals are the
 same — thread-safe immutable views over a Core Data store with a clean
 read/write split — but the surface has been rewritten for Swift's
 structured concurrency, and the schema authoring story takes its cues
-from the macro ergonomics that SwiftData popularized.
+from the Swift macro ergonomics that SwiftData popularized.
 
-If you're coming from Slate 2, expect:
+#### Use Slate instead of SwiftData if:
+
+- You care about only exposing immutable, Sendable data models through your app and UI (not mutable SwiftData @Models)
+- You want mutability only inside private implementation modules
+- You want clean read-write lock semantics around accessing data
+- You are only using Core Data for client-side cache and don't mind losing data during complex schema migrations.
+
+#### If you're coming from Slate 2, expect:
 
 - `async`/`await` everywhere instead of `Combine` + completion handlers.
 - Schema declared in Swift with `@SlateEntity`, not in an Xcode editor.
