@@ -2593,4 +2593,78 @@ struct SlateGeneratorTests {
         #expect(parserStorageNames["postalCode"] == postalStorage)
         #expect(address.presenceStorageName == "address_has")
     }
+
+    @Test
+    func emitsModelModuleImportWhenModulesDiffer() throws {
+        let schema = makeImportSampleSchema(
+            modelModule: "PatientModels",
+            runtimeModule: "PatientPersistence"
+        )
+
+        let files = GeneratedSchemaRenderer().render(schema: schema)
+        let mutableFile = try #require(files.first { $0.kind == .mutable })
+        let bridgeFile = try #require(files.first { $0.kind == .bridge })
+        let schemaFile = try #require(files.first { $0.kind == .schema })
+
+        for file in [mutableFile, bridgeFile, schemaFile] {
+            #expect(
+                file.contents.contains("\nimport PatientModels\n"),
+                "Expected `import PatientModels` in \(file.path)"
+            )
+        }
+    }
+
+    @Test
+    func omitsModelModuleImportWhenModulesMatch() throws {
+        let schema = makeImportSampleSchema(
+            modelModule: "SlateDemo",
+            runtimeModule: "SlateDemo"
+        )
+
+        let files = GeneratedSchemaRenderer().render(schema: schema)
+        let mutableFile = try #require(files.first { $0.kind == .mutable })
+        let bridgeFile = try #require(files.first { $0.kind == .bridge })
+        let schemaFile = try #require(files.first { $0.kind == .schema })
+
+        for file in [mutableFile, bridgeFile, schemaFile] {
+            #expect(
+                !file.contents.contains("import SlateDemo"),
+                "Did not expect `import SlateDemo` in \(file.path) when modules match"
+            )
+            // Sanity check: the rest of the import block is still intact.
+            #expect(file.contents.contains("@preconcurrency import CoreData"))
+            #expect(file.contents.contains("import Foundation"))
+            #expect(file.contents.contains("import Slate\n"))
+            #expect(file.contents.contains("import SlateSchema"))
+        }
+    }
+
+    private func makeImportSampleSchema(
+        modelModule: String,
+        runtimeModule: String
+    ) -> NormalizedSchema {
+        NormalizedSchema(
+            schemaName: "PatientSlateSchema",
+            schemaFingerprint: "fp",
+            modelModule: modelModule,
+            runtimeModule: runtimeModule,
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Patient",
+                    entityName: "Patient",
+                    mutableName: "DatabasePatient",
+                    sourceKind: "struct",
+                    attributes: [
+                        NormalizedAttribute(
+                            swiftName: "patientId",
+                            storageName: "patientId",
+                            swiftType: "String",
+                            storageType: "string",
+                            optional: false
+                        ),
+                    ]
+                ),
+            ]
+        )
+    }
 }

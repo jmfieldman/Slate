@@ -245,6 +245,24 @@ final class DemoStore {
         )
     }
 
+    func bookStream(bookId: String) -> SlateStream<Book> {
+        slate.stream(Book.self, where: \.bookId == bookId)
+    }
+
+    func toggleLike(bookId: String) async {
+        do {
+            try await slate.mutate { context in
+                guard let row = try context[DatabaseBook.self]
+                    .where(\.bookId == bookId)
+                    .one()
+                else { return }
+                row.like.toggle()
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func refreshBooks(for library: Library) async {
         do {
             let payloads = try await DemoNetwork.books(for: library)

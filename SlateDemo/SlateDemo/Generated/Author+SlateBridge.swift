@@ -2,7 +2,6 @@
 
 @preconcurrency import CoreData
 import Foundation
-import SlateDemo
 import Slate
 import SlateSchema
 

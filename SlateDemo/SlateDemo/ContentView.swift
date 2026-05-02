@@ -251,13 +251,36 @@ private struct BookRow: View {
 }
 
 private struct BookDetailView: View {
+    @Environment(DemoStore.self) private var store
     let book: Book
+    @State private var bookStream: SlateStream<Book>?
+
+    // The seed `book` was hydrated with its author relationship; the stream
+    // intentionally fetches without relationships to exercise the diff path.
+    // We let the stream drive only the fields it can keep live (`like`) and
+    // fall back to the seed for everything else.
+    private var like: Bool {
+        bookStream?.value?.like ?? book.like
+    }
 
     var body: some View {
         List {
             Section {
                 VStack(alignment: .leading, spacing: 16) {
-                    SymbolBadge(symbol: book.format.symbol, color: book.format.color, size: 64)
+                    HStack(alignment: .top) {
+                        SymbolBadge(symbol: book.format.symbol, color: book.format.color, size: 64)
+                        Spacer()
+                        Button {
+                            Task { await store.toggleLike(bookId: book.bookId) }
+                        } label: {
+                            Image(systemName: like ? "star.fill" : "star")
+                                .font(.title2)
+                                .foregroundStyle(Theme.brass)
+                                .symbolEffect(.bounce, value: like)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(like ? "Unlike book" : "Like book")
+                    }
                     Text(book.title)
                         .font(.system(.largeTitle, design: .serif).weight(.semibold))
                         .foregroundStyle(Theme.ink)
@@ -310,6 +333,11 @@ private struct BookDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: Author.self) { author in
             AuthorDetailView(author: author)
+        }
+        .task {
+            if bookStream == nil {
+                bookStream = store.bookStream(bookId: book.bookId)
+            }
         }
     }
 }

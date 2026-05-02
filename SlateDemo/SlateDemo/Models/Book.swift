@@ -34,6 +34,9 @@ public struct Book {
     @SlateAttribute(default: Book.Format.hardcover)
     public let format: Format
 
+    @SlateAttribute(default: false)
+    public let like: Bool
+
     @SlateEmbedded
     public let catalog: CatalogInfo
 

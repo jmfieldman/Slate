@@ -2,7 +2,6 @@
 
 @preconcurrency import CoreData
 import Foundation
-import SlateDemo
 import Slate
 import SlateSchema
 
@@ -41,6 +40,7 @@ extension DatabaseBook: SlateRelationshipHydratingMutableObject {
                 isAvailable: isAvailable,
                 acquiredAt: acquiredAt,
                 format: resolvedFormat,
+                like: like,
                 catalog: catalog,
                 library: relationships.contains("library") ? library?.slateObject : nil,
                 author: relationships.contains("author") ? author?.slateObject : nil

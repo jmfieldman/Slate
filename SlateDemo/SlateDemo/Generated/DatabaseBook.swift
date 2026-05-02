@@ -2,7 +2,6 @@
 
 @preconcurrency import CoreData
 import Foundation
-import SlateDemo
 import Slate
 import SlateSchema
 
@@ -67,6 +66,8 @@ public final class DatabaseBook: NSManagedObject {
             setPrimitiveValue(newValue.rawValue, forKey: "format")
         }
     }
+
+    @NSManaged public var like: Bool
 
     @NSManaged public var catalog_callNumber: String
 

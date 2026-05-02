@@ -2,13 +2,12 @@
 
 @preconcurrency import CoreData
 import Foundation
-import SlateDemo
 import Slate
 import SlateSchema
 
 public enum DemoSlateSchema: SlateSchema {
     public static let schemaIdentifier = "DemoSlateSchema"
-    public static let schemaFingerprint = "diagnostic:4ce54bf5adbcd939"
+    public static let schemaFingerprint = "diagnostic:ec94c3ad7ffd05c7"
 
     public static let entities: [SlateEntityMetadata] = [
         SlateEntityMetadata(
@@ -214,6 +213,14 @@ public enum DemoSlateSchema: SlateSchema {
             storageName: "format",
             swiftType: "Format",
             storageType: "string",
+            optional: false,
+            indexed: false
+        ),
+        SlateAttributeMetadata(
+            swiftName: "like",
+            storageName: "like",
+            swiftType: "Bool",
+            storageType: "boolean",
             optional: false,
             indexed: false
         ),
@@ -573,6 +580,12 @@ public enum DemoSlateSchema: SlateSchema {
                 bookFormatAttribute.isOptional = false
                 bookFormatAttribute.defaultValue = Book.Format.hardcover.rawValue
 
+                let bookLikeAttribute = NSAttributeDescription()
+                bookLikeAttribute.name = "like"
+                bookLikeAttribute.attributeType = .booleanAttributeType
+                bookLikeAttribute.isOptional = false
+                bookLikeAttribute.defaultValue = false
+
                 let bookCatalog_callNumberAttribute = NSAttributeDescription()
                 bookCatalog_callNumberAttribute.name = "catalog_callNumber"
                 bookCatalog_callNumberAttribute.attributeType = .stringAttributeType
@@ -591,7 +604,7 @@ public enum DemoSlateSchema: SlateSchema {
                 let bookEntity = NSEntityDescription()
                 bookEntity.name = "Book"
                 bookEntity.managedObjectClassName = NSStringFromClass(DatabaseBook.self)
-                bookEntity.properties = [bookBookIdAttribute, bookLibraryIdAttribute, bookAuthorIdAttribute, bookTitleAttribute, bookSubtitleAttribute, bookIsbnAttribute, bookPublicationYearAttribute, bookPageCountAttribute, bookRatingAttribute, bookIsAvailableAttribute, bookAcquiredAtAttribute, bookFormatAttribute, bookCatalog_callNumberAttribute, bookCatalog_shelfAttribute, bookCatalog_roomAttribute]
+                bookEntity.properties = [bookBookIdAttribute, bookLibraryIdAttribute, bookAuthorIdAttribute, bookTitleAttribute, bookSubtitleAttribute, bookIsbnAttribute, bookPublicationYearAttribute, bookPageCountAttribute, bookRatingAttribute, bookIsAvailableAttribute, bookAcquiredAtAttribute, bookFormatAttribute, bookLikeAttribute, bookCatalog_callNumberAttribute, bookCatalog_shelfAttribute, bookCatalog_roomAttribute]
         bookEntity.uniquenessConstraints = [["bookId"]]
             let bookFetchIndex0Element0 = NSFetchIndexElementDescription(
                     property: bookEntity.propertiesByName["libraryId"]!,
@@ -796,7 +809,7 @@ public enum DemoSlateSchema: SlateSchema {
         libraryBooksRelationship.inverseRelationship = bookLibraryRelationship
 
         authorEntity.properties = [authorAuthorIdAttribute, authorDisplayNameAttribute, authorSortNameAttribute, authorNationalityAttribute, authorBirthYearAttribute, authorWebsiteAttribute, authorIsLivingAttribute, authorEraAttribute, authorProfile_shortBioAttribute, authorProfile_notableAwardAttribute, authorProfile_favoriteShelfAttribute, authorBooksRelationship]
-        bookEntity.properties = [bookBookIdAttribute, bookLibraryIdAttribute, bookAuthorIdAttribute, bookTitleAttribute, bookSubtitleAttribute, bookIsbnAttribute, bookPublicationYearAttribute, bookPageCountAttribute, bookRatingAttribute, bookIsAvailableAttribute, bookAcquiredAtAttribute, bookFormatAttribute, bookCatalog_callNumberAttribute, bookCatalog_shelfAttribute, bookCatalog_roomAttribute, bookLibraryRelationship, bookAuthorRelationship]
+        bookEntity.properties = [bookBookIdAttribute, bookLibraryIdAttribute, bookAuthorIdAttribute, bookTitleAttribute, bookSubtitleAttribute, bookIsbnAttribute, bookPublicationYearAttribute, bookPageCountAttribute, bookRatingAttribute, bookIsAvailableAttribute, bookAcquiredAtAttribute, bookFormatAttribute, bookLikeAttribute, bookCatalog_callNumberAttribute, bookCatalog_shelfAttribute, bookCatalog_roomAttribute, bookLibraryRelationship, bookAuthorRelationship]
         libraryEntity.properties = [libraryLibraryIdAttribute, libraryNameAttribute, libraryCityAttribute, libraryStateAttribute, libraryFoundedYearAttribute, libraryAnnualVisitorsAttribute, libraryLatitudeAttribute, libraryLongitudeAttribute, libraryIsOpenTodayAttribute, libraryUpdatedAtAttribute, libraryKindAttribute, libraryAddress_hasAttribute, libraryAddress_streetAttribute, libraryAddress_cityAttribute, libraryAddress_stateAttribute, libraryAddress_postalCodeAttribute, libraryHours_opensAtAttribute, libraryHours_closesAtAttribute, libraryHours_weekendHoursAttribute, libraryBooksRelationship]
 
         let model = NSManagedObjectModel()
