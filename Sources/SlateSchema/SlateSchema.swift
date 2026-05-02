@@ -1,4 +1,4 @@
-@preconcurrency import CoreData
+@preconcurrency @_exported import CoreData
 import Foundation
 
 public typealias SlateID = NSManagedObjectID
