@@ -231,6 +231,7 @@ final class SlateStreamCore<Value: SlateObject>: NSObject, NSFetchedResultsContr
     private let convert: @Sendable (NSManagedObject) throws -> Value
     private let writerContext: NSManagedObjectContext
     private let unregisterBatchDeleteSink: @Sendable (UUID) -> Void
+    private let useDiffPath: Bool
 
     private weak var mainStream: SlateStream<Value>?
     private weak var backgroundStream: SlateBackgroundStream<Value>?
@@ -246,6 +247,7 @@ final class SlateStreamCore<Value: SlateObject>: NSObject, NSFetchedResultsContr
         frc: NSFetchedResultsController<NSFetchRequestResult>,
         convert: @escaping @Sendable (NSManagedObject) throws -> Value,
         writerContext: NSManagedObjectContext,
+        useDiffPath: Bool = false,
         registerBatchDeleteSink: (@Sendable (@escaping BatchDeleteHandler) -> UUID)? = nil,
         unregisterBatchDeleteSink: @escaping @Sendable (UUID) -> Void = { _ in }
     ) {
@@ -253,6 +255,7 @@ final class SlateStreamCore<Value: SlateObject>: NSObject, NSFetchedResultsContr
         self.frc = frc
         self.convert = convert
         self.writerContext = writerContext
+        self.useDiffPath = useDiffPath
         self.unregisterBatchDeleteSink = unregisterBatchDeleteSink
         super.init()
         attachWriterMergeObserver()
@@ -289,6 +292,13 @@ final class SlateStreamCore<Value: SlateObject>: NSObject, NSFetchedResultsContr
     }
 
     private func performInitialFetch() {
+        if useDiffPath {
+            // The FRC only delivers `controllerDidChangeContent` for changes
+            // that occur after `performFetch()` is called with a delegate
+            // attached. Wire it up before the initial fetch so subsequent
+            // sibling-context merges flow through the diff path.
+            frc.delegate = self
+        }
         do {
             try frc.performFetch()
             let objects = (frc.fetchedObjects as? [NSManagedObject]) ?? []
@@ -311,6 +321,7 @@ final class SlateStreamCore<Value: SlateObject>: NSObject, NSFetchedResultsContr
                     fromRemoteContextSave: changes,
                     into: [self.context]
                 )
+                if self.useDiffPath { return }
                 do {
                     try self.frc.performFetch()
                     let objects = (self.frc.fetchedObjects as? [NSManagedObject]) ?? []
@@ -337,6 +348,7 @@ final class SlateStreamCore<Value: SlateObject>: NSObject, NSFetchedResultsContr
             self.context.perform { [weak self] in
                 guard let self else { return }
                 self.context.mergeChanges(fromContextDidSave: box.value)
+                if self.useDiffPath { return }
                 do {
                     try self.frc.performFetch()
                     let objects = (self.frc.fetchedObjects as? [NSManagedObject]) ?? []

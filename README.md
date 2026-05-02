@@ -608,13 +608,23 @@ detaches the FRC delegate, and finishes any open async sequences.
 Subsequent saves don't hit a cancelled stream. Drop your reference and
 the stream cancels itself.
 
-A small honesty about the implementation: emissions today are driven
-by re-running `frc.performFetch()` after each writer save rather than
-by the diffed `controllerDidChangeContent` deltas. In-memory stores
-don't surface inserts to the FRC reliably through `mergeChanges`, and
-predictability beat per-row diffs as a v1 tradeoff. Diffed emissions
-are still on the table once we have a more thorough Core Data merge
-story.
+A note on how emissions are driven: SQLite-backed streams without
+prefetched relationships and without `limit`/`offset` use the diffed
+`controllerDidChangeContent` path — the writer-save observer merges
+changes into the stream context and the FRC delegate fires for the
+affected rows. Streams that don't satisfy those preconditions fall
+back to re-running `frc.performFetch()` after each writer save:
+
+- **In-memory stores** don't reliably surface inserts to a sibling
+  context's FRC through `mergeChanges` — the persistent store has no
+  shared on-disk state to fault new rows in from.
+- **Prefetched relationships** are loaded once at `performFetch` time;
+  rows refaulted by `mergeChanges` lose that prefetch, so accessing a
+  relationship inside the immutable conversion would round-trip to the
+  store. Re-fetching keeps every emission warm.
+- **`limit` / `offset` windows** have known FRC change-tracking edge
+  cases at the boundary (an insert outside the window doesn't always
+  evict the displaced row). Re-fetching is correct by construction.
 
 ## Relationships in detail
 

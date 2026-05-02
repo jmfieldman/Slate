@@ -503,12 +503,28 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
             return result
         }
 
+        // The diffed-emission path relies on `mergeChanges` reliably producing
+        // `NSManagedObjectContextObjectsDidChange` for inserts on a sibling
+        // context. That holds for SQLite-backed coordinators but not for
+        // `NSInMemoryStoreType`. It also assumes every emission can be served
+        // from the FRC's already-fetched objects, which breaks down when the
+        // request prefetches relationships (refaulted rows lose prefetched
+        // data) or windows results via `fetchLimit`/`fetchOffset` (FRC change
+        // tracking doesn't reliably evict at the boundary).
+        let allStoresAreSQLite = owner.coordinator.persistentStores
+            .allSatisfy { $0.type == NSSQLiteStoreType }
+        let useDiffPath = allStoresAreSQLite
+            && relationshipNames.isEmpty
+            && limit == nil
+            && offset == nil
+
         let storeOwner = owner
         return SlateStreamCore(
             context: context,
             frc: frc,
             convert: convert,
             writerContext: owner.writerContext,
+            useDiffPath: useDiffPath,
             registerBatchDeleteSink: { handler in
                 storeOwner.registerBatchDeleteSink(handler)
             },
