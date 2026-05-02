@@ -78,8 +78,9 @@ struct GlobalOptions: ParsableArguments {
 /// The design spec ships separate `--output-mutable`, `--output-bridge`,
 /// `--output-schema`, and `--output-manifest` paths so that mutable
 /// `NSManagedObject` classes can live in the persistence module while
-/// bridge/schema files can live elsewhere. The legacy `--output` collapses
-/// every kind into a single directory and is kept for now.
+/// bridge/schema files can live elsewhere. `--output` is shorthand: each
+/// kind lands in `<output>/Mutable`, `<output>/Bridge`, or `<output>/Schema`
+/// unless overridden by an explicit per-kind flag.
 struct OutputOptions: ParsableArguments {
     @Option(help: "Output directory for generated NSManagedObject classes.")
     var outputMutable: String?
@@ -90,20 +91,29 @@ struct OutputOptions: ParsableArguments {
     @Option(help: "Output directory for generated schema/model builder.")
     var outputSchema: String?
 
-    @Option(help: "Path to write the generation manifest JSON. Defaults to <output-schema>/SlateGenerationManifest.json.")
+    @Option(help: "Path to write the generation manifest JSON. Defaults to <output>/SlateGenerationManifest.json or <output-schema>/SlateGenerationManifest.json.")
     var outputManifest: String?
 
-    @Option(help: "Legacy single output directory. Equivalent to setting all of --output-mutable/-bridge/-schema to the same path.")
+    @Option(help: "Output root directory. Files are placed in Mutable/, Bridge/, and Schema/ subdirectories. Per-kind flags override individual subdirectories.")
     var output: String?
 
     @Flag(inversion: .prefixedNo, help: "Create output directories if missing.")
     var createOutputDirs: Bool = true
 
     func resolvedLayout() throws -> GeneratedOutputLayout {
-        let mutable = (outputMutable ?? output).map { URL(fileURLWithPath: $0) }
-        let bridge = (outputBridge ?? output).map { URL(fileURLWithPath: $0) }
-        let schema = (outputSchema ?? output).map { URL(fileURLWithPath: $0) }
+        let outputBase = output.map { URL(fileURLWithPath: $0) }
+        let mutable = outputMutable.map { URL(fileURLWithPath: $0) }
+            ?? outputBase?.appendingPathComponent("Mutable")
+        let bridge = outputBridge.map { URL(fileURLWithPath: $0) }
+            ?? outputBase?.appendingPathComponent("Bridge")
+        let schema = outputSchema.map { URL(fileURLWithPath: $0) }
+            ?? outputBase?.appendingPathComponent("Schema")
+        // When --output is provided without an explicit --output-manifest,
+        // keep the manifest at the output root rather than nested inside
+        // the Schema subdirectory — it's a single shared artifact and
+        // belongs at the top level alongside the per-kind dirs.
         let manifest = outputManifest.map { URL(fileURLWithPath: $0) }
+            ?? outputBase?.appendingPathComponent(GeneratedFileWriter.manifestFileName)
 
         guard mutable != nil || bridge != nil || schema != nil else {
             throw ValidationError("At least one of --output, --output-mutable, --output-bridge, or --output-schema must be provided.")

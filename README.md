@@ -328,8 +328,10 @@ Subcommands:
 - `dump-schema` — print the normalized schema model as JSON. Useful
   for debugging the parser.
 
-The `--output` form (single directory for all kinds) is also accepted
-when you don't need separate target locations.
+The `--output` form is shorthand for the three per-kind flags: each
+kind lands in `<output>/Mutable`, `<output>/Bridge`, or
+`<output>/Schema`, and the manifest in `<output>/`. Use it when all
+generated artifacts can sit under a single root.
 
 ## Creating a Slate instance
 
