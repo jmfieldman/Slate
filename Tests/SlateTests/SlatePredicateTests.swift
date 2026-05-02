@@ -198,7 +198,7 @@ struct SlatePredicateTests {
     @Test
     func filtersByOptionalEqualNil() async throws {
         let slate = Slate<TestNoteSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let withBody = context.create(DatabaseTestNote.self)
@@ -226,7 +226,7 @@ struct SlatePredicateTests {
     @Test
     func filtersByIsNilStaticHelper() async throws {
         let slate = Slate<TestNoteSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let one = context.create(DatabaseTestNote.self)
@@ -262,7 +262,7 @@ struct SlatePredicateTests {
     @Test
     func composesPredicates() async throws {
         let slate = Slate<TestNoteSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for (title, body, pageCount) in [
@@ -309,7 +309,7 @@ struct SlatePredicateTests {
     @Test
     func inAndNotInHelpers() async throws {
         let slate = Slate<TestNoteSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for title in ["A", "B", "C", "D"] {
@@ -342,7 +342,7 @@ struct SlatePredicateTests {
     @Test
     func stringContainsBeginsEndsHelpers() async throws {
         let slate = Slate<TestNoteSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for title in ["Apple Pie", "Banana Bread", "Apple Cobbler", "Pumpkin Pie"] {
@@ -384,7 +384,7 @@ struct SlatePredicateTests {
     @Test
     func matchesRegexHelper() async throws {
         let slate = Slate<TestNoteSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for title in ["AAA-001", "BBB-002", "AAA-X99", "QUERY-77"] {
@@ -408,7 +408,7 @@ struct SlatePredicateTests {
     @Test
     func betweenHelper() async throws {
         let slate = Slate<TestNoteSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for (title, pageCount) in [("A", 1), ("B", 5), ("C", 10), ("D", 15), ("E", 20)] {
@@ -432,7 +432,7 @@ struct SlatePredicateTests {
     @Test
     func filtersByEnumRawValueExtraction() async throws {
         let slate = Slate<TestEnumSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for (title, role) in [("A", "patient"), ("B", "caregiver"), ("C", "patient")] {
@@ -468,7 +468,7 @@ struct SlatePredicateTests {
     @Test
     func comparisonOperators() async throws {
         let slate = Slate<TestNoteSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for (title, pageCount) in [("A", 1), ("B", 5), ("C", 10)] {
@@ -508,7 +508,7 @@ struct SlatePredicateTests {
     @Test
     func predicateCrossesActorBoundariesSafely() async throws {
         let slate = Slate<TestNoteSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for (title, body, pageCount) in [

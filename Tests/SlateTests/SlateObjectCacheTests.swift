@@ -9,7 +9,7 @@ struct SlateObjectCacheTests {
     @Test
     func cacheHydratedOnInsert() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let author = context.create(DatabaseTestAuthor.self)
@@ -27,7 +27,7 @@ struct SlateObjectCacheTests {
     @Test
     func cacheUpdatedOnUpdate() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let author = context.create(DatabaseTestAuthor.self)
@@ -54,7 +54,7 @@ struct SlateObjectCacheTests {
     @Test
     func cacheClearsDeletedEntries() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for name in ["Ada", "Bea"] {
@@ -76,7 +76,7 @@ struct SlateObjectCacheTests {
     @Test
     func cacheUntouchedOnUserError() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let author = context.create(DatabaseTestAuthor.self)
@@ -110,7 +110,7 @@ struct SlateObjectCacheTests {
     @Test
     func cacheRestoredOnSaveFailure() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let author = context.create(DatabaseTestAuthor.self)
@@ -150,7 +150,7 @@ struct SlateObjectCacheTests {
     @Test
     func cacheRestoredOnSaveFailureEndToEnd() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let author = context.create(DatabaseTestAuthor.self)
@@ -187,7 +187,7 @@ struct SlateObjectCacheTests {
     @Test
     func cacheConcurrentReadersReuseEntries() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for name in ["Ada", "Bea", "Cyd"] {
@@ -230,7 +230,7 @@ struct SlateObjectCacheTests {
     @Test
     func cacheEvictsBatchDeletedIDs() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for name in ["Ada", "Bea", "Cyd", "Dru"] {
@@ -273,7 +273,7 @@ struct SlateObjectCacheTests {
     @Test
     func cacheSurvivesAcrossWriterSaves() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let row = context.create(DatabaseTestAuthor.self)
@@ -311,7 +311,7 @@ struct SlateObjectCacheTests {
     @Test
     func cacheUndoSnapshotApplyRestoreRoundTrip() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
         let cache = try slateCache(for: slate)
 
         // Hand-craft three IDs by inserting and reading.

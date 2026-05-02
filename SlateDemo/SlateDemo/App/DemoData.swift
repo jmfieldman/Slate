@@ -201,7 +201,7 @@ final class DemoStore {
     func configure() async {
         guard !isConfigured else { return }
         do {
-            try await slate.configure()
+            try slate.configure()
             libraryStream = slate.stream(Library.self, sort: [\.name])
             isConfigured = true
             if try await slate.count(Library.self) == 0 {

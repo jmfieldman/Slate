@@ -523,7 +523,7 @@ struct SlateRuntimeTests {
     @Test
     func queryAndMutateInMemory() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let author = context.create(DatabaseTestAuthor.self)
@@ -542,7 +542,7 @@ struct SlateRuntimeTests {
     @Test
     func queryHydratesRequestedToOneRelationship() async throws {
         let slate = Slate<TestRelationshipSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let person = context.create(DatabaseTestPerson.self)
@@ -570,7 +570,7 @@ struct SlateRuntimeTests {
     @Test
     func directQueryConveniences() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for name in ["Ada", "Bea", "Cyd"] {
@@ -612,7 +612,7 @@ struct SlateRuntimeTests {
     @Test
     func directQueryHydratesRelationships() async throws {
         let slate = Slate<TestRelationshipSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let person = context.create(DatabaseTestPerson.self)
@@ -637,7 +637,7 @@ struct SlateRuntimeTests {
     @Test
     func queryHydratesRequestedToManyRelationships() async throws {
         let slate = Slate<TestRelationshipSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let person = context.create(DatabaseTestPerson.self)
@@ -673,7 +673,7 @@ struct SlateRuntimeTests {
     @Test
     func mutationFirstOrCreate() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             _ = try context[DatabaseTestAuthor.self].firstOrCreate(\.name, "Ada")
@@ -688,7 +688,7 @@ struct SlateRuntimeTests {
     @Test
     func mutationFirstOrCreateMany() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let author = context.create(DatabaseTestAuthor.self)
@@ -718,7 +718,7 @@ struct SlateRuntimeTests {
     @Test
     func mutationDictionary() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for name in ["Ada", "Bea", "Cyd"] {
@@ -738,7 +738,7 @@ struct SlateRuntimeTests {
     @Test
     func mutationDeleteMissing() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for name in ["Ada", "Bea", "Cyd", "Dru"] {
@@ -763,7 +763,7 @@ struct SlateRuntimeTests {
     @Test
     func mutationDeleteMissingEmptyRequiresFlag() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let author = context.create(DatabaseTestAuthor.self)
@@ -790,7 +790,7 @@ struct SlateRuntimeTests {
     @Test
     func upsertReturnsExistingRowForUniqueAttribute() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let row = try context[DatabaseTestAuthor.self].upsert(\.name, "Ada")
@@ -811,7 +811,7 @@ struct SlateRuntimeTests {
     @Test
     func upsertManyMatchesOrCreatesRowsForUniqueAttribute() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let row = context.create(DatabaseTestAuthor.self)
@@ -838,7 +838,7 @@ struct SlateRuntimeTests {
             storeURL: nil,
             storeType: NSInMemoryStoreType
         )
-        try await slate.configure()
+        try slate.configure()
 
         await #expect(throws: SlateError.upsertKeyNotUnique(
             entity: "TestUnconstrainedAuthor",
@@ -857,7 +857,7 @@ struct SlateRuntimeTests {
             storeURL: nil,
             storeType: NSInMemoryStoreType
         )
-        try await slate.configure()
+        try slate.configure()
 
         await #expect(throws: SlateError.upsertKeyNotUnique(
             entity: "TestUnconstrainedAuthor",
@@ -873,7 +873,7 @@ struct SlateRuntimeTests {
     @Test
     func mutationDeleteWhere() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for name in ["Ada", "Bea", "Cyd"] {
@@ -899,7 +899,7 @@ struct SlateRuntimeTests {
     @Test
     func batchDeleteFallbackInMemoryStore() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for name in ["Ada", "Bea", "Cyd", "Dru"] {
@@ -932,7 +932,7 @@ struct SlateRuntimeTests {
     @Test
     func batchDeleteWithoutPredicateClearsAll() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for name in ["Ada", "Bea", "Cyd"] {
@@ -949,7 +949,7 @@ struct SlateRuntimeTests {
     @Test
     func batchDeleteRejectedWhenClosed() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
         await slate.close()
 
         await #expect(throws: SlateError.closed) {
@@ -980,7 +980,7 @@ struct SlateRuntimeTests {
             storeURL: storeURL,
             storeType: NSSQLiteStoreType
         )
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for name in ["Ada", "Bea", "Cyd", "Dru"] {
@@ -1013,7 +1013,7 @@ struct SlateRuntimeTests {
     @Test
     func closedSlateRejectsOperations() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let author = context.create(DatabaseTestAuthor.self)
@@ -1034,15 +1034,15 @@ struct SlateRuntimeTests {
             _ = try await slate.count(TestAuthor.self)
         }
 
-        await #expect(throws: SlateError.closed) {
-            try await slate.configure()
+        #expect(throws: SlateError.closed) {
+            try slate.configure()
         }
     }
 
     @Test
     func closeIsIdempotent() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
         await slate.close()
         await slate.close()
     }
@@ -1051,15 +1051,15 @@ struct SlateRuntimeTests {
     func closeBeforeConfigureBlocksConfigure() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
         await slate.close()
-        await #expect(throws: SlateError.closed) {
-            try await slate.configure()
+        #expect(throws: SlateError.closed) {
+            try slate.configure()
         }
     }
 
     @Test
     func mutationRollbackOnUserThrow() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         struct UserError: Error {}
 
@@ -1078,7 +1078,7 @@ struct SlateRuntimeTests {
     @Test
     func enumWithDefaultFallsBackOnInvalidStoredValue() async throws {
         let slate = Slate<TestInvalidSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let row = context.create(DatabaseTestInvalid.self)
@@ -1109,7 +1109,7 @@ struct SlateRuntimeTests {
     @Test
     func enumWithoutDefaultThrowsOnInvalidStoredValue() async throws {
         let slate = Slate<TestInvalidSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let row = context.create(DatabaseTestInvalid.self)
@@ -1151,7 +1151,7 @@ struct SlateRuntimeTests {
     @Test
     func sortAcceptsKeyPathShorthandAndAscDescFactories() async throws {
         let slate = SlateFixtures.PatientSlate(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for (id, first, last) in [
@@ -1216,7 +1216,7 @@ struct SlateRuntimeTests {
     @Test
     func embeddedKeypathPredicateRoutesToFlattenedStorageColumn() async throws {
         let slate = SlateFixtures.PatientSlate(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let bostonPatient = context.create(DatabasePatient.self)
@@ -1261,7 +1261,7 @@ struct SlateRuntimeTests {
     func entityEqualityIsContentBasedAndIdentityIsSlateID() async throws {
         // Persist one Patient so we have a stable, real `slateID`.
         let slate = SlateFixtures.PatientSlate(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
         try await slate.mutate { context in
             let p = context.create(DatabasePatient.self)
             p.patientId = "p1"

@@ -30,7 +30,7 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         self.init(persistentStoreDescription: description, storeKind: storeKind)
     }
 
-    public func configure() async throws {
+    public func configure() throws {
         try checkOpen()
         guard isUnconfigured() else {
             throw SlateError.alreadyConfigured
@@ -40,7 +40,7 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         Schema.registerTables(&registry)
 
         let identity = try storeIdentity()
-        let newOwner = try await SlateStoreRegistryActor.shared.owner(identity: identity) {
+        let newOwner = try SlateStoreRegistry.shared.owner(identity: identity) {
             try Self.openOwner(
                 description: persistentStoreDescription,
                 storeKind: storeKind,

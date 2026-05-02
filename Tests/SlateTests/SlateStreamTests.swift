@@ -10,7 +10,7 @@ struct SlateStreamTests {
     @Test
     func initialValuesAreLoaded() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for name in ["Ada", "Bea", "Cyd"] {
@@ -34,7 +34,7 @@ struct SlateStreamTests {
     @Test
     func streamUpdatesAfterInsert() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         let stream = slate.stream(
             TestAuthor.self,
@@ -66,7 +66,7 @@ struct SlateStreamTests {
     @Test
     func streamUpdatesAfterUpdate() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             let author = context.create(DatabaseTestAuthor.self)
@@ -95,7 +95,7 @@ struct SlateStreamTests {
     @Test
     func streamShrinksOnDelete() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for name in ["Ada", "Bea"] {
@@ -124,7 +124,7 @@ struct SlateStreamTests {
     @Test
     func streamFiltersByPredicate() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for name in ["Ada", "Bea", "Cyd"] {
@@ -147,7 +147,7 @@ struct SlateStreamTests {
     @Test
     func cancelStopsFurtherUpdates() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         let stream = slate.stream(
             TestAuthor.self,
@@ -171,7 +171,7 @@ struct SlateStreamTests {
     @Test
     func valuesAsyncEmitsUpdates() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         let stream = slate.stream(
             TestAuthor.self,
@@ -206,7 +206,7 @@ struct SlateStreamTests {
     @Test
     func batchDeleteFallbackDrivesStreams() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for name in ["Ada", "Bea", "Cyd"] {
@@ -248,7 +248,7 @@ struct SlateStreamTests {
         }
         let storeURL = directory.appendingPathComponent("Stream.sqlite")
         let slate = Slate<TestSchema>(storeURL: storeURL, storeType: NSSQLiteStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for name in ["Ada", "Bea", "Cyd"] {
@@ -279,7 +279,7 @@ struct SlateStreamTests {
     @Test
     func backgroundStreamLoadsAndUpdates() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try await slate.configure()
+        try slate.configure()
 
         try await slate.mutate { context in
             for name in ["Ada", "Bea"] {

@@ -83,9 +83,10 @@ struct SlateStoreIdentity: Hashable, Sendable {
     let schemaIdentifier: String
 }
 
-actor SlateStoreRegistryActor {
-    static let shared = SlateStoreRegistryActor()
+final class SlateStoreRegistry: @unchecked Sendable {
+    static let shared = SlateStoreRegistry()
 
+    private let lock = NSLock()
     private var owners: [SlateStoreIdentity: Any] = [:]
     private var diskSchemas: [URL: String] = [:]
 
@@ -93,6 +94,9 @@ actor SlateStoreRegistryActor {
         identity: SlateStoreIdentity,
         create: () throws -> SlateStoreOwner<Schema>
     ) throws -> SlateStoreOwner<Schema> {
+        lock.lock()
+        defer { lock.unlock() }
+
         if let url = identity.canonicalURL {
             if let existingSchema = diskSchemas[url], existingSchema != identity.schemaIdentifier {
                 throw SlateError.incompatibleStore(url)
