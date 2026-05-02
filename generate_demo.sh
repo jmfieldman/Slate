@@ -6,9 +6,7 @@ cd "$ROOT_DIR"
 
 swift run slate-generator generate \
   --input SlateDemo/SlateDemo/Models \
-  --output-mutable SlateDemo/SlateDemo/Generated/Mutable \
-  --output-bridge SlateDemo/SlateDemo/Generated/Bridge \
-  --output-schema SlateDemo/SlateDemo/Generated/Schema \
+  --output SlateDemo/SlateDemo/Generated \
   --schema-name DemoSlateSchema \
   --model-module SlateDemo \
   --runtime-module SlateDemo \

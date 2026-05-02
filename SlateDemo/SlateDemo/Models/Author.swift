@@ -1,4 +1,3 @@
-import CoreData
 import Foundation
 import SlateSchema
 
