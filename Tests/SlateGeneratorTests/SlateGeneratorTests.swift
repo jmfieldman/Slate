@@ -1978,6 +1978,66 @@ struct SlateGeneratorTests {
     }
 
     @Test
+    func defaultsPresenceBooleanInCloudKitMode() throws {
+        func schema(cloudKit: Bool) -> NormalizedSchema {
+            NormalizedSchema(
+                schemaName: "PatientSchema",
+                schemaFingerprint: "fp",
+                modelModule: "Models",
+                runtimeModule: "Persistence",
+                entities: [
+                    NormalizedEntity(
+                        swiftName: "Patient",
+                        entityName: "Patient",
+                        mutableName: "DatabasePatient",
+                        sourceKind: "struct",
+                        attributes: [
+                            NormalizedAttribute(
+                                swiftName: "patientId",
+                                storageName: "patientId",
+                                swiftType: "String",
+                                storageType: "string",
+                                optional: false
+                            ),
+                        ],
+                        embedded: [
+                            NormalizedEmbedded(
+                                swiftName: "address",
+                                swiftType: "Address",
+                                optional: true,
+                                presenceStorageName: "address_has",
+                                attributes: [
+                                    NormalizedAttribute(
+                                        swiftName: "city",
+                                        storageName: "address_city",
+                                        swiftType: "String?",
+                                        storageType: "string",
+                                        optional: true
+                                    ),
+                                ]
+                            ),
+                        ],
+                        cloudKit: cloudKit
+                    ),
+                ]
+            )
+        }
+
+        // CloudKit: the synthesized presence boolean is non-optional with a
+        // `false` default, so it satisfies optional-or-default.
+        let cloudKitFiles = GeneratedSchemaRenderer().render(schema: schema(cloudKit: true))
+        let cloudKitSchemaFile = try #require(cloudKitFiles.first { $0.path == "PatientSchema.swift" })
+        #expect(cloudKitSchemaFile.contents.contains("patientAddress_hasAttribute.isOptional = false"))
+        #expect(cloudKitSchemaFile.contents.contains("patientAddress_hasAttribute.defaultValue = false"))
+
+        // Non-CloudKit: the presence boolean carries no default line.
+        let localFiles = GeneratedSchemaRenderer().render(schema: schema(cloudKit: false))
+        let localSchemaFile = try #require(localFiles.first { $0.path == "PatientSchema.swift" })
+        #expect(localSchemaFile.contents.contains("patientAddress_hasAttribute.isOptional = false"))
+        #expect(!localSchemaFile.contents.contains("patientAddress_hasAttribute.defaultValue"))
+    }
+
+    @Test
     func validatesExternalStorageOnlyOnBinaryAttributes() throws {
         // `externalStorage: true` on a non-Data (String) attribute is an error.
         let invalid = NormalizedSchema(

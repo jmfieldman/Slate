@@ -189,7 +189,8 @@ public struct SchemaValidator: Sendable {
                     storageName: storageName,
                     swiftType: "Bool",
                     storageType: "boolean",
-                    optional: false
+                    optional: false,
+                    defaultExpression: entity.cloudKit ? "false" : nil
                 )
             }
             return [presence].compactMap { $0 } + embedded.attributes
