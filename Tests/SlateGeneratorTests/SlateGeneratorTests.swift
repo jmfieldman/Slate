@@ -2639,6 +2639,61 @@ struct SlateGeneratorTests {
         }
     }
 
+    @Test
+    func normalizedSchemaDerivesCloudKitFlagFromEntities() {
+        let cloudKitSchema = NormalizedSchema(
+            schemaName: "CloudKitSchema",
+            schemaFingerprint: "fp",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Trip",
+                    entityName: "Trip",
+                    mutableName: "DatabaseTrip",
+                    sourceKind: "struct",
+                    attributes: [],
+                    cloudKit: true
+                ),
+                NormalizedEntity(
+                    swiftName: "Leg",
+                    entityName: "Leg",
+                    mutableName: "DatabaseLeg",
+                    sourceKind: "struct",
+                    attributes: [],
+                    cloudKit: true
+                ),
+            ]
+        )
+        #expect(cloudKitSchema.cloudKit == true)
+
+        let defaultSchema = NormalizedSchema(
+            schemaName: "LocalSchema",
+            schemaFingerprint: "fp",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Trip",
+                    entityName: "Trip",
+                    mutableName: "DatabaseTrip",
+                    sourceKind: "struct",
+                    attributes: []
+                ),
+                NormalizedEntity(
+                    swiftName: "Leg",
+                    entityName: "Leg",
+                    mutableName: "DatabaseLeg",
+                    sourceKind: "struct",
+                    attributes: []
+                ),
+            ]
+        )
+        #expect(defaultSchema.cloudKit == false)
+        // The per-entity default is `false` when the argument is absent.
+        #expect(defaultSchema.entities.first?.cloudKit == false)
+    }
+
     private func makeImportSampleSchema(
         modelModule: String,
         runtimeModule: String

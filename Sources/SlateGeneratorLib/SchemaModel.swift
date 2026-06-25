@@ -22,6 +22,13 @@ public struct NormalizedSchema: Sendable, Codable, Equatable {
     }
 }
 
+public extension NormalizedSchema {
+    /// Schema-level CloudKit flag. Valid only after `SchemaValidator` has enforced
+    /// the uniform-or-error rule, which guarantees every entity agrees. Computed
+    /// (not stored, not `Codable`-encoded); an empty schema reports `false`.
+    var cloudKit: Bool { entities.first?.cloudKit ?? false }
+}
+
 public struct GeneratedFile: Sendable, Codable, Equatable {
     public let path: String
     public let contents: String
@@ -68,6 +75,12 @@ public struct NormalizedEntity: Sendable, Codable, Equatable {
     public let relationships: [NormalizedRelationship]
     public let indexes: [NormalizedIndex]
     public let uniqueness: [NormalizedUniqueness]
+    /// Per-entity CloudKit authoring flag harvested from `@SlateEntity(cloudKit:)`.
+    /// Synthesized `Codable` conformance has no custom `CodingKeys`, so this
+    /// non-optional property feeds `dump-schema` output unconditionally (a
+    /// `"cloudKit"` key on every entity) and synthesized decoding requires the
+    /// key to be present.
+    public let cloudKit: Bool
 
     public init(
         swiftName: String,
@@ -78,7 +91,8 @@ public struct NormalizedEntity: Sendable, Codable, Equatable {
         embedded: [NormalizedEmbedded] = [],
         relationships: [NormalizedRelationship] = [],
         indexes: [NormalizedIndex] = [],
-        uniqueness: [NormalizedUniqueness] = []
+        uniqueness: [NormalizedUniqueness] = [],
+        cloudKit: Bool = false
     ) {
         self.swiftName = swiftName
         self.entityName = entityName
@@ -89,6 +103,7 @@ public struct NormalizedEntity: Sendable, Codable, Equatable {
         self.relationships = relationships
         self.indexes = indexes
         self.uniqueness = uniqueness
+        self.cloudKit = cloudKit
     }
 }
 
