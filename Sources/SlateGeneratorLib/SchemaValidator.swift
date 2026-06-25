@@ -34,10 +34,10 @@ public struct SchemaValidator: Sendable {
             ))
         }
 
-        // CloudKit-subset model rules. Sprint 01 guarantees a CloudKit schema is
-        // uniform, so a single `schema.cloudKit` test gates the whole block — no
-        // per-entity re-checking. Issues aggregate into the same `issues` and throw
-        // together below; no early throw.
+        // CloudKit-subset model rules. The uniform-or-error check above guarantees
+        // a CloudKit schema is uniform, so a single `schema.cloudKit` test gates the
+        // whole block — no per-entity re-checking. Issues aggregate into the same
+        // `issues` and throw together below; no early throw.
         if schema.cloudKit {
             validateCloudKitSubset(schema, issues: &issues)
         }
@@ -129,9 +129,10 @@ public struct SchemaValidator: Sendable {
     ) {
         for entity in schema.entities {
             // Optional-or-default, evaluated over `storageAttributes(for:)` so the
-            // synthesized `*_has` presence boolean (defaulted in CloudKit mode by
-            // Step 2) and `optional: true` embedded value fields pass; only top-level
-            // authored non-optional-no-default attributes (enums included) are flagged.
+            // synthesized `*_has` presence boolean (which `storageAttributes(for:)`
+            // defaults to `false` in CloudKit mode) and `optional: true` embedded value
+            // fields pass; only top-level authored non-optional-no-default attributes
+            // (enums included) are flagged.
             for attribute in storageAttributes(for: entity) where !attribute.optional && attribute.defaultExpression == nil {
                 issues.append(SchemaValidationIssue(
                     message: "Entity '\(entity.swiftName)' attribute '\(attribute.swiftName)' is non-optional with no default; CloudKit requires every attribute to be optional or carry a default. Add '@SlateAttribute(default:)' or make '\(attribute.swiftName)' optional."
