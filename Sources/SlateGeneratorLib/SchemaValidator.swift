@@ -19,6 +19,21 @@ public struct SchemaValidator: Sendable {
             message: { "Duplicate mutable object name '\($0)'." }
         )
 
+        // Uniform-or-error: every entity in a schema must agree on `@SlateEntity(cloudKit:)`.
+        // The issue fires only when both groups are non-empty; an all-CloudKit, all-local,
+        // or empty schema produces no issue.
+        let cloudKitNames = schema.entities.filter(\.cloudKit).map(\.swiftName).sorted()
+        let nonCloudKitNames = schema.entities.filter { !$0.cloudKit }.map(\.swiftName).sorted()
+        if !cloudKitNames.isEmpty, !nonCloudKitNames.isEmpty {
+            let cloudKitList = cloudKitNames.map { "'\($0)'" }.joined(separator: ", ")
+            let nonCloudKitList = nonCloudKitNames.map { "'\($0)'" }.joined(separator: ", ")
+            issues.append(SchemaValidationIssue(
+                message: "All entities in a schema must agree on '@SlateEntity(cloudKit:)'. "
+                    + "CloudKit entities: \(cloudKitList); non-CloudKit entities: \(nonCloudKitList). "
+                    + "Set the same 'cloudKit:' value on every entity in this schema."
+            ))
+        }
+
         let entitiesBySwiftName = Dictionary(uniqueKeysWithValues: schema.entities.map { ($0.swiftName, $0) })
 
         for entity in schema.entities {

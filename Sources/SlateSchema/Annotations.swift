@@ -5,6 +5,7 @@ import Foundation
 public macro SlateEntity(
     name: String? = nil,
     storageName: String? = nil,
+    cloudKit: Bool = false,
     relationships: [SlateRelationship] = []
 ) = #externalMacro(
     module: "SlateSchemaMacros",

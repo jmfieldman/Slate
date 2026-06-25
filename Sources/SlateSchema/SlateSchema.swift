@@ -22,9 +22,17 @@ public protocol SlateManagedPropertyProviding: AnyObject {
 public protocol SlateSchema: Sendable {
     static var schemaIdentifier: String { get }
     static var schemaFingerprint: String { get }
+    static var cloudKitEnabled: Bool { get }
     static var entities: [SlateEntityMetadata] { get }
     static func makeManagedObjectModel() throws -> NSManagedObjectModel
     static func registerTables(_ registry: inout SlateTableRegistry)
+}
+
+public extension SlateSchema {
+    /// Default so non-CloudKit generated schemas and hand-written conformers
+    /// inherit `false`; a CloudKit schema overrides it with
+    /// `static let cloudKitEnabled = true` emitted by `slate-generator`.
+    static var cloudKitEnabled: Bool { false }
 }
 
 public protocol SlateMutableObject: NSManagedObject {

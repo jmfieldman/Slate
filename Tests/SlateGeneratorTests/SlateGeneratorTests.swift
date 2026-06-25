@@ -2639,6 +2639,304 @@ struct SlateGeneratorTests {
         }
     }
 
+    @Test
+    func normalizedSchemaDerivesCloudKitFlagFromEntities() {
+        let cloudKitSchema = NormalizedSchema(
+            schemaName: "CloudKitSchema",
+            schemaFingerprint: "fp",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Trip",
+                    entityName: "Trip",
+                    mutableName: "DatabaseTrip",
+                    sourceKind: "struct",
+                    attributes: [],
+                    cloudKit: true
+                ),
+                NormalizedEntity(
+                    swiftName: "Leg",
+                    entityName: "Leg",
+                    mutableName: "DatabaseLeg",
+                    sourceKind: "struct",
+                    attributes: [],
+                    cloudKit: true
+                ),
+            ]
+        )
+        #expect(cloudKitSchema.cloudKit == true)
+
+        let defaultSchema = NormalizedSchema(
+            schemaName: "LocalSchema",
+            schemaFingerprint: "fp",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Trip",
+                    entityName: "Trip",
+                    mutableName: "DatabaseTrip",
+                    sourceKind: "struct",
+                    attributes: []
+                ),
+                NormalizedEntity(
+                    swiftName: "Leg",
+                    entityName: "Leg",
+                    mutableName: "DatabaseLeg",
+                    sourceKind: "struct",
+                    attributes: []
+                ),
+            ]
+        )
+        #expect(defaultSchema.cloudKit == false)
+        // The per-entity default is `false` when the argument is absent.
+        #expect(defaultSchema.entities.first?.cloudKit == false)
+
+        // Empty schema collapses to `false` via the `?? false` fallback (locked
+        // "Schema-level collapse" decision: empty schema ⇒ false).
+        let emptySchema = NormalizedSchema(
+            schemaName: "EmptySchema",
+            schemaFingerprint: "fp",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: []
+        )
+        #expect(emptySchema.cloudKit == false)
+    }
+
+    @Test
+    func parsesCloudKitArgumentFromSlateEntity() throws {
+        // `Trip` opts into CloudKit; `Leg` omits the argument and must default
+        // to `false`. Both entities are uniform-per-entity (the parser harvests
+        // each independently; the uniform-or-error check is a later step), so a
+        // mixed schema here exercises the harvest in isolation.
+        let source = """
+        import SlateSchema
+
+        @SlateEntity(cloudKit: true)
+        public struct Trip {
+            public let tripId: String
+        }
+
+        @SlateEntity
+        public struct Leg {
+            public let legId: String
+        }
+        """
+        let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString + ".swift")
+        try source.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let schema = try SwiftSchemaParser().parseFiles(
+            at: [url],
+            schemaName: "TripSchema",
+            modelModule: "TripModels",
+            runtimeModule: "TripPersistence"
+        )
+
+        // Entities are sorted alphabetically: Leg, Trip.
+        #expect(schema.entities.map(\.swiftName) == ["Leg", "Trip"])
+        let trip = try #require(schema.entities.first { $0.swiftName == "Trip" })
+        let leg = try #require(schema.entities.first { $0.swiftName == "Leg" })
+        #expect(trip.cloudKit == true)
+        // Argument absent ⇒ defaults to `false`, not nil-propagated.
+        #expect(leg.cloudKit == false)
+    }
+
+    @Test
+    func parsesCloudKitTrueSchemaDerivesSchemaFlag() throws {
+        // A single CloudKit entity: the schema-level flag collapses to `true`.
+        let source = """
+        import SlateSchema
+
+        @SlateEntity(cloudKit: true)
+        public struct Trip {
+            public let tripId: String
+        }
+        """
+        let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString + ".swift")
+        try source.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let schema = try SwiftSchemaParser().parseFiles(
+            at: [url],
+            schemaName: "TripSchema",
+            modelModule: "TripModels",
+            runtimeModule: "TripPersistence"
+        )
+
+        #expect(schema.entities.first?.cloudKit == true)
+        #expect(schema.cloudKit == true)
+    }
+
+    @Test
+    func validatesMixedCloudKitSchemaFails() throws {
+        // One CloudKit entity and one non-CloudKit entity in the same schema:
+        // the uniform-or-error check must fail and name both offenders.
+        let schema = NormalizedSchema(
+            schemaName: "BadSchema",
+            schemaFingerprint: "bad",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Trip",
+                    entityName: "Trip",
+                    mutableName: "DatabaseTrip",
+                    sourceKind: "struct",
+                    attributes: [],
+                    cloudKit: true
+                ),
+                NormalizedEntity(
+                    swiftName: "Leg",
+                    entityName: "Leg",
+                    mutableName: "DatabaseLeg",
+                    sourceKind: "struct",
+                    attributes: [],
+                    cloudKit: false
+                ),
+            ]
+        )
+
+        do {
+            try SchemaValidator().validate(schema)
+            Issue.record("Expected validation to fail")
+        } catch let error as SchemaValidationError {
+            #expect(error.description.contains("must agree on '@SlateEntity(cloudKit:)'"))
+            // The diagnostic names both offenders, grouped by `cloudKit` value.
+            #expect(error.description.contains("CloudKit entities: 'Trip'"))
+            #expect(error.description.contains("non-CloudKit entities: 'Leg'"))
+        }
+    }
+
+    @Test
+    func validatesUniformCloudKitSchemasPass() throws {
+        // A uniform-`true` schema and a uniform-`false` schema each validate
+        // without throwing — the uniform-or-error check fires only when both
+        // groups are non-empty.
+        let allCloudKit = NormalizedSchema(
+            schemaName: "CloudKitSchema",
+            schemaFingerprint: "fp",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Trip",
+                    entityName: "Trip",
+                    mutableName: "DatabaseTrip",
+                    sourceKind: "struct",
+                    attributes: [],
+                    cloudKit: true
+                ),
+                NormalizedEntity(
+                    swiftName: "Leg",
+                    entityName: "Leg",
+                    mutableName: "DatabaseLeg",
+                    sourceKind: "struct",
+                    attributes: [],
+                    cloudKit: true
+                ),
+            ]
+        )
+        try SchemaValidator().validate(allCloudKit)
+
+        let allLocal = NormalizedSchema(
+            schemaName: "LocalSchema",
+            schemaFingerprint: "fp",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Trip",
+                    entityName: "Trip",
+                    mutableName: "DatabaseTrip",
+                    sourceKind: "struct",
+                    attributes: []
+                ),
+                NormalizedEntity(
+                    swiftName: "Leg",
+                    entityName: "Leg",
+                    mutableName: "DatabaseLeg",
+                    sourceKind: "struct",
+                    attributes: []
+                ),
+            ]
+        )
+        try SchemaValidator().validate(allLocal)
+    }
+
+    @Test
+    func rendersCloudKitEnabledMarkerForCloudKitSchema() throws {
+        let schema = NormalizedSchema(
+            schemaName: "TripSlateSchema",
+            schemaFingerprint: "test-fingerprint",
+            modelModule: "TripModels",
+            runtimeModule: "TripPersistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Trip",
+                    entityName: "Trip",
+                    mutableName: "DatabaseTrip",
+                    sourceKind: "struct",
+                    attributes: [
+                        NormalizedAttribute(
+                            swiftName: "name",
+                            storageName: "name",
+                            swiftType: "String",
+                            storageType: "string",
+                            optional: false
+                        ),
+                    ],
+                    cloudKit: true
+                ),
+            ]
+        )
+
+        let schemaFile = try #require(GeneratedSchemaRenderer().render(schema: schema).first {
+            $0.path == "TripSlateSchema.swift"
+        })
+
+        // Whitespace-exact: the marker must carry the final 4-space output
+        // indent, matching `schemaIdentifier` / `schemaFingerprint`.
+        #expect(schemaFile.contents.contains("\n    public static let cloudKitEnabled = true"))
+    }
+
+    @Test
+    func omitsCloudKitEnabledMarkerForNonCloudKitSchema() throws {
+        let schema = NormalizedSchema(
+            schemaName: "TripSlateSchema",
+            schemaFingerprint: "test-fingerprint",
+            modelModule: "TripModels",
+            runtimeModule: "TripPersistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Trip",
+                    entityName: "Trip",
+                    mutableName: "DatabaseTrip",
+                    sourceKind: "struct",
+                    attributes: [
+                        NormalizedAttribute(
+                            swiftName: "name",
+                            storageName: "name",
+                            swiftType: "String",
+                            storageType: "string",
+                            optional: false
+                        ),
+                    ]
+                ),
+            ]
+        )
+
+        let schemaFile = try #require(GeneratedSchemaRenderer().render(schema: schema).first {
+            $0.path == "TripSlateSchema.swift"
+        })
+
+        // A non-CloudKit schema emits no marker at all (not `= false`), so the
+        // committed non-CloudKit fixtures stay byte-for-byte identical.
+        #expect(!schemaFile.contents.contains("cloudKitEnabled"))
+    }
+
     private func makeImportSampleSchema(
         modelModule: String,
         runtimeModule: String

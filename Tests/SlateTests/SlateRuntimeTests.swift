@@ -521,6 +521,19 @@ enum TestInvalidSchema: SlateSchema {
 @Suite
 struct SlateRuntimeTests {
     @Test
+    func handWrittenSchemasInheritCloudKitEnabledDefault() {
+        // The six hand-written conformers declare no `cloudKitEnabled`; they
+        // inherit `false` from the `extension SlateSchema` default, proving the
+        // new protocol requirement does not break existing conformers.
+        #expect(TestSchema.cloudKitEnabled == false)
+        #expect(TestUnconstrainedSchema.cloudKitEnabled == false)
+        #expect(TestRelationshipSchema.cloudKitEnabled == false)
+        #expect(TestInvalidSchema.cloudKitEnabled == false)
+        #expect(TestNoteSchema.cloudKitEnabled == false)
+        #expect(TestEnumSchema.cloudKitEnabled == false)
+    }
+
+    @Test
     func queryAndMutateInMemory() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
         try slate.configure()

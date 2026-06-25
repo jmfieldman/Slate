@@ -99,6 +99,116 @@ struct SlateSchemaMacroTests {
     }
 
     @Test
+    func slateEntityCloudKitArgumentDoesNotAffectExpansion() {
+        // Differential invariant: `@SlateEntity(cloudKit:)` is harvested by the
+        // offline generator, never by the macro expansion. Two entities with
+        // identical bodies — one with `cloudKit: true`, one with no `cloudKit:`
+        // argument at all — must expand byte-for-byte identically.
+        //
+        // Both arms assert against the SAME `expectedSource` constant, so a pass
+        // proves the two expansions equal each other. Using one shared
+        // expectation (rather than diffing against the `slateEntityExpands…`
+        // baseline) keeps this immune to the subtle bug where a future editor
+        // alters a body that also differs in `relationships:` (which the macro
+        // *does* read) and mistakes a relationship-driven diff for a `cloudKit`
+        // effect — here the only delta between the two arms is `cloudKit:`.
+        let expectedSource =
+            """
+            public struct Patient {
+                public let patientId: String
+
+                public let slateID: SlateID
+
+                public init(
+                    slateID: SlateID = NSManagedObjectID(),
+                    patientId: String
+                ) {
+                    self.slateID = slateID
+                    self.patientId = patientId
+                }
+
+                public init(managedObject: some ManagedPropertyProviding) {
+                    self.slateID = managedObject.objectID
+                    self.patientId = managedObject.patientId
+                }
+
+                public protocol ManagedPropertyProviding: AnyObject {
+                    var objectID: SlateID { get }
+                    var patientId: String { get }
+                }
+
+                public static func keypathToAttribute(_ keyPath: PartialKeyPath<Self>) -> String {
+                    switch keyPath {
+                    case \\Patient.patientId: "patientId"
+                    default:
+                        fatalError("Unsupported Slate key path")
+                    }
+                }
+
+                public static func keypathToRelationship(_ keyPath: PartialKeyPath<Self>) -> String {
+                    switch keyPath {
+                    default:
+                        fatalError("Unsupported Slate relationship key path")
+                    }
+                }
+            }
+
+            extension Patient: SlateObject {
+            }
+
+            extension Patient: SlateKeypathAttributeProviding {
+            }
+
+            extension Patient: SlateKeypathRelationshipProviding {
+            }
+
+            extension Patient: Identifiable {
+                public var id: SlateID {
+                    slateID
+                }
+            }
+
+            extension Patient: Equatable {
+                public static func == (lhs: Patient, rhs: Patient) -> Bool {
+                    lhs.slateID == rhs.slateID
+                        && lhs.patientId == rhs.patientId
+                }
+            }
+
+            extension Patient: Hashable {
+                public func hash(into hasher: inout Hasher) {
+                    hasher.combine(slateID)
+                    hasher.combine(patientId)
+                }
+            }
+            """
+
+        // Arm A: cloudKit: true
+        assertMacroExpansion(
+            """
+            @SlateEntity(cloudKit: true)
+            public struct Patient {
+                public let patientId: String
+            }
+            """,
+            expandedSource: expectedSource,
+            macros: testMacros
+        )
+
+        // Arm B: no cloudKit: argument — identical body, identical expansion.
+        assertMacroExpansion(
+            """
+            @SlateEntity
+            public struct Patient {
+                public let patientId: String
+            }
+            """,
+            expandedSource: expectedSource,
+            macros: testMacros
+        )
+    }
+
+    @Test
     func slateEmbeddedIsPeerOnlyOnStruct() {
         // `@SlateEmbedded` is peer-only — it does not synthesize a
         // memberwise initializer. Authors must declare a public init
