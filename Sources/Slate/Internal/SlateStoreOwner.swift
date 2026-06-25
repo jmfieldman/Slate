@@ -11,6 +11,7 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     let writerContext: NSManagedObjectContext
     let accessGate: SlateAccessGate
     let cache: SlateObjectCache
+    let storageMode: SlateStorageMode
 
     private let sinkLock = NSLock()
     private var batchDeleteSinks: [UUID: BatchDeleteHandler] = [:]
@@ -21,7 +22,8 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         coordinator: NSPersistentStoreCoordinator,
         writerContext: NSManagedObjectContext,
         accessGate: SlateAccessGate = SlateAccessGate(),
-        cache: SlateObjectCache = SlateObjectCache()
+        cache: SlateObjectCache = SlateObjectCache(),
+        storageMode: SlateStorageMode = .local
     ) {
         self.id = id
         self.registry = registry
@@ -29,6 +31,7 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         self.writerContext = writerContext
         self.accessGate = accessGate
         self.cache = cache
+        self.storageMode = storageMode
     }
 
     func makeReaderContext() -> NSManagedObjectContext {
@@ -92,6 +95,7 @@ final class SlateStoreRegistry: @unchecked Sendable {
 
     func owner<Schema: SlateSchema>(
         identity: SlateStoreIdentity,
+        storageMode: SlateStorageMode,
         create: () throws -> SlateStoreOwner<Schema>
     ) throws -> SlateStoreOwner<Schema> {
         lock.lock()
@@ -107,6 +111,9 @@ final class SlateStoreRegistry: @unchecked Sendable {
             guard let typed = existing as? SlateStoreOwner<Schema> else {
                 throw SlateError.incompatibleStore(identity.canonicalURL)
             }
+            guard typed.storageMode == storageMode else {
+                throw SlateError.incompatibleStore(identity.canonicalURL)
+            }
             return typed
         }
 
@@ -118,4 +125,3 @@ final class SlateStoreRegistry: @unchecked Sendable {
         return owner
     }
 }
-

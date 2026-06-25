@@ -5,29 +5,37 @@ import SlateSchema
 public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
     private let persistentStoreDescription: NSPersistentStoreDescription
     private let storeKind: SlateStoreKind
+    private let storageMode: SlateStorageMode
     private let stateLock = NSLock()
     private var owner: SlateStoreOwner<Schema>?
     private var closed = false
 
     public init(
         persistentStoreDescription: NSPersistentStoreDescription,
-        storeKind: SlateStoreKind = .strict
+        storeKind: SlateStoreKind = .strict,
+        storageMode: SlateStorageMode = .local
     ) {
         self.persistentStoreDescription = persistentStoreDescription
         self.storeKind = storeKind
+        self.storageMode = storageMode
     }
 
     public convenience init(
         storeURL: URL?,
         storeType: String = NSSQLiteStoreType,
-        storeKind: SlateStoreKind = .strict
+        storeKind: SlateStoreKind = .strict,
+        storageMode: SlateStorageMode = .local
     ) {
         let description = NSPersistentStoreDescription()
         description.type = storeType
         description.url = storeURL
         description.shouldMigrateStoreAutomatically = true
         description.shouldInferMappingModelAutomatically = true
-        self.init(persistentStoreDescription: description, storeKind: storeKind)
+        self.init(
+            persistentStoreDescription: description,
+            storeKind: storeKind,
+            storageMode: storageMode
+        )
     }
 
     public func configure() throws {
@@ -36,14 +44,28 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
             throw SlateError.alreadyConfigured
         }
 
+        guard storageMode.isCloudKit == Schema.cloudKitEnabled else {
+            throw SlateError.storageModeSchemaMismatch(
+                mode: storageMode,
+                schemaCloudKitEnabled: Schema.cloudKitEnabled
+            )
+        }
+        guard !(storageMode.isCloudKit && storeKind == .cacheStore) else {
+            throw SlateError.storageModeStoreKindMismatch(
+                mode: storageMode,
+                storeKind: storeKind
+            )
+        }
+
         var registry = SlateTableRegistry()
         Schema.registerTables(&registry)
 
         let identity = try storeIdentity()
-        let newOwner = try SlateStoreRegistry.shared.owner(identity: identity) {
+        let newOwner = try SlateStoreRegistry.shared.owner(identity: identity, storageMode: storageMode) {
             try Self.openOwner(
                 description: persistentStoreDescription,
                 storeKind: storeKind,
+                storageMode: storageMode,
                 registry: registry
             )
         }
@@ -567,6 +589,7 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
     private static func openOwner(
         description: NSPersistentStoreDescription,
         storeKind: SlateStoreKind,
+        storageMode: SlateStorageMode,
         registry: SlateTableRegistry
     ) throws -> SlateStoreOwner<Schema> {
         let model = try Schema.makeManagedObjectModel()
@@ -575,7 +598,8 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         do {
             try addStore(description: description, coordinator: coordinator)
         } catch {
-            guard storeKind == .cacheStore,
+            guard storageMode == .local,
+                  storeKind == .cacheStore,
                   description.type == NSSQLiteStoreType,
                   let url = description.url,
                   isLikelyIncompatibleStore(error)
@@ -595,7 +619,8 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         return SlateStoreOwner(
             registry: registry,
             coordinator: coordinator,
-            writerContext: writerContext
+            writerContext: writerContext,
+            storageMode: storageMode
         )
     }
 
