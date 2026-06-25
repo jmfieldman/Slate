@@ -2038,6 +2038,101 @@ struct SlateGeneratorTests {
     }
 
     @Test
+    func forcesRelationshipsOptionalAndUnorderedInCloudKitMode() throws {
+        // The authored relationships are deliberately non-optional and ordered so
+        // the CloudKit transform is visible: `notes` (toMany) is ordered, and
+        // `patient` (toOne) is non-optional. In CloudKit mode the renderer must
+        // force every relationship optional + unordered + `minCount = 0`; in
+        // non-CloudKit mode the authored values must render unchanged.
+        func schema(cloudKit: Bool) -> NormalizedSchema {
+            NormalizedSchema(
+                schemaName: "PatientSchema",
+                schemaFingerprint: "fp",
+                modelModule: "Models",
+                runtimeModule: "Persistence",
+                entities: [
+                    NormalizedEntity(
+                        swiftName: "Patient",
+                        entityName: "Patient",
+                        mutableName: "DatabasePatient",
+                        sourceKind: "struct",
+                        attributes: [
+                            NormalizedAttribute(
+                                swiftName: "patientId",
+                                storageName: "patientId",
+                                swiftType: "String",
+                                storageType: "string",
+                                optional: false
+                            ),
+                        ],
+                        relationships: [
+                            NormalizedRelationship(
+                                name: "notes",
+                                kind: "toMany",
+                                destination: "PatientNote",
+                                inverse: "patient",
+                                deleteRule: "cascade",
+                                ordered: true,
+                                optional: false
+                            ),
+                        ],
+                        cloudKit: cloudKit
+                    ),
+                    NormalizedEntity(
+                        swiftName: "PatientNote",
+                        entityName: "PatientNote",
+                        mutableName: "DatabasePatientNote",
+                        sourceKind: "struct",
+                        attributes: [
+                            NormalizedAttribute(
+                                swiftName: "noteId",
+                                storageName: "noteId",
+                                swiftType: "String",
+                                storageType: "string",
+                                optional: false
+                            ),
+                        ],
+                        relationships: [
+                            NormalizedRelationship(
+                                name: "patient",
+                                kind: "toOne",
+                                destination: "Patient",
+                                inverse: "notes",
+                                deleteRule: "nullify",
+                                ordered: false,
+                                optional: false
+                            ),
+                        ],
+                        cloudKit: cloudKit
+                    ),
+                ]
+            )
+        }
+
+        // CloudKit: every relationship forced optional + unordered; toOne minCount 0;
+        // inverse wiring still emitted.
+        let cloudKitFiles = GeneratedSchemaRenderer().render(schema: schema(cloudKit: true))
+        let cloudKitSchemaFile = try #require(cloudKitFiles.first { $0.path == "PatientSchema.swift" })
+        #expect(cloudKitSchemaFile.contents.contains("patientNotesRelationship.isOptional = true"))
+        #expect(cloudKitSchemaFile.contents.contains("patientNotesRelationship.isOrdered = false"))
+        #expect(cloudKitSchemaFile.contents.contains("patientNotesRelationship.minCount = 0"))
+        #expect(cloudKitSchemaFile.contents.contains("patientNotePatientRelationship.isOptional = true"))
+        #expect(cloudKitSchemaFile.contents.contains("patientNotePatientRelationship.isOrdered = false"))
+        #expect(cloudKitSchemaFile.contents.contains("patientNotePatientRelationship.minCount = 0"))
+        #expect(cloudKitSchemaFile.contents.contains("patientNotesRelationship.inverseRelationship = patientNotePatientRelationship"))
+        #expect(cloudKitSchemaFile.contents.contains("patientNotePatientRelationship.inverseRelationship = patientNotesRelationship"))
+
+        // Non-CloudKit: the authored values render unchanged.
+        let localFiles = GeneratedSchemaRenderer().render(schema: schema(cloudKit: false))
+        let localSchemaFile = try #require(localFiles.first { $0.path == "PatientSchema.swift" })
+        #expect(localSchemaFile.contents.contains("patientNotePatientRelationship.isOptional = false"))
+        #expect(localSchemaFile.contents.contains("patientNotePatientRelationship.minCount = 1"))
+        #expect(localSchemaFile.contents.contains("patientNotesRelationship.isOrdered = true"))
+        // The CloudKit force did not leak into the local render.
+        #expect(!localSchemaFile.contents.contains("patientNotePatientRelationship.isOptional = true"))
+    }
+
+    @Test
     func validatesExternalStorageOnlyOnBinaryAttributes() throws {
         // `externalStorage: true` on a non-Data (String) attribute is an error.
         let invalid = NormalizedSchema(

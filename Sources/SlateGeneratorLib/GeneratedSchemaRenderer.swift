@@ -554,23 +554,33 @@ public struct GeneratedSchemaRenderer: Sendable {
             entity.relationships.map { relationship in
                 let variable = relationshipVariable(entity: entity, relationship: relationship)
                 let destinationEntityVariable = entityByName[relationship.destination]?.swiftName.camelCase ?? relationship.destination.camelCase
+                // toOne: maxCount always 1; toMany: authored maxCount (0 = unbounded).
+                let maxCount = relationship.kind == "toOne" ? 1 : (relationship.maxCount ?? 0)
+                let isOptional: Bool
+                let isOrdered: Bool
                 let minCount: Int
-                let maxCount: Int
-                if relationship.kind == "toOne" {
-                    // toOne: minCount 0/1 by optional, maxCount always 1
-                    minCount = relationship.optional ? 0 : 1
-                    maxCount = 1
+                if schema.cloudKit {
+                    // CloudKit requires every relationship optional + unordered. minCount = 0
+                    // must accompany isOptional = true, otherwise a forced-optional toOne keeps
+                    // minCount = 1 and Core Data rejects the contradictory description. This
+                    // transform is model-emission only — the Slate immutable model and
+                    // SlateRelationshipMetadata keep the authored optionality/order.
+                    isOptional = true
+                    isOrdered = false
+                    minCount = 0
                 } else {
-                    minCount = relationship.minCount ?? 0
-                    maxCount = relationship.maxCount ?? 0
+                    isOptional = relationship.optional
+                    isOrdered = relationship.ordered
+                    // toOne: minCount 0/1 by optional; toMany: authored minCount.
+                    minCount = relationship.kind == "toOne" ? (relationship.optional ? 0 : 1) : (relationship.minCount ?? 0)
                 }
                 return """
                 let \(variable) = NSRelationshipDescription()
                 \(variable).name = "\(relationship.name)"
                 \(variable).destinationEntity = \(destinationEntityVariable)Entity
                 \(variable).deleteRule = .\(coreDataDeleteRule(relationship.deleteRule))
-                \(variable).isOptional = \(relationship.optional)
-                \(variable).isOrdered = \(relationship.ordered)
+                \(variable).isOptional = \(isOptional)
+                \(variable).isOrdered = \(isOrdered)
                 \(variable).minCount = \(minCount)
                 \(variable).maxCount = \(maxCount)
                 """
