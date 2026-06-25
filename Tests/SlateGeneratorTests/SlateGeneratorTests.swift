@@ -2866,6 +2866,77 @@ struct SlateGeneratorTests {
         try SchemaValidator().validate(allLocal)
     }
 
+    @Test
+    func rendersCloudKitEnabledMarkerForCloudKitSchema() throws {
+        let schema = NormalizedSchema(
+            schemaName: "TripSlateSchema",
+            schemaFingerprint: "test-fingerprint",
+            modelModule: "TripModels",
+            runtimeModule: "TripPersistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Trip",
+                    entityName: "Trip",
+                    mutableName: "DatabaseTrip",
+                    sourceKind: "struct",
+                    attributes: [
+                        NormalizedAttribute(
+                            swiftName: "name",
+                            storageName: "name",
+                            swiftType: "String",
+                            storageType: "string",
+                            optional: false
+                        ),
+                    ],
+                    cloudKit: true
+                ),
+            ]
+        )
+
+        let schemaFile = try #require(GeneratedSchemaRenderer().render(schema: schema).first {
+            $0.path == "TripSlateSchema.swift"
+        })
+
+        // Whitespace-exact: the marker must carry the final 4-space output
+        // indent, matching `schemaIdentifier` / `schemaFingerprint`.
+        #expect(schemaFile.contents.contains("\n    public static let cloudKitEnabled = true"))
+    }
+
+    @Test
+    func omitsCloudKitEnabledMarkerForNonCloudKitSchema() throws {
+        let schema = NormalizedSchema(
+            schemaName: "TripSlateSchema",
+            schemaFingerprint: "test-fingerprint",
+            modelModule: "TripModels",
+            runtimeModule: "TripPersistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Trip",
+                    entityName: "Trip",
+                    mutableName: "DatabaseTrip",
+                    sourceKind: "struct",
+                    attributes: [
+                        NormalizedAttribute(
+                            swiftName: "name",
+                            storageName: "name",
+                            swiftType: "String",
+                            storageType: "string",
+                            optional: false
+                        ),
+                    ]
+                ),
+            ]
+        )
+
+        let schemaFile = try #require(GeneratedSchemaRenderer().render(schema: schema).first {
+            $0.path == "TripSlateSchema.swift"
+        })
+
+        // A non-CloudKit schema emits no marker at all (not `= false`), so the
+        // committed non-CloudKit fixtures stay byte-for-byte identical.
+        #expect(!schemaFile.contents.contains("cloudKitEnabled"))
+    }
+
     private func makeImportSampleSchema(
         modelModule: String,
         runtimeModule: String
