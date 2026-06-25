@@ -534,6 +534,30 @@ struct SlateRuntimeTests {
     }
 
     @Test
+    func storageModeAndRuntimeErrorsAreEquatable() {
+        let mode = SlateStorageMode.cloudKitMirrored(containerIdentifier: "iCloud.com.example")
+
+        #expect(mode == .cloudKitMirrored(containerIdentifier: "iCloud.com.example"))
+        #expect(mode != .cloudKitShared(containerIdentifier: "iCloud.com.example"))
+        #expect(SlateError.storageModeSchemaMismatch(
+            mode: mode,
+            schemaCloudKitEnabled: true
+        ) == .storageModeSchemaMismatch(
+            mode: .cloudKitMirrored(containerIdentifier: "iCloud.com.example"),
+            schemaCloudKitEnabled: true
+        ))
+        #expect(SlateError.storageModeStoreKindMismatch(
+            mode: mode,
+            storeKind: .cacheStore
+        ) == .storageModeStoreKindMismatch(
+            mode: .cloudKitMirrored(containerIdentifier: "iCloud.com.example"),
+            storeKind: .cacheStore
+        ))
+        #expect(SlateError.cloudKitUnavailable(mode: mode) == .cloudKitUnavailable(mode: mode))
+        #expect(SlateError.sharingUnavailable(mode: mode) == .sharingUnavailable(mode: mode))
+    }
+
+    @Test
     func queryAndMutateInMemory() async throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
         try slate.configure()
