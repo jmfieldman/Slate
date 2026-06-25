@@ -2104,6 +2104,173 @@ struct SlateGeneratorTests {
     }
 
     @Test
+    func validatesCloudKitSubsetRejectionMatrix() throws {
+        // A conforming CloudKit schema validates without throwing. It exercises
+        // the passing forms: an optional attribute, a non-optional attribute with
+        // a default, a non-optional enum with a default, and two well-formed
+        // (unordered, non-`deny`) relationships with valid inverses.
+        try SchemaValidator().validate(makeCloudKitSubsetSchema())
+
+        // 1. Non-optional attribute with no default.
+        expectCloudKitSubsetIssue(
+            makeCloudKitSubsetSchema(extraPatientAttributes: [
+                NormalizedAttribute(
+                    swiftName: "ssn",
+                    storageName: "ssn",
+                    swiftType: "String",
+                    storageType: "string",
+                    optional: false
+                ),
+            ]),
+            contains: "Entity 'Patient' attribute 'ssn' is non-optional with no default; CloudKit requires every attribute to be optional or carry a default. Add '@SlateAttribute(default:)' or make 'ssn' optional."
+        )
+
+        // 2. Ordered relationship.
+        expectCloudKitSubsetIssue(
+            makeCloudKitSubsetSchema(notesOrdered: true),
+            contains: "Entity 'Patient' relationship 'notes' is ordered; CloudKit does not support ordered relationships. Remove 'ordered: true' and model an explicit sort-key attribute."
+        )
+
+        // 3. `deny` delete rule.
+        expectCloudKitSubsetIssue(
+            makeCloudKitSubsetSchema(patientNoteDeleteRule: "deny"),
+            contains: "Entity 'PatientNote' relationship 'patient' uses the 'deny' delete rule, which CloudKit does not support. Use 'nullify', 'cascade', or 'noAction', or model a soft-delete flag (e.g. 'isTrashed') instead."
+        )
+
+        // 4. `#Unique` constraint.
+        expectCloudKitSubsetIssue(
+            makeCloudKitSubsetSchema(patientUniqueness: [NormalizedUniqueness(storageNames: ["name"])]),
+            contains: "Entity 'Patient' declares a '#Unique' constraint, which CloudKit does not support. Remove it; 'upsert' then fails at runtime via the existing uniqueness check while 'firstOrCreate' still works."
+        )
+    }
+
+    @Test
+    func cloudKitSubsetRulesDoNotApplyToLocalSchemas() throws {
+        // The same schema shape that trips all four CloudKit-subset rules must
+        // validate without throwing when it is a non-CloudKit (local) schema —
+        // proving the rules are gated on `schema.cloudKit`.
+        let schema = makeCloudKitSubsetSchema(
+            extraPatientAttributes: [
+                NormalizedAttribute(
+                    swiftName: "ssn",
+                    storageName: "ssn",
+                    swiftType: "String",
+                    storageType: "string",
+                    optional: false
+                ),
+            ],
+            notesOrdered: true,
+            patientNoteDeleteRule: "deny",
+            patientUniqueness: [NormalizedUniqueness(storageNames: ["name"])],
+            cloudKit: false
+        )
+        try SchemaValidator().validate(schema)
+    }
+
+    /// Builds a two-entity schema (`Patient` ⇄ `PatientNote`) that conforms to the
+    /// CloudKit subset by default, with knobs to inject each subset violation.
+    private func makeCloudKitSubsetSchema(
+        extraPatientAttributes: [NormalizedAttribute] = [],
+        notesOrdered: Bool = false,
+        patientNoteDeleteRule: String = "nullify",
+        patientUniqueness: [NormalizedUniqueness] = [],
+        cloudKit: Bool = true
+    ) -> NormalizedSchema {
+        NormalizedSchema(
+            schemaName: "CloudKitSchema",
+            schemaFingerprint: "ck",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Patient",
+                    entityName: "Patient",
+                    mutableName: "DatabasePatient",
+                    sourceKind: "struct",
+                    attributes: [
+                        NormalizedAttribute(
+                            swiftName: "name",
+                            storageName: "name",
+                            swiftType: "String?",
+                            storageType: "string",
+                            optional: true
+                        ),
+                        NormalizedAttribute(
+                            swiftName: "count",
+                            storageName: "count",
+                            swiftType: "Int",
+                            storageType: "integer64",
+                            optional: false,
+                            defaultExpression: "0"
+                        ),
+                        NormalizedAttribute(
+                            swiftName: "status",
+                            storageName: "status",
+                            swiftType: "Status",
+                            storageType: "rawRepresentable",
+                            optional: false,
+                            defaultExpression: "Patient.Status.active.rawValue",
+                            enumKind: NormalizedEnumKind(typeName: "Status", rawType: "String")
+                        ),
+                    ] + extraPatientAttributes,
+                    relationships: [
+                        NormalizedRelationship(
+                            name: "notes",
+                            kind: "toMany",
+                            destination: "PatientNote",
+                            inverse: "patient",
+                            deleteRule: "cascade",
+                            ordered: notesOrdered,
+                            optional: true
+                        ),
+                    ],
+                    uniqueness: patientUniqueness,
+                    cloudKit: cloudKit
+                ),
+                NormalizedEntity(
+                    swiftName: "PatientNote",
+                    entityName: "PatientNote",
+                    mutableName: "DatabasePatientNote",
+                    sourceKind: "struct",
+                    attributes: [
+                        NormalizedAttribute(
+                            swiftName: "body",
+                            storageName: "body",
+                            swiftType: "String?",
+                            storageType: "string",
+                            optional: true
+                        ),
+                    ],
+                    relationships: [
+                        NormalizedRelationship(
+                            name: "patient",
+                            kind: "toOne",
+                            destination: "Patient",
+                            inverse: "notes",
+                            deleteRule: patientNoteDeleteRule,
+                            optional: true
+                        ),
+                    ],
+                    cloudKit: cloudKit
+                ),
+            ]
+        )
+    }
+
+    /// Asserts that validating `schema` throws a `SchemaValidationError` whose
+    /// aggregated description contains `substring`.
+    private func expectCloudKitSubsetIssue(_ schema: NormalizedSchema, contains substring: String) {
+        do {
+            try SchemaValidator().validate(schema)
+            Issue.record("Expected CloudKit-subset validation to fail for: \(substring)")
+        } catch let error as SchemaValidationError {
+            #expect(error.description.contains(substring))
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
+    @Test
     func parserHarvestsExternalStorageAtTopLevelAndEmbedded() throws {
         let source = """
         import SlateSchema
