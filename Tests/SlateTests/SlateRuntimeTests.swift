@@ -1,10 +1,10 @@
 import CoreData
 import Foundation
-import Slate
 import SlateFixturePatientModels
 import SlateFixturePatientPersistence
 import SlateSchema
 import Testing
+@testable import Slate
 
 @SlateEntity
 public struct TestAuthor {
@@ -75,6 +75,21 @@ enum TestSchema: SlateSchema {
             entityName: "TestAuthor",
             uniquenessConstraints: [["name"]]
         )
+    }
+}
+
+enum TestCloudKitSchema: SlateSchema {
+    static let schemaIdentifier = "TestCloudKitSchema"
+    static let schemaFingerprint = "test-cloudkit"
+    static let cloudKitEnabled = true
+    static let entities = TestSchema.entities
+
+    static func makeManagedObjectModel() throws -> NSManagedObjectModel {
+        try TestSchema.makeManagedObjectModel()
+    }
+
+    static func registerTables(_ registry: inout SlateTableRegistry) {
+        TestSchema.registerTables(&registry)
     }
 }
 
@@ -555,6 +570,151 @@ struct SlateRuntimeTests {
         ))
         #expect(SlateError.cloudKitUnavailable(mode: mode) == .cloudKitUnavailable(mode: mode))
         #expect(SlateError.sharingUnavailable(mode: mode) == .sharingUnavailable(mode: mode))
+    }
+
+    @Test
+    func storageModeDefaultsToLocalAndExplicitLocalMatchesDefault() throws {
+        let defaultSlate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
+        try defaultSlate.configure()
+
+        let explicitLocalSlate = Slate<TestSchema>(
+            storeURL: nil,
+            storeType: NSInMemoryStoreType,
+            storageMode: .local
+        )
+        try explicitLocalSlate.configure()
+
+        #expect(try slateStoreOwner(for: defaultSlate).storageMode == .local)
+        #expect(try slateStoreOwner(for: explicitLocalSlate).storageMode == .local)
+    }
+
+    @Test
+    func configureRejectsLocalModeForCloudKitSchema() {
+        let slate = Slate<TestCloudKitSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
+
+        #expect(throws: SlateError.storageModeSchemaMismatch(
+            mode: .local,
+            schemaCloudKitEnabled: true
+        )) {
+            try slate.configure()
+        }
+    }
+
+    @Test
+    func configureRejectsCloudKitModeForLocalSchema() {
+        let mode = SlateStorageMode.cloudKitMirrored(containerIdentifier: "iCloud.com.example")
+        let slate = Slate<TestSchema>(
+            storeURL: nil,
+            storeType: NSInMemoryStoreType,
+            storageMode: mode
+        )
+
+        #expect(throws: SlateError.storageModeSchemaMismatch(
+            mode: mode,
+            schemaCloudKitEnabled: false
+        )) {
+            try slate.configure()
+        }
+    }
+
+    @Test
+    func configureRejectsCacheStoreForCloudKitModeWithoutWiping() throws {
+        let directory = try temporaryDirectory(prefix: "SlateCloudKitCacheStoreRejection")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let storeURL = directory.appendingPathComponent("Test.sqlite")
+        let sidecarURLs = [
+            storeURL,
+            URL(fileURLWithPath: storeURL.path + "-wal"),
+            URL(fileURLWithPath: storeURL.path + "-shm"),
+        ]
+        for url in sidecarURLs {
+            try Data("sentinel".utf8).write(to: url)
+        }
+
+        let mode = SlateStorageMode.cloudKitMirrored(containerIdentifier: "iCloud.com.example")
+        let slate = Slate<TestCloudKitSchema>(
+            storeURL: storeURL,
+            storeType: NSSQLiteStoreType,
+            storeKind: .cacheStore,
+            storageMode: mode
+        )
+
+        #expect(throws: SlateError.storageModeStoreKindMismatch(
+            mode: mode,
+            storeKind: .cacheStore
+        )) {
+            try slate.configure()
+        }
+
+        for url in sidecarURLs {
+            #expect(FileManager.default.fileExists(atPath: url.path))
+            #expect((try? Data(contentsOf: url)) == Data("sentinel".utf8))
+        }
+    }
+
+    @Test
+    func configureDoesNotValidateContainerIdentifierInSprint03() throws {
+        let directory = try temporaryDirectory(prefix: "SlateCloudKitEmptyIdentifier")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let slate = Slate<TestCloudKitSchema>(
+            storeURL: directory.appendingPathComponent("Test.sqlite"),
+            storeType: NSSQLiteStoreType,
+            storageMode: .cloudKitMirrored(containerIdentifier: "")
+        )
+
+        try slate.configure()
+        #expect(try slateStoreOwner(for: slate).storageMode == .cloudKitMirrored(containerIdentifier: ""))
+    }
+
+    @Test
+    func configureThreadsCloudKitStorageModeToOwner() throws {
+        let directory = try temporaryDirectory(prefix: "SlateCloudKitOwnerMode")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let mode = SlateStorageMode.cloudKitMirrored(containerIdentifier: "iCloud.com.example")
+        let slate = Slate<TestCloudKitSchema>(
+            storeURL: directory.appendingPathComponent("Test.sqlite"),
+            storeType: NSSQLiteStoreType,
+            storageMode: mode
+        )
+
+        try slate.configure()
+
+        #expect(try slateStoreOwner(for: slate).storageMode == mode)
+    }
+
+    @Test
+    func configureRejectsModeIncompatibleOwnerReuse() throws {
+        let directory = try temporaryDirectory(prefix: "SlateCloudKitOwnerReuse")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let storeURL = directory.appendingPathComponent("Test.sqlite")
+        let mirrored = Slate<TestCloudKitSchema>(
+            storeURL: storeURL,
+            storeType: NSSQLiteStoreType,
+            storageMode: .cloudKitMirrored(containerIdentifier: "iCloud.com.example")
+        )
+        try mirrored.configure()
+
+        let shared = Slate<TestCloudKitSchema>(
+            storeURL: storeURL,
+            storeType: NSSQLiteStoreType,
+            storageMode: .cloudKitShared(containerIdentifier: "iCloud.com.example")
+        )
+
+        #expect(throws: SlateError.incompatibleStore(storeURL.standardizedFileURL)) {
+            try shared.configure()
+        }
     }
 
     @Test
@@ -1427,6 +1587,28 @@ struct SlateRuntimeTests {
         #expect(original.id == edited.id)
         #expect(original.id == original.slateID)
     }
+}
+
+private func temporaryDirectory(prefix: String) throws -> URL {
+    let directory = URL(
+        fileURLWithPath: NSTemporaryDirectory(),
+        isDirectory: true
+    ).appendingPathComponent("\(prefix)-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(
+        at: directory,
+        withIntermediateDirectories: true
+    )
+    return directory
+}
+
+private func slateStoreOwner<Schema: SlateSchema>(for slate: Slate<Schema>) throws -> SlateStoreOwner<Schema> {
+    let mirror = Mirror(reflecting: slate)
+    for child in mirror.children where child.label == "owner" {
+        if let owner = child.value as? SlateStoreOwner<Schema> {
+            return owner
+        }
+    }
+    throw NSError(domain: "SlateRuntimeTests", code: -1)
 }
 
 /// Test helpers for the in-tree fixture targets. Hidden behind a namespace
