@@ -2216,6 +2216,69 @@ struct SlateGeneratorTests {
         #expect(try GeneratedFileWriter().staleFiles(files: files, in: output) == ["CloudKitFieldsReport.md"])
     }
 
+    @Test
+    func rendersCloudKitValidModelFromConformingSchema() throws {
+        // Consolidated model-emission suite: render the conforming CloudKit
+        // schema once and assert every CloudKit model transform lands in the
+        // generated `makeManagedObjectModel()` source together — per-attribute
+        // optionality/defaults, the synthesized `*_has` default, the enum's
+        // `.rawValue` default, external binary storage, and the forced
+        // optional/unordered/minCount-0 relationships. Source-string assertions:
+        // `SlateGeneratorTests` holds only the rendered string — there is no
+        // compiled CloudKit `NSManagedObjectModel` to inspect (Architecture note;
+        // the built model is loaded for real in Sprint 04).
+        let files = GeneratedSchemaRenderer().render(schema: makeCloudKitReportSchema())
+        let schemaFile = try #require(files.first { $0.path == "CloudKitSchema.swift" })
+        let contents = schemaFile.contents
+
+        // Authored-optional attribute stays optional; non-optional attribute
+        // carries its default (optional-or-default holds for every attribute).
+        #expect(contents.contains("patientNameAttribute.isOptional = true"))
+        #expect(contents.contains("patientCountAttribute.isOptional = false"))
+        #expect(contents.contains("patientCountAttribute.defaultValue = 0"))
+
+        // Non-optional enum: non-optional + `.rawValue` default — the Q4
+        // silent-fallback shape, never the throwing one.
+        #expect(contents.contains("patientStatusAttribute.isOptional = false"))
+        #expect(contents.contains("patientStatusAttribute.defaultValue = Patient.Status.active.rawValue"))
+
+        // External binary storage opted in on the `Data` attribute; it stays optional.
+        #expect(contents.contains("patientPhotoAttribute.allowsExternalBinaryDataStorage = true"))
+        #expect(contents.contains("patientPhotoAttribute.isOptional = true"))
+
+        // Synthesized `*_has` presence boolean: non-optional with a `false` default.
+        #expect(contents.contains("patientAddress_hasAttribute.isOptional = false"))
+        #expect(contents.contains("patientAddress_hasAttribute.defaultValue = false"))
+
+        // Flattened embedded value field is optional.
+        #expect(contents.contains("patientAddress_cityAttribute.isOptional = true"))
+
+        // Every relationship — toMany (`notes`) and toOne (`patient`) — is forced
+        // optional + unordered + `minCount = 0`.
+        #expect(contents.contains("patientNotesRelationship.isOptional = true"))
+        #expect(contents.contains("patientNotesRelationship.isOrdered = false"))
+        #expect(contents.contains("patientNotesRelationship.minCount = 0"))
+        #expect(contents.contains("patientNotePatientRelationship.isOptional = true"))
+        #expect(contents.contains("patientNotePatientRelationship.isOrdered = false"))
+        #expect(contents.contains("patientNotePatientRelationship.minCount = 0"))
+    }
+
+    @Test
+    func omitsThrowingEnumBranchForCloudKitSchema() throws {
+        // Q4 structural property: a CloudKit non-optional enum always carries a
+        // default (subset error 1 rejects one without), so the generated bridge
+        // uses the silent `?? <default>` fallback and the throwing
+        // `SlateError.invalidStoredValue` branch is never *generated* for it.
+        let files = GeneratedSchemaRenderer().render(schema: makeCloudKitReportSchema())
+        let bridge = try #require(files.first { $0.path == "Patient+SlateBridge.swift" })
+
+        // The non-optional `status` enum resolves through the silent default
+        // fallback…
+        #expect(bridge.contents.contains("?? Patient.Status.active"))
+        // …and no throwing branch is generated anywhere in the bridge.
+        #expect(!bridge.contents.contains("throw SlateError.invalidStoredValue"))
+    }
+
     /// A small two-entity CloudKit schema with an embedded value (for the
     /// synthesized `*_has` presence boolean), an enum-with-default attribute, and
     /// an external-storage `Data` attribute — used by the CloudKit report tests.
@@ -2253,7 +2316,11 @@ struct SlateGeneratorTests {
                             swiftType: "Status",
                             storageType: "rawRepresentable",
                             optional: false,
-                            defaultExpression: "Patient.Status.active.rawValue",
+                            // Authored enum default as the parser captures it
+                            // (no `.rawValue` suffix); the renderer appends
+                            // `.rawValue`. This conforming schema is reused by the
+                            // model-emission and Q4-structural suites below.
+                            defaultExpression: "Patient.Status.active",
                             enumKind: NormalizedEnumKind(typeName: "Status", rawType: "String")
                         ),
                         NormalizedAttribute(
