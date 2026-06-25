@@ -2044,6 +2044,58 @@ struct SlateGeneratorTests {
     }
 
     @Test
+    func parserHarvestsExternalStorageAtTopLevelAndEmbedded() throws {
+        let source = """
+        import SlateSchema
+
+        @SlateEntity
+        public struct Patient {
+            public let patientId: String
+
+            @SlateAttribute(externalStorage: true)
+            public let avatar: Data
+
+            public let thumbnail: Data
+
+            @SlateEmbedded
+            public let media: Media?
+
+            @SlateEmbedded
+            public struct Media: Equatable, Sendable {
+                @SlateAttribute(externalStorage: true)
+                public let blob: Data?
+
+                public let caption: String?
+            }
+        }
+        """
+        let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString + ".swift")
+        try source.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let schema = try SwiftSchemaParser().parseFiles(
+            at: [url],
+            schemaName: "PatientSchema",
+            modelModule: "PatientModels",
+            runtimeModule: "PatientPersistence"
+        )
+        let entity = try #require(schema.entities.first)
+
+        // Top-level: only the flagged Data attribute harvests externalStorage.
+        let avatar = try #require(entity.attributes.first { $0.swiftName == "avatar" })
+        let thumbnail = try #require(entity.attributes.first { $0.swiftName == "thumbnail" })
+        #expect(avatar.externalStorage == true)
+        #expect(thumbnail.externalStorage == false)
+
+        // Embedded: the flag is harvested on the flattened embedded field too.
+        let embedded = try #require(entity.embedded.first { $0.swiftName == "media" })
+        let blob = try #require(embedded.attributes.first { $0.swiftName == "blob" })
+        let caption = try #require(embedded.attributes.first { $0.swiftName == "caption" })
+        #expect(blob.externalStorage == true)
+        #expect(caption.externalStorage == false)
+    }
+
+    @Test
     func parserCapturesDefaultExpressions() throws {
         let source = """
         import SlateSchema
