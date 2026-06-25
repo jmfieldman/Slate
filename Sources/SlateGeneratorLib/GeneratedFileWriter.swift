@@ -138,7 +138,9 @@ public struct GeneratedFileWriter: Sendable {
         case .bridge:
             return layout.bridge ?? layout.schema ?? layout.mutable
                 ?? URL(fileURLWithPath: ".")
-        case .schema:
+        case .schema, .cloudKitReport:
+            // The CloudKit report lands in the schema directory alongside the
+            // generated schema it documents.
             return layout.schema ?? layout.mutable ?? layout.bridge
                 ?? URL(fileURLWithPath: ".")
         case .manifest:

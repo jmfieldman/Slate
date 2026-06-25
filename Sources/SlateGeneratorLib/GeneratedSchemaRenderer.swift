@@ -26,9 +26,20 @@ public struct GeneratedSchemaRenderer: Sendable {
             kind: .schema
         )
 
+        // The CloudKit fields report is a side-output emitted only for CloudKit
+        // schemas. It is added to both the returned files (so `check`/`staleFiles`
+        // drift-detect it) and `manifest.files` (so `clean`/`--prune` track it).
+        let reportFiles: [GeneratedFile] = schema.cloudKit
+            ? [GeneratedFile(
+                path: "CloudKitFieldsReport.md",
+                contents: CloudKitFieldsReport().render(schema: schema),
+                kind: .cloudKitReport
+            )]
+            : []
+
         let manifest = GenerationManifest(
             schemaFingerprint: schema.schemaFingerprint,
-            files: (entityFiles + bridgeFiles + [schemaFile]).map(\.path).sorted()
+            files: (entityFiles + bridgeFiles + [schemaFile] + reportFiles).map(\.path).sorted()
         )
 
         let manifestFile = GeneratedFile(
@@ -37,7 +48,7 @@ public struct GeneratedSchemaRenderer: Sendable {
             kind: .manifest
         )
 
-        return (entityFiles + bridgeFiles + [schemaFile, manifestFile])
+        return (entityFiles + bridgeFiles + [schemaFile, manifestFile] + reportFiles)
             .sorted { $0.path < $1.path }
     }
 

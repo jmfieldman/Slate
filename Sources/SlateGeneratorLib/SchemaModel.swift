@@ -51,6 +51,10 @@ public enum GeneratedFileKind: String, Sendable, Codable, Equatable {
     case bridge
     case schema
     case manifest
+    /// The human-facing `CloudKitFieldsReport.md`, emitted only for CloudKit
+    /// schemas. Routed to the schema directory so `clean`/`--prune`'s
+    /// schema-dir candidate scan finds it.
+    case cloudKitReport
 }
 
 public struct GenerationManifest: Sendable, Codable, Equatable {
