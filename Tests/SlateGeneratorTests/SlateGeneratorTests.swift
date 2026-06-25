@@ -2770,6 +2770,102 @@ struct SlateGeneratorTests {
         #expect(schema.cloudKit == true)
     }
 
+    @Test
+    func validatesMixedCloudKitSchemaFails() throws {
+        // One CloudKit entity and one non-CloudKit entity in the same schema:
+        // the uniform-or-error check must fail and name both offenders.
+        let schema = NormalizedSchema(
+            schemaName: "BadSchema",
+            schemaFingerprint: "bad",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Trip",
+                    entityName: "Trip",
+                    mutableName: "DatabaseTrip",
+                    sourceKind: "struct",
+                    attributes: [],
+                    cloudKit: true
+                ),
+                NormalizedEntity(
+                    swiftName: "Leg",
+                    entityName: "Leg",
+                    mutableName: "DatabaseLeg",
+                    sourceKind: "struct",
+                    attributes: [],
+                    cloudKit: false
+                ),
+            ]
+        )
+
+        do {
+            try SchemaValidator().validate(schema)
+            Issue.record("Expected validation to fail")
+        } catch let error as SchemaValidationError {
+            #expect(error.description.contains("must agree on '@SlateEntity(cloudKit:)'"))
+            // The diagnostic names both offenders, grouped by `cloudKit` value.
+            #expect(error.description.contains("CloudKit entities: 'Trip'"))
+            #expect(error.description.contains("non-CloudKit entities: 'Leg'"))
+        }
+    }
+
+    @Test
+    func validatesUniformCloudKitSchemasPass() throws {
+        // A uniform-`true` schema and a uniform-`false` schema each validate
+        // without throwing — the uniform-or-error check fires only when both
+        // groups are non-empty.
+        let allCloudKit = NormalizedSchema(
+            schemaName: "CloudKitSchema",
+            schemaFingerprint: "fp",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Trip",
+                    entityName: "Trip",
+                    mutableName: "DatabaseTrip",
+                    sourceKind: "struct",
+                    attributes: [],
+                    cloudKit: true
+                ),
+                NormalizedEntity(
+                    swiftName: "Leg",
+                    entityName: "Leg",
+                    mutableName: "DatabaseLeg",
+                    sourceKind: "struct",
+                    attributes: [],
+                    cloudKit: true
+                ),
+            ]
+        )
+        try SchemaValidator().validate(allCloudKit)
+
+        let allLocal = NormalizedSchema(
+            schemaName: "LocalSchema",
+            schemaFingerprint: "fp",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Trip",
+                    entityName: "Trip",
+                    mutableName: "DatabaseTrip",
+                    sourceKind: "struct",
+                    attributes: []
+                ),
+                NormalizedEntity(
+                    swiftName: "Leg",
+                    entityName: "Leg",
+                    mutableName: "DatabaseLeg",
+                    sourceKind: "struct",
+                    attributes: []
+                ),
+            ]
+        )
+        try SchemaValidator().validate(allLocal)
+    }
+
     private func makeImportSampleSchema(
         modelModule: String,
         runtimeModule: String
