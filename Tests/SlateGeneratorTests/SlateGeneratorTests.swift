@@ -2479,6 +2479,41 @@ struct SlateGeneratorTests {
             contains: "Entity 'Patient' attribute 'ssn' is non-optional with no default; CloudKit requires every attribute to be optional or carry a default. Add '@SlateAttribute(default:)' or make 'ssn' optional."
         )
 
+        // 1b. Non-optional attribute whose `default:` cannot be lowered (e.g.
+        // `default: Date()`). The renderer drops un-lowerable defaults, so such an
+        // attribute would emit `isOptional = false` with no `defaultValue` — the
+        // exact CloudKit-invalid shape this rule guards. The validator must treat a
+        // non-lowerable default as absent (agreement with `DefaultValueLowering`),
+        // not let it pass on `defaultExpression != nil`.
+        expectCloudKitSubsetIssue(
+            makeCloudKitSubsetSchema(extraPatientAttributes: [
+                NormalizedAttribute(
+                    swiftName: "createdAt",
+                    storageName: "createdAt",
+                    swiftType: "Date",
+                    storageType: "date",
+                    optional: false,
+                    defaultExpression: "Date()"
+                ),
+            ]),
+            contains: "Entity 'Patient' attribute 'createdAt' is non-optional with no default; CloudKit requires every attribute to be optional or carry a default. Add '@SlateAttribute(default:)' or make 'createdAt' optional."
+        )
+
+        // 1c. A non-optional attribute *with* a lowerable default (a literal) still
+        // passes — proving the tightened check did not over-reject genuine defaults.
+        try SchemaValidator().validate(
+            makeCloudKitSubsetSchema(extraPatientAttributes: [
+                NormalizedAttribute(
+                    swiftName: "score",
+                    storageName: "score",
+                    swiftType: "Int",
+                    storageType: "integer64",
+                    optional: false,
+                    defaultExpression: "0"
+                ),
+            ])
+        )
+
         // 2. Ordered relationship.
         expectCloudKitSubsetIssue(
             makeCloudKitSubsetSchema(notesOrdered: true),

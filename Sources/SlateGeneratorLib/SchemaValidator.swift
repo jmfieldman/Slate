@@ -132,8 +132,12 @@ public struct SchemaValidator: Sendable {
             // synthesized `*_has` presence boolean (which `storageAttributes(for:)`
             // defaults to `false` in CloudKit mode) and `optional: true` embedded value
             // fields pass; only top-level authored non-optional-no-default attributes
-            // (enums included) are flagged.
-            for attribute in storageAttributes(for: entity) where !attribute.optional && attribute.defaultExpression == nil {
+            // (enums included) are flagged. "No default" means the renderer would emit
+            // no `defaultValue` line — checked via the shared `DefaultValueLowering`, so
+            // an un-lowerable default (e.g. `default: Date()`) is correctly treated as
+            // absent rather than slipping through as `defaultExpression != nil`.
+            for attribute in storageAttributes(for: entity)
+                where !attribute.optional && !DefaultValueLowering.emitsDefaultValue(for: attribute, entitySwiftName: entity.swiftName) {
                 issues.append(SchemaValidationIssue(
                     message: "Entity '\(entity.swiftName)' attribute '\(attribute.swiftName)' is non-optional with no default; CloudKit requires every attribute to be optional or carry a default. Add '@SlateAttribute(default:)' or make '\(attribute.swiftName)' optional."
                 ))

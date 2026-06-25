@@ -54,7 +54,7 @@ public struct CloudKitFieldsReport: Sendable {
             let asset = attribute.externalStorage ? "may mirror as `CKAsset`" : "—"
             lines.append(
                 "| `\(attribute.storageName)` | `\(ckRecordType(for: attribute.storageType))`"
-                    + " | \(yesNo(attribute.optional)) | \(yesNo(hasDefault(attribute)))"
+                    + " | \(yesNo(attribute.optional)) | \(yesNo(hasDefault(attribute, entity: entity)))"
                     + " | \(asset) |"
             )
         }
@@ -129,11 +129,12 @@ public struct CloudKitFieldsReport: Sendable {
         }
     }
 
-    private func hasDefault(_ attribute: NormalizedAttribute) -> Bool {
-        guard let raw = attribute.defaultExpression?.trimmingCharacters(in: .whitespacesAndNewlines) else {
-            return false
-        }
-        return !raw.isEmpty && raw != "nil"
+    /// Reports a default only when the model actually emits one — i.e. when the
+    /// shared `DefaultValueLowering` can lower the expression. This keeps the
+    /// `Default` column honest: a non-lowerable `default:` (which the renderer
+    /// drops) reads "No", matching the emitted Core Data attribute.
+    private func hasDefault(_ attribute: NormalizedAttribute, entity: NormalizedEntity) -> Bool {
+        DefaultValueLowering.emitsDefaultValue(for: attribute, entitySwiftName: entity.swiftName)
     }
 
     private func yesNo(_ value: Bool) -> String {

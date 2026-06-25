@@ -650,41 +650,14 @@ public struct GeneratedSchemaRenderer: Sendable {
         prefix: String,
         entity: NormalizedEntity
     ) -> String? {
-        guard let raw = attribute.defaultExpression?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty,
-              raw != "nil"
-        else {
+        // Defer the "can this default be lowered?" decision to the shared
+        // `DefaultValueLowering` so the validator's optional-or-default check and
+        // the CloudKit report's `Default` column stay in lockstep with what we
+        // actually emit here.
+        guard let rhs = DefaultValueLowering.loweredRHS(for: attribute, entitySwiftName: entity.swiftName) else {
             return nil
         }
-        // Enum default written as `.case` (or fully qualified
-        // `Entity.Enum.case`) is rendered as the enum's `.rawValue` so
-        // Core Data persists the actual storage value.
-        if let enumKind = attribute.enumKind {
-            if raw.hasPrefix(".") {
-                return "\(prefix).defaultValue = \(entity.swiftName).\(enumKind.typeName)\(raw).rawValue"
-            }
-            // Type-qualified expression: `Patient.Status.active`.
-            let qualifiedPrefix = "\(entity.swiftName).\(enumKind.typeName)."
-            if raw.hasPrefix(qualifiedPrefix) || raw.hasPrefix("\(enumKind.typeName).") {
-                return "\(prefix).defaultValue = \(raw).rawValue"
-            }
-        }
-        if isStringLiteral(raw) || isNumberLiteral(raw) || raw == "true" || raw == "false" {
-            return "\(prefix).defaultValue = \(raw)"
-        }
-        return nil
-    }
-
-    private func isStringLiteral(_ text: String) -> Bool {
-        text.count >= 2 && text.hasPrefix("\"") && text.hasSuffix("\"")
-    }
-
-    private func isNumberLiteral(_ text: String) -> Bool {
-        guard let first = text.unicodeScalars.first else { return false }
-        if !(CharacterSet.decimalDigits.contains(first) || first == "-") {
-            return false
-        }
-        return Double(text) != nil
+        return "\(prefix).defaultValue = \(rhs)"
     }
 
     private func providerComputedProperties(entity: NormalizedEntity) -> String {
