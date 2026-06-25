@@ -691,22 +691,26 @@ struct SlateGeneratorTests {
         try SchemaValidator().validate(schema)
         let files = GeneratedSchemaRenderer().render(schema: schema)
 
-        // Compare each rendered file against its on-disk counterpart in
-        // the persistence target. The manifest is intentionally NOT
-        // committed alongside the source files (it's per-build state),
-        // so we skip it here.
-        for file in files where file.kind != .manifest {
-            let existing = persistenceDir.appendingPathComponent(file.path)
-            guard fileManager.fileExists(atPath: existing.path) else {
-                Issue.record("Missing committed fixture file: \(file.path)")
-                continue
-            }
-            let onDisk = try String(contentsOf: existing, encoding: .utf8)
-            #expect(
-                onDisk == file.contents,
-                "Committed fixture \(file.path) is stale. Regenerate with `slate-generator generate`."
-            )
-        }
+        // The committed fixture is stored in the generator's standard
+        // layout: sources under Mutable/, Bridge/, and Schema/, plus a
+        // committed SlateGenerationManifest.json at the target root (the
+        // same layout the demo uses and `slate-generator check` expects).
+        // Resolve each rendered file against that layout and assert nothing
+        // is stale — this is the in-suite analogue of `slate-generator check`.
+        let layout = GeneratedOutputLayout(
+            mutable: persistenceDir.appendingPathComponent("Mutable"),
+            bridge: persistenceDir.appendingPathComponent("Bridge"),
+            schema: persistenceDir.appendingPathComponent("Schema"),
+            manifest: persistenceDir.appendingPathComponent(GeneratedFileWriter.manifestFileName)
+        )
+        let stale = try GeneratedFileWriter().staleFiles(files: files, layout: layout)
+        let regenHint = "slate-generator generate --input Sources/SlateFixturePatientModels "
+            + "--output Sources/SlateFixturePatientPersistence --schema-name PatientSlateSchema "
+            + "--model-module SlateFixturePatientModels --runtime-module SlateFixturePatientPersistence --prune"
+        #expect(
+            stale.isEmpty,
+            "Committed fixture file(s) stale or missing: \(stale.joined(separator: ", ")). Regenerate with `\(regenHint)`."
+        )
     }
 
     @Test

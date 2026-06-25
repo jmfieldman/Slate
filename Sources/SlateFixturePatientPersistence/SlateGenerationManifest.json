@@ -1,0 +1,11 @@
+{
+  "files" : [
+    "DatabasePatient.swift",
+    "DatabasePatientNote.swift",
+    "Patient+SlateBridge.swift",
+    "PatientNote+SlateBridge.swift",
+    "PatientSlateSchema.swift"
+  ],
+  "generatorVersion" : 1,
+  "schemaFingerprint" : "diagnostic:49f19c9bec78d5fb"
+}
