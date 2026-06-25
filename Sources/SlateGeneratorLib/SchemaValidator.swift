@@ -67,6 +67,14 @@ public struct SchemaValidator: Sendable {
                     message: "Entity '\(entity.swiftName)' attribute '\(attribute.swiftName)' uses unsupported storage type '\(attribute.storageType)' from Swift type '\(attribute.swiftType)'."
                 ))
             }
+            // External binary storage is meaningful only for `Data` attributes
+            // (storage type `binary`). This guard applies to every schema, not
+            // just CloudKit ones.
+            if attribute.externalStorage, attribute.storageType != "binary" {
+                issues.append(SchemaValidationIssue(
+                    message: "Entity '\(entity.swiftName)' attribute '\(attribute.swiftName)' sets 'externalStorage: true' but its storage type is '\(attribute.storageType)', not binary; external storage applies only to 'Data' attributes. Remove 'externalStorage: true' or change '\(attribute.swiftName)' to 'Data'."
+                ))
+            }
         }
 
         let validStorageNames = Set(storageAttributes.map(\.storageName))

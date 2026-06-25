@@ -134,6 +134,14 @@ public struct NormalizedAttribute: Sendable, Codable, Equatable {
     public let indexed: Bool
     public let defaultExpression: String?
     public let enumKind: NormalizedEnumKind?
+    /// Harvested from `@SlateAttribute(externalStorage:)`. When `true` the
+    /// renderer emits `allowsExternalBinaryDataStorage = true` on the Core Data
+    /// attribute (valid for local-only stores too — not CloudKit-gated). As with
+    /// the `cloudKit` precedent on `NormalizedEntity`, synthesized `Codable`
+    /// conformance has no custom `CodingKeys`, so this non-optional property adds
+    /// an `"externalStorage"` key to every attribute in `dump-schema` output and
+    /// synthesized decoding now requires the key to be present.
+    public let externalStorage: Bool
 
     public init(
         swiftName: String,
@@ -143,7 +151,8 @@ public struct NormalizedAttribute: Sendable, Codable, Equatable {
         optional: Bool,
         indexed: Bool = false,
         defaultExpression: String? = nil,
-        enumKind: NormalizedEnumKind? = nil
+        enumKind: NormalizedEnumKind? = nil,
+        externalStorage: Bool = false
     ) {
         self.swiftName = swiftName
         self.storageName = storageName
@@ -153,6 +162,7 @@ public struct NormalizedAttribute: Sendable, Codable, Equatable {
         self.indexed = indexed
         self.defaultExpression = defaultExpression
         self.enumKind = enumKind
+        self.externalStorage = externalStorage
     }
 }
 

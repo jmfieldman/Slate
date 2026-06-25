@@ -1934,6 +1934,116 @@ struct SlateGeneratorTests {
     }
 
     @Test
+    func rendersExternalBinaryDataStorageOnlyWhenFlagged() throws {
+        let schema = NormalizedSchema(
+            schemaName: "PatientSchema",
+            schemaFingerprint: "fp",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Patient",
+                    entityName: "Patient",
+                    mutableName: "DatabasePatient",
+                    sourceKind: "struct",
+                    attributes: [
+                        NormalizedAttribute(
+                            swiftName: "avatar",
+                            storageName: "avatar",
+                            swiftType: "Data",
+                            storageType: "binary",
+                            optional: true,
+                            externalStorage: true
+                        ),
+                        NormalizedAttribute(
+                            swiftName: "thumbnail",
+                            storageName: "thumbnail",
+                            swiftType: "Data",
+                            storageType: "binary",
+                            optional: true,
+                            externalStorage: false
+                        ),
+                    ]
+                ),
+            ]
+        )
+
+        let files = GeneratedSchemaRenderer().render(schema: schema)
+        let schemaFile = try #require(files.first { $0.path == "PatientSchema.swift" })
+
+        // Flagged Data attribute emits the external-storage line.
+        #expect(schemaFile.contents.contains("patientAvatarAttribute.allowsExternalBinaryDataStorage = true"))
+        // Sibling Data attribute without the flag emits no such line.
+        #expect(!schemaFile.contents.contains("patientThumbnailAttribute.allowsExternalBinaryDataStorage"))
+    }
+
+    @Test
+    func validatesExternalStorageOnlyOnBinaryAttributes() throws {
+        // `externalStorage: true` on a non-Data (String) attribute is an error.
+        let invalid = NormalizedSchema(
+            schemaName: "BadSchema",
+            schemaFingerprint: "bad",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Patient",
+                    entityName: "Patient",
+                    mutableName: "DatabasePatient",
+                    sourceKind: "struct",
+                    attributes: [
+                        NormalizedAttribute(
+                            swiftName: "patientId",
+                            storageName: "patientId",
+                            swiftType: "String",
+                            storageType: "string",
+                            optional: false,
+                            externalStorage: true
+                        ),
+                    ]
+                ),
+            ]
+        )
+
+        do {
+            try SchemaValidator().validate(invalid)
+            Issue.record("Expected validation to fail")
+        } catch let error as SchemaValidationError {
+            #expect(error.description.contains(
+                "attribute 'patientId' sets 'externalStorage: true' but its storage type is 'string', not binary; external storage applies only to 'Data' attributes."
+            ))
+        }
+
+        // `externalStorage: true` on a Data attribute validates without throwing.
+        let valid = NormalizedSchema(
+            schemaName: "GoodSchema",
+            schemaFingerprint: "good",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Patient",
+                    entityName: "Patient",
+                    mutableName: "DatabasePatient",
+                    sourceKind: "struct",
+                    attributes: [
+                        NormalizedAttribute(
+                            swiftName: "avatar",
+                            storageName: "avatar",
+                            swiftType: "Data",
+                            storageType: "binary",
+                            optional: true,
+                            externalStorage: true
+                        ),
+                    ]
+                ),
+            ]
+        )
+
+        try SchemaValidator().validate(valid)
+    }
+
+    @Test
     func parserCapturesDefaultExpressions() throws {
         let source = """
         import SlateSchema

@@ -433,6 +433,9 @@ public struct GeneratedSchemaRenderer: Sendable {
             if let defaultLine = renderedDefaultValue(for: attribute, prefix: prefix, entity: entity) {
                 lines.append(defaultLine)
             }
+            if attribute.externalStorage {
+                lines.append("\(prefix).allowsExternalBinaryDataStorage = true")
+            }
             return lines.map { "        \($0)" }.joined(separator: "\n")
         }.joined(separator: "\n\n")
 
@@ -823,7 +826,8 @@ public struct GeneratedSchemaRenderer: Sendable {
                     swiftType: attribute.optional ? attribute.swiftType : "\(attribute.swiftType)?",
                     storageType: attribute.storageType,
                     optional: true,
-                    indexed: attribute.indexed
+                    indexed: attribute.indexed,
+                    externalStorage: attribute.externalStorage
                 )
             }
         }
