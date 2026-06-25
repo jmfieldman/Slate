@@ -26,9 +26,20 @@ public struct GeneratedSchemaRenderer: Sendable {
             kind: .schema
         )
 
+        // The CloudKit fields report is a side-output emitted only for CloudKit
+        // schemas. It is added to both the returned files (so `check`/`staleFiles`
+        // drift-detect it) and `manifest.files` (so `clean`/`--prune` track it).
+        let reportFiles: [GeneratedFile] = schema.cloudKit
+            ? [GeneratedFile(
+                path: "CloudKitFieldsReport.md",
+                contents: CloudKitFieldsReport().render(schema: schema),
+                kind: .cloudKitReport
+            )]
+            : []
+
         let manifest = GenerationManifest(
             schemaFingerprint: schema.schemaFingerprint,
-            files: (entityFiles + bridgeFiles + [schemaFile]).map(\.path).sorted()
+            files: (entityFiles + bridgeFiles + [schemaFile] + reportFiles).map(\.path).sorted()
         )
 
         let manifestFile = GeneratedFile(
@@ -37,7 +48,7 @@ public struct GeneratedSchemaRenderer: Sendable {
             kind: .manifest
         )
 
-        return (entityFiles + bridgeFiles + [schemaFile, manifestFile])
+        return (entityFiles + bridgeFiles + [schemaFile, manifestFile] + reportFiles)
             .sorted { $0.path < $1.path }
     }
 
@@ -433,6 +444,9 @@ public struct GeneratedSchemaRenderer: Sendable {
             if let defaultLine = renderedDefaultValue(for: attribute, prefix: prefix, entity: entity) {
                 lines.append(defaultLine)
             }
+            if attribute.externalStorage {
+                lines.append("\(prefix).allowsExternalBinaryDataStorage = true")
+            }
             return lines.map { "        \($0)" }.joined(separator: "\n")
         }.joined(separator: "\n\n")
 
@@ -551,23 +565,33 @@ public struct GeneratedSchemaRenderer: Sendable {
             entity.relationships.map { relationship in
                 let variable = relationshipVariable(entity: entity, relationship: relationship)
                 let destinationEntityVariable = entityByName[relationship.destination]?.swiftName.camelCase ?? relationship.destination.camelCase
+                // toOne: maxCount always 1; toMany: authored maxCount (0 = unbounded).
+                let maxCount = relationship.kind == "toOne" ? 1 : (relationship.maxCount ?? 0)
+                let isOptional: Bool
+                let isOrdered: Bool
                 let minCount: Int
-                let maxCount: Int
-                if relationship.kind == "toOne" {
-                    // toOne: minCount 0/1 by optional, maxCount always 1
-                    minCount = relationship.optional ? 0 : 1
-                    maxCount = 1
+                if schema.cloudKit {
+                    // CloudKit requires every relationship optional + unordered. minCount = 0
+                    // must accompany isOptional = true, otherwise a forced-optional toOne keeps
+                    // minCount = 1 and Core Data rejects the contradictory description. This
+                    // transform is model-emission only — the Slate immutable model and
+                    // SlateRelationshipMetadata keep the authored optionality/order.
+                    isOptional = true
+                    isOrdered = false
+                    minCount = 0
                 } else {
-                    minCount = relationship.minCount ?? 0
-                    maxCount = relationship.maxCount ?? 0
+                    isOptional = relationship.optional
+                    isOrdered = relationship.ordered
+                    // toOne: minCount 0/1 by optional; toMany: authored minCount.
+                    minCount = relationship.kind == "toOne" ? (relationship.optional ? 0 : 1) : (relationship.minCount ?? 0)
                 }
                 return """
                 let \(variable) = NSRelationshipDescription()
                 \(variable).name = "\(relationship.name)"
                 \(variable).destinationEntity = \(destinationEntityVariable)Entity
                 \(variable).deleteRule = .\(coreDataDeleteRule(relationship.deleteRule))
-                \(variable).isOptional = \(relationship.optional)
-                \(variable).isOrdered = \(relationship.ordered)
+                \(variable).isOptional = \(isOptional)
+                \(variable).isOrdered = \(isOrdered)
                 \(variable).minCount = \(minCount)
                 \(variable).maxCount = \(maxCount)
                 """
@@ -626,41 +650,14 @@ public struct GeneratedSchemaRenderer: Sendable {
         prefix: String,
         entity: NormalizedEntity
     ) -> String? {
-        guard let raw = attribute.defaultExpression?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty,
-              raw != "nil"
-        else {
+        // Defer the "can this default be lowered?" decision to the shared
+        // `DefaultValueLowering` so the validator's optional-or-default check and
+        // the CloudKit report's `Default` column stay in lockstep with what we
+        // actually emit here.
+        guard let rhs = DefaultValueLowering.loweredRHS(for: attribute, entitySwiftName: entity.swiftName) else {
             return nil
         }
-        // Enum default written as `.case` (or fully qualified
-        // `Entity.Enum.case`) is rendered as the enum's `.rawValue` so
-        // Core Data persists the actual storage value.
-        if let enumKind = attribute.enumKind {
-            if raw.hasPrefix(".") {
-                return "\(prefix).defaultValue = \(entity.swiftName).\(enumKind.typeName)\(raw).rawValue"
-            }
-            // Type-qualified expression: `Patient.Status.active`.
-            let qualifiedPrefix = "\(entity.swiftName).\(enumKind.typeName)."
-            if raw.hasPrefix(qualifiedPrefix) || raw.hasPrefix("\(enumKind.typeName).") {
-                return "\(prefix).defaultValue = \(raw).rawValue"
-            }
-        }
-        if isStringLiteral(raw) || isNumberLiteral(raw) || raw == "true" || raw == "false" {
-            return "\(prefix).defaultValue = \(raw)"
-        }
-        return nil
-    }
-
-    private func isStringLiteral(_ text: String) -> Bool {
-        text.count >= 2 && text.hasPrefix("\"") && text.hasSuffix("\"")
-    }
-
-    private func isNumberLiteral(_ text: String) -> Bool {
-        guard let first = text.unicodeScalars.first else { return false }
-        if !(CharacterSet.decimalDigits.contains(first) || first == "-") {
-            return false
-        }
-        return Double(text) != nil
+        return "\(prefix).defaultValue = \(rhs)"
     }
 
     private func providerComputedProperties(entity: NormalizedEntity) -> String {
@@ -813,7 +810,8 @@ public struct GeneratedSchemaRenderer: Sendable {
                     storageName: storageName,
                     swiftType: "Bool",
                     storageType: "boolean",
-                    optional: false
+                    optional: false,
+                    defaultExpression: entity.cloudKit ? "false" : nil
                 )
             }
             return [presence].compactMap { $0 } + embedded.attributes.map { attribute in
@@ -823,7 +821,8 @@ public struct GeneratedSchemaRenderer: Sendable {
                     swiftType: attribute.optional ? attribute.swiftType : "\(attribute.swiftType)?",
                     storageType: attribute.storageType,
                     optional: true,
-                    indexed: attribute.indexed
+                    indexed: attribute.indexed,
+                    externalStorage: attribute.externalStorage
                 )
             }
         }

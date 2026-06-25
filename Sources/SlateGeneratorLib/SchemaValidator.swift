@@ -34,6 +34,14 @@ public struct SchemaValidator: Sendable {
             ))
         }
 
+        // CloudKit-subset model rules. The uniform-or-error check above guarantees
+        // a CloudKit schema is uniform, so a single `schema.cloudKit` test gates the
+        // whole block — no per-entity re-checking. Issues aggregate into the same
+        // `issues` and throw together below; no early throw.
+        if schema.cloudKit {
+            validateCloudKitSubset(schema, issues: &issues)
+        }
+
         let entitiesBySwiftName = Dictionary(uniqueKeysWithValues: schema.entities.map { ($0.swiftName, $0) })
 
         for entity in schema.entities {
@@ -67,6 +75,14 @@ public struct SchemaValidator: Sendable {
                     message: "Entity '\(entity.swiftName)' attribute '\(attribute.swiftName)' uses unsupported storage type '\(attribute.storageType)' from Swift type '\(attribute.swiftType)'."
                 ))
             }
+            // External binary storage is meaningful only for `Data` attributes
+            // (storage type `binary`). This guard applies to every schema, not
+            // just CloudKit ones.
+            if attribute.externalStorage, attribute.storageType != "binary" {
+                issues.append(SchemaValidationIssue(
+                    message: "Entity '\(entity.swiftName)' attribute '\(attribute.swiftName)' sets 'externalStorage: true' but its storage type is '\(attribute.storageType)', not binary; external storage applies only to 'Data' attributes. Remove 'externalStorage: true' or change '\(attribute.swiftName)' to 'Data'."
+                ))
+            }
         }
 
         let validStorageNames = Set(storageAttributes.map(\.storageName))
@@ -96,6 +112,55 @@ public struct SchemaValidator: Sendable {
                 entitiesBySwiftName: entitiesBySwiftName,
                 issues: &issues
             )
+        }
+    }
+
+    /// Enforces CloudKit's non-negotiable model subset for a CloudKit schema.
+    /// Called only when `schema.cloudKit`. Every violation is appended to `issues`
+    /// (no early throw), so a single generation run reports every offending
+    /// construct at once. The four rules:
+    ///   - every attribute must be optional or carry a default (no silent zero-fill);
+    ///   - no relationship may be ordered (model an explicit sort-key attribute);
+    ///   - no relationship may use the `deny` delete rule (NSPCKC-unsupported);
+    ///   - no entity may declare a `#Unique` constraint.
+    private func validateCloudKitSubset(
+        _ schema: NormalizedSchema,
+        issues: inout [SchemaValidationIssue]
+    ) {
+        for entity in schema.entities {
+            // Optional-or-default, evaluated over `storageAttributes(for:)` so the
+            // synthesized `*_has` presence boolean (which `storageAttributes(for:)`
+            // defaults to `false` in CloudKit mode) and `optional: true` embedded value
+            // fields pass; only top-level authored non-optional-no-default attributes
+            // (enums included) are flagged. "No default" means the renderer would emit
+            // no `defaultValue` line — checked via the shared `DefaultValueLowering`, so
+            // an un-lowerable default (e.g. `default: Date()`) is correctly treated as
+            // absent rather than slipping through as `defaultExpression != nil`.
+            for attribute in storageAttributes(for: entity)
+                where !attribute.optional && !DefaultValueLowering.emitsDefaultValue(for: attribute, entitySwiftName: entity.swiftName) {
+                issues.append(SchemaValidationIssue(
+                    message: "Entity '\(entity.swiftName)' attribute '\(attribute.swiftName)' is non-optional with no default; CloudKit requires every attribute to be optional or carry a default. Add '@SlateAttribute(default:)' or make '\(attribute.swiftName)' optional."
+                ))
+            }
+
+            for relationship in entity.relationships {
+                if relationship.ordered {
+                    issues.append(SchemaValidationIssue(
+                        message: "Entity '\(entity.swiftName)' relationship '\(relationship.name)' is ordered; CloudKit does not support ordered relationships. Remove 'ordered: true' and model an explicit sort-key attribute."
+                    ))
+                }
+                if relationship.deleteRule == "deny" {
+                    issues.append(SchemaValidationIssue(
+                        message: "Entity '\(entity.swiftName)' relationship '\(relationship.name)' uses the 'deny' delete rule, which CloudKit does not support. Use 'nullify', 'cascade', or 'noAction', or model a soft-delete flag (e.g. 'isTrashed') instead."
+                    ))
+                }
+            }
+
+            if !entity.uniqueness.isEmpty {
+                issues.append(SchemaValidationIssue(
+                    message: "Entity '\(entity.swiftName)' declares a '#Unique' constraint, which CloudKit does not support. Remove it; 'upsert' then fails at runtime via the existing uniqueness check while 'firstOrCreate' still works."
+                ))
+            }
         }
     }
 
@@ -181,7 +246,8 @@ public struct SchemaValidator: Sendable {
                     storageName: storageName,
                     swiftType: "Bool",
                     storageType: "boolean",
-                    optional: false
+                    optional: false,
+                    defaultExpression: entity.cloudKit ? "false" : nil
                 )
             }
             return [presence].compactMap { $0 } + embedded.attributes

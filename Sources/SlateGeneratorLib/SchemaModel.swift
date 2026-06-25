@@ -51,6 +51,10 @@ public enum GeneratedFileKind: String, Sendable, Codable, Equatable {
     case bridge
     case schema
     case manifest
+    /// The human-facing `CloudKitFieldsReport.md`, emitted only for CloudKit
+    /// schemas. Routed to the schema directory so `clean`/`--prune`'s
+    /// schema-dir candidate scan finds it.
+    case cloudKitReport
 }
 
 public struct GenerationManifest: Sendable, Codable, Equatable {
@@ -134,6 +138,14 @@ public struct NormalizedAttribute: Sendable, Codable, Equatable {
     public let indexed: Bool
     public let defaultExpression: String?
     public let enumKind: NormalizedEnumKind?
+    /// Harvested from `@SlateAttribute(externalStorage:)`. When `true` the
+    /// renderer emits `allowsExternalBinaryDataStorage = true` on the Core Data
+    /// attribute (valid for local-only stores too — not CloudKit-gated). As with
+    /// the `cloudKit` precedent on `NormalizedEntity`, synthesized `Codable`
+    /// conformance has no custom `CodingKeys`, so this non-optional property adds
+    /// an `"externalStorage"` key to every attribute in `dump-schema` output and
+    /// synthesized decoding now requires the key to be present.
+    public let externalStorage: Bool
 
     public init(
         swiftName: String,
@@ -143,7 +155,8 @@ public struct NormalizedAttribute: Sendable, Codable, Equatable {
         optional: Bool,
         indexed: Bool = false,
         defaultExpression: String? = nil,
-        enumKind: NormalizedEnumKind? = nil
+        enumKind: NormalizedEnumKind? = nil,
+        externalStorage: Bool = false
     ) {
         self.swiftName = swiftName
         self.storageName = storageName
@@ -153,6 +166,79 @@ public struct NormalizedAttribute: Sendable, Codable, Equatable {
         self.indexed = indexed
         self.defaultExpression = defaultExpression
         self.enumKind = enumKind
+        self.externalStorage = externalStorage
+    }
+}
+
+/// Single source of truth for whether an attribute's `default:` expression can be
+/// lowered to a Core Data `defaultValue` line — and, if so, the right-hand side to
+/// emit.
+///
+/// The parser captures `default:` as raw source text verbatim, but only a subset of
+/// expressions can be lowered into a static Core Data default: a string/number
+/// literal, `true`/`false`, or an enum case written as `.case` /
+/// `Entity.Enum.case` / `Enum.case`. Anything else (e.g. `default: Date()` or a
+/// bare constant identifier) cannot be lowered, so the renderer emits **no**
+/// `defaultValue` line for it.
+///
+/// Centralizing this keeps three call sites in agreement by construction:
+/// `GeneratedSchemaRenderer` (what it emits), `SchemaValidator`'s
+/// CloudKit optional-or-default check (what counts as "carries a default"), and
+/// `CloudKitFieldsReport`'s `Default` column. Without it, the validator could
+/// accept a non-optional attribute whose un-lowerable default the renderer drops —
+/// emitting the CloudKit-invalid `isOptional = false` with no default.
+public enum DefaultValueLowering {
+    /// The Core Data `defaultValue` right-hand side for `attribute`'s default
+    /// expression, or `nil` when it cannot be lowered. `entitySwiftName` qualifies
+    /// enum cases (e.g. `Patient.Status.active.rawValue`).
+    public static func loweredRHS(
+        for attribute: NormalizedAttribute,
+        entitySwiftName: String
+    ) -> String? {
+        guard let raw = attribute.defaultExpression?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty,
+              raw != "nil"
+        else {
+            return nil
+        }
+        // Enum default written as `.case` (or fully qualified
+        // `Entity.Enum.case`) is rendered as the enum's `.rawValue` so
+        // Core Data persists the actual storage value.
+        if let enumKind = attribute.enumKind {
+            if raw.hasPrefix(".") {
+                return "\(entitySwiftName).\(enumKind.typeName)\(raw).rawValue"
+            }
+            // Type-qualified expression: `Patient.Status.active`.
+            let qualifiedPrefix = "\(entitySwiftName).\(enumKind.typeName)."
+            if raw.hasPrefix(qualifiedPrefix) || raw.hasPrefix("\(enumKind.typeName).") {
+                return "\(raw).rawValue"
+            }
+        }
+        if isStringLiteral(raw) || isNumberLiteral(raw) || raw == "true" || raw == "false" {
+            return raw
+        }
+        return nil
+    }
+
+    /// Whether the renderer will emit a `defaultValue` line for `attribute` — i.e.
+    /// whether it carries a default the Core Data model actually materializes.
+    public static func emitsDefaultValue(
+        for attribute: NormalizedAttribute,
+        entitySwiftName: String
+    ) -> Bool {
+        loweredRHS(for: attribute, entitySwiftName: entitySwiftName) != nil
+    }
+
+    static func isStringLiteral(_ text: String) -> Bool {
+        text.count >= 2 && text.hasPrefix("\"") && text.hasSuffix("\"")
+    }
+
+    static func isNumberLiteral(_ text: String) -> Bool {
+        guard let first = text.unicodeScalars.first else { return false }
+        if !(CharacterSet.decimalDigits.contains(first) || first == "-") {
+            return false
+        }
+        return Double(text) != nil
     }
 }
 

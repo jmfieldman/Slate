@@ -347,7 +347,7 @@ extension GeneratedOutputLayout {
         switch kind {
         case .mutable: return mutable ?? schema ?? bridge
         case .bridge:  return bridge ?? schema ?? mutable
-        case .schema:  return schema ?? mutable ?? bridge
+        case .schema, .cloudKitReport: return schema ?? mutable ?? bridge
         case .manifest: return manifest
         }
     }

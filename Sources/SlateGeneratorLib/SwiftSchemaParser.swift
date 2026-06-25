@@ -401,7 +401,8 @@ private final class EntityVisitor: SyntaxVisitor {
                 optional: optional,
                 indexed: isIndexed(variable.attributes),
                 defaultExpression: defaultExpression(for: variable.attributes),
-                enumKind: enumKind
+                enumKind: enumKind,
+                externalStorage: isExternalStorage(variable.attributes)
             )
         }
 
@@ -447,7 +448,8 @@ private final class EntityVisitor: SyntaxVisitor {
                     swiftType: embeddedPropertyType,
                     storageType: storageType(for: embeddedPropertyType),
                     optional: true,
-                    indexed: isIndexed(embeddedVariable.attributes)
+                    indexed: isIndexed(embeddedVariable.attributes),
+                    externalStorage: isExternalStorage(embeddedVariable.attributes)
                 )
             }
 
@@ -1071,6 +1073,20 @@ private final class EntityVisitor: SyntaxVisitor {
             }
             return arguments.contains { argument in
                 argument.label?.text == "indexed" && argument.expression.trimmedDescription == "true"
+            }
+        }
+    }
+
+    private func isExternalStorage(_ attributes: AttributeListSyntax) -> Bool {
+        attributes.contains { element in
+            guard let attribute = element.as(AttributeSyntax.self),
+                  attribute.attributeName.trimmedDescription == "SlateAttribute",
+                  let arguments = attribute.arguments?.as(LabeledExprListSyntax.self)
+            else {
+                return false
+            }
+            return arguments.contains { argument in
+                argument.label?.text == "externalStorage" && argument.expression.trimmedDescription == "true"
             }
         }
     }

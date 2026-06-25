@@ -1934,6 +1934,784 @@ struct SlateGeneratorTests {
     }
 
     @Test
+    func rendersExternalBinaryDataStorageOnlyWhenFlagged() throws {
+        let schema = NormalizedSchema(
+            schemaName: "PatientSchema",
+            schemaFingerprint: "fp",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Patient",
+                    entityName: "Patient",
+                    mutableName: "DatabasePatient",
+                    sourceKind: "struct",
+                    attributes: [
+                        NormalizedAttribute(
+                            swiftName: "avatar",
+                            storageName: "avatar",
+                            swiftType: "Data",
+                            storageType: "binary",
+                            optional: true,
+                            externalStorage: true
+                        ),
+                        NormalizedAttribute(
+                            swiftName: "thumbnail",
+                            storageName: "thumbnail",
+                            swiftType: "Data",
+                            storageType: "binary",
+                            optional: true,
+                            externalStorage: false
+                        ),
+                    ]
+                ),
+            ]
+        )
+
+        let files = GeneratedSchemaRenderer().render(schema: schema)
+        let schemaFile = try #require(files.first { $0.path == "PatientSchema.swift" })
+
+        // Flagged Data attribute emits the external-storage line.
+        #expect(schemaFile.contents.contains("patientAvatarAttribute.allowsExternalBinaryDataStorage = true"))
+        // Sibling Data attribute without the flag emits no such line.
+        #expect(!schemaFile.contents.contains("patientThumbnailAttribute.allowsExternalBinaryDataStorage"))
+    }
+
+    @Test
+    func defaultsPresenceBooleanInCloudKitMode() throws {
+        func schema(cloudKit: Bool) -> NormalizedSchema {
+            NormalizedSchema(
+                schemaName: "PatientSchema",
+                schemaFingerprint: "fp",
+                modelModule: "Models",
+                runtimeModule: "Persistence",
+                entities: [
+                    NormalizedEntity(
+                        swiftName: "Patient",
+                        entityName: "Patient",
+                        mutableName: "DatabasePatient",
+                        sourceKind: "struct",
+                        attributes: [
+                            NormalizedAttribute(
+                                swiftName: "patientId",
+                                storageName: "patientId",
+                                swiftType: "String",
+                                storageType: "string",
+                                optional: false
+                            ),
+                        ],
+                        embedded: [
+                            NormalizedEmbedded(
+                                swiftName: "address",
+                                swiftType: "Address",
+                                optional: true,
+                                presenceStorageName: "address_has",
+                                attributes: [
+                                    NormalizedAttribute(
+                                        swiftName: "city",
+                                        storageName: "address_city",
+                                        swiftType: "String?",
+                                        storageType: "string",
+                                        optional: true
+                                    ),
+                                ]
+                            ),
+                        ],
+                        cloudKit: cloudKit
+                    ),
+                ]
+            )
+        }
+
+        // CloudKit: the synthesized presence boolean is non-optional with a
+        // `false` default, so it satisfies optional-or-default.
+        let cloudKitFiles = GeneratedSchemaRenderer().render(schema: schema(cloudKit: true))
+        let cloudKitSchemaFile = try #require(cloudKitFiles.first { $0.path == "PatientSchema.swift" })
+        #expect(cloudKitSchemaFile.contents.contains("patientAddress_hasAttribute.isOptional = false"))
+        #expect(cloudKitSchemaFile.contents.contains("patientAddress_hasAttribute.defaultValue = false"))
+
+        // Non-CloudKit: the presence boolean carries no default line.
+        let localFiles = GeneratedSchemaRenderer().render(schema: schema(cloudKit: false))
+        let localSchemaFile = try #require(localFiles.first { $0.path == "PatientSchema.swift" })
+        #expect(localSchemaFile.contents.contains("patientAddress_hasAttribute.isOptional = false"))
+        #expect(!localSchemaFile.contents.contains("patientAddress_hasAttribute.defaultValue"))
+    }
+
+    @Test
+    func forcesRelationshipsOptionalAndUnorderedInCloudKitMode() throws {
+        // The authored relationships are deliberately non-optional and ordered so
+        // the CloudKit transform is visible: `notes` (toMany) is ordered, and
+        // `patient` (toOne) is non-optional. In CloudKit mode the renderer must
+        // force every relationship optional + unordered + `minCount = 0`; in
+        // non-CloudKit mode the authored values must render unchanged.
+        func schema(cloudKit: Bool) -> NormalizedSchema {
+            NormalizedSchema(
+                schemaName: "PatientSchema",
+                schemaFingerprint: "fp",
+                modelModule: "Models",
+                runtimeModule: "Persistence",
+                entities: [
+                    NormalizedEntity(
+                        swiftName: "Patient",
+                        entityName: "Patient",
+                        mutableName: "DatabasePatient",
+                        sourceKind: "struct",
+                        attributes: [
+                            NormalizedAttribute(
+                                swiftName: "patientId",
+                                storageName: "patientId",
+                                swiftType: "String",
+                                storageType: "string",
+                                optional: false
+                            ),
+                        ],
+                        relationships: [
+                            NormalizedRelationship(
+                                name: "notes",
+                                kind: "toMany",
+                                destination: "PatientNote",
+                                inverse: "patient",
+                                deleteRule: "cascade",
+                                ordered: true,
+                                optional: false
+                            ),
+                        ],
+                        cloudKit: cloudKit
+                    ),
+                    NormalizedEntity(
+                        swiftName: "PatientNote",
+                        entityName: "PatientNote",
+                        mutableName: "DatabasePatientNote",
+                        sourceKind: "struct",
+                        attributes: [
+                            NormalizedAttribute(
+                                swiftName: "noteId",
+                                storageName: "noteId",
+                                swiftType: "String",
+                                storageType: "string",
+                                optional: false
+                            ),
+                        ],
+                        relationships: [
+                            NormalizedRelationship(
+                                name: "patient",
+                                kind: "toOne",
+                                destination: "Patient",
+                                inverse: "notes",
+                                deleteRule: "nullify",
+                                ordered: false,
+                                optional: false
+                            ),
+                        ],
+                        cloudKit: cloudKit
+                    ),
+                ]
+            )
+        }
+
+        // CloudKit: every relationship forced optional + unordered; toOne minCount 0;
+        // inverse wiring still emitted.
+        let cloudKitFiles = GeneratedSchemaRenderer().render(schema: schema(cloudKit: true))
+        let cloudKitSchemaFile = try #require(cloudKitFiles.first { $0.path == "PatientSchema.swift" })
+        #expect(cloudKitSchemaFile.contents.contains("patientNotesRelationship.isOptional = true"))
+        #expect(cloudKitSchemaFile.contents.contains("patientNotesRelationship.isOrdered = false"))
+        #expect(cloudKitSchemaFile.contents.contains("patientNotesRelationship.minCount = 0"))
+        #expect(cloudKitSchemaFile.contents.contains("patientNotePatientRelationship.isOptional = true"))
+        #expect(cloudKitSchemaFile.contents.contains("patientNotePatientRelationship.isOrdered = false"))
+        #expect(cloudKitSchemaFile.contents.contains("patientNotePatientRelationship.minCount = 0"))
+        #expect(cloudKitSchemaFile.contents.contains("patientNotesRelationship.inverseRelationship = patientNotePatientRelationship"))
+        #expect(cloudKitSchemaFile.contents.contains("patientNotePatientRelationship.inverseRelationship = patientNotesRelationship"))
+
+        // Non-CloudKit: the authored values render unchanged.
+        let localFiles = GeneratedSchemaRenderer().render(schema: schema(cloudKit: false))
+        let localSchemaFile = try #require(localFiles.first { $0.path == "PatientSchema.swift" })
+        #expect(localSchemaFile.contents.contains("patientNotePatientRelationship.isOptional = false"))
+        #expect(localSchemaFile.contents.contains("patientNotePatientRelationship.minCount = 1"))
+        #expect(localSchemaFile.contents.contains("patientNotesRelationship.isOrdered = true"))
+        // The CloudKit force did not leak into the local render.
+        #expect(!localSchemaFile.contents.contains("patientNotePatientRelationship.isOptional = true"))
+    }
+
+    @Test
+    func rendersCloudKitFieldsReportMarkdown() {
+        // Golden-string report for a CloudKit schema. Covers the synthesized
+        // `*_has` presence row, an `externalStorage` → `Asset` row, the enum and
+        // numeric CK-type mappings, and the per-entity relationship references.
+        let report = CloudKitFieldsReport().render(schema: makeCloudKitReportSchema())
+        let expected = """
+        # CloudKit Fields Report
+
+        > Auto-generated by Slate. Do not edit.
+
+        Schema fingerprint: `ckreport`
+
+        This report enumerates the CloudKit record types and fields Slate expects for this schema, so the CloudKit dashboard can be reconciled by hand. The `Asset` column is advisory: `NSPersistentCloudKitContainer` chooses `CKAsset` versus inline `Bytes` by runtime value size against Core Data's externalization threshold, not statically from the flag.
+
+        ## Patient (record type)
+
+        | Field | CK type | Optional | Default | Asset |
+        | --- | --- | --- | --- | --- |
+        | `name` | `String` | Yes | No | — |
+        | `count` | `Int64` | No | Yes | — |
+        | `status` | `String` | No | Yes | — |
+        | `photo` | `Bytes` | Yes | No | may mirror as `CKAsset` |
+        | `address_has` | `Int64` | No | Yes | — |
+        | `address_city` | `String` | Yes | No | — |
+
+        Relationships:
+
+        - `notes` → `PatientNote` (to-many CloudKit reference)
+
+        ## PatientNote (record type)
+
+        | Field | CK type | Optional | Default | Asset |
+        | --- | --- | --- | --- | --- |
+        | `body` | `String` | Yes | No | — |
+
+        Relationships:
+
+        - `patient` → `Patient` (to-one CloudKit reference)
+
+        """
+        #expect(report == expected)
+    }
+
+    @Test
+    func emitsCloudKitFieldsReportOnlyForCloudKitSchemas() {
+        // CloudKit: the report is a returned `.cloudKitReport` file AND listed in
+        // the manifest (so `check` drift-detects and `clean`/`--prune` track it).
+        let cloudKitFiles = GeneratedSchemaRenderer().render(schema: makeCloudKitReportSchema())
+        let report = cloudKitFiles.first { $0.path == "CloudKitFieldsReport.md" }
+        #expect(report != nil)
+        #expect(report?.kind == .cloudKitReport)
+        let cloudKitManifest = cloudKitFiles.first { $0.kind == .manifest }
+        #expect(cloudKitManifest?.contents.contains("\"CloudKitFieldsReport.md\"") == true)
+
+        // Non-CloudKit: neither a report file nor a manifest entry — byte-for-byte
+        // preserved.
+        let localFiles = GeneratedSchemaRenderer().render(schema: makeCloudKitReportSchema(cloudKit: false))
+        #expect(!localFiles.contains { $0.path == "CloudKitFieldsReport.md" })
+        #expect(!localFiles.contains { $0.kind == .cloudKitReport })
+        let localManifest = localFiles.first { $0.kind == .manifest }
+        #expect(localManifest?.contents.contains("CloudKitFieldsReport.md") == false)
+    }
+
+    @Test
+    func detectsEditedCloudKitFieldsReportAsStale() throws {
+        let schema = makeCloudKitReportSchema()
+        let baseTemp = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
+        let output = baseTemp.appendingPathComponent("Generated")
+        defer { try? FileManager.default.removeItem(at: baseTemp) }
+
+        let files = GeneratedSchemaRenderer().render(schema: schema)
+        try GeneratedFileWriter().write(files: files, to: output)
+
+        // Fresh write: the report exists on disk and nothing is stale.
+        let reportURL = output.appendingPathComponent("CloudKitFieldsReport.md")
+        #expect(FileManager.default.fileExists(atPath: reportURL.path))
+        #expect(try GeneratedFileWriter().staleFiles(files: files, in: output).isEmpty)
+
+        // Editing the committed report makes it the only stale file `check` reports.
+        try "tampered\n".write(to: reportURL, atomically: true, encoding: .utf8)
+        #expect(try GeneratedFileWriter().staleFiles(files: files, in: output) == ["CloudKitFieldsReport.md"])
+    }
+
+    @Test
+    func rendersCloudKitValidModelFromConformingSchema() throws {
+        // Consolidated model-emission suite: render the conforming CloudKit
+        // schema once and assert every CloudKit model transform lands in the
+        // generated `makeManagedObjectModel()` source together — per-attribute
+        // optionality/defaults, the synthesized `*_has` default, the enum's
+        // `.rawValue` default, external binary storage, and the forced
+        // optional/unordered/minCount-0 relationships. Source-string assertions:
+        // `SlateGeneratorTests` holds only the rendered string — there is no
+        // compiled CloudKit `NSManagedObjectModel` to inspect (Architecture note;
+        // the built model is loaded for real in Sprint 04).
+        let files = GeneratedSchemaRenderer().render(schema: makeCloudKitReportSchema())
+        let schemaFile = try #require(files.first { $0.path == "CloudKitSchema.swift" })
+        let contents = schemaFile.contents
+
+        // Authored-optional attribute stays optional; non-optional attribute
+        // carries its default (optional-or-default holds for every attribute).
+        #expect(contents.contains("patientNameAttribute.isOptional = true"))
+        #expect(contents.contains("patientCountAttribute.isOptional = false"))
+        #expect(contents.contains("patientCountAttribute.defaultValue = 0"))
+
+        // Non-optional enum: non-optional + `.rawValue` default — the Q4
+        // silent-fallback shape, never the throwing one.
+        #expect(contents.contains("patientStatusAttribute.isOptional = false"))
+        #expect(contents.contains("patientStatusAttribute.defaultValue = Patient.Status.active.rawValue"))
+
+        // External binary storage opted in on the `Data` attribute; it stays optional.
+        #expect(contents.contains("patientPhotoAttribute.allowsExternalBinaryDataStorage = true"))
+        #expect(contents.contains("patientPhotoAttribute.isOptional = true"))
+
+        // Synthesized `*_has` presence boolean: non-optional with a `false` default.
+        #expect(contents.contains("patientAddress_hasAttribute.isOptional = false"))
+        #expect(contents.contains("patientAddress_hasAttribute.defaultValue = false"))
+
+        // Flattened embedded value field is optional.
+        #expect(contents.contains("patientAddress_cityAttribute.isOptional = true"))
+
+        // Every relationship — toMany (`notes`) and toOne (`patient`) — is forced
+        // optional + unordered + `minCount = 0`.
+        #expect(contents.contains("patientNotesRelationship.isOptional = true"))
+        #expect(contents.contains("patientNotesRelationship.isOrdered = false"))
+        #expect(contents.contains("patientNotesRelationship.minCount = 0"))
+        #expect(contents.contains("patientNotePatientRelationship.isOptional = true"))
+        #expect(contents.contains("patientNotePatientRelationship.isOrdered = false"))
+        #expect(contents.contains("patientNotePatientRelationship.minCount = 0"))
+    }
+
+    @Test
+    func omitsThrowingEnumBranchForCloudKitSchema() throws {
+        // Q4 structural property: a CloudKit non-optional enum always carries a
+        // default (subset error 1 rejects one without), so the generated bridge
+        // uses the silent `?? <default>` fallback and the throwing
+        // `SlateError.invalidStoredValue` branch is never *generated* for it.
+        let files = GeneratedSchemaRenderer().render(schema: makeCloudKitReportSchema())
+        let bridge = try #require(files.first { $0.path == "Patient+SlateBridge.swift" })
+
+        // The non-optional `status` enum resolves through the silent default
+        // fallback…
+        #expect(bridge.contents.contains("?? Patient.Status.active"))
+        // …and no throwing branch is generated anywhere in the bridge.
+        #expect(!bridge.contents.contains("throw SlateError.invalidStoredValue"))
+    }
+
+    /// A small two-entity CloudKit schema with an embedded value (for the
+    /// synthesized `*_has` presence boolean), an enum-with-default attribute, and
+    /// an external-storage `Data` attribute — used by the CloudKit report tests.
+    private func makeCloudKitReportSchema(cloudKit: Bool = true) -> NormalizedSchema {
+        NormalizedSchema(
+            schemaName: "CloudKitSchema",
+            schemaFingerprint: "ckreport",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Patient",
+                    entityName: "Patient",
+                    mutableName: "DatabasePatient",
+                    sourceKind: "struct",
+                    attributes: [
+                        NormalizedAttribute(
+                            swiftName: "name",
+                            storageName: "name",
+                            swiftType: "String?",
+                            storageType: "string",
+                            optional: true
+                        ),
+                        NormalizedAttribute(
+                            swiftName: "count",
+                            storageName: "count",
+                            swiftType: "Int",
+                            storageType: "integer64",
+                            optional: false,
+                            defaultExpression: "0"
+                        ),
+                        NormalizedAttribute(
+                            swiftName: "status",
+                            storageName: "status",
+                            swiftType: "Status",
+                            storageType: "rawRepresentable",
+                            optional: false,
+                            // Authored enum default as the parser captures it
+                            // (no `.rawValue` suffix); the renderer appends
+                            // `.rawValue`. This conforming schema is reused by the
+                            // model-emission and Q4-structural suites below.
+                            defaultExpression: "Patient.Status.active",
+                            enumKind: NormalizedEnumKind(typeName: "Status", rawType: "String")
+                        ),
+                        NormalizedAttribute(
+                            swiftName: "photo",
+                            storageName: "photo",
+                            swiftType: "Data?",
+                            storageType: "binary",
+                            optional: true,
+                            externalStorage: true
+                        ),
+                    ],
+                    embedded: [
+                        NormalizedEmbedded(
+                            swiftName: "address",
+                            swiftType: "Address",
+                            optional: true,
+                            presenceStorageName: "address_has",
+                            attributes: [
+                                NormalizedAttribute(
+                                    swiftName: "city",
+                                    storageName: "address_city",
+                                    swiftType: "String?",
+                                    storageType: "string",
+                                    optional: true
+                                ),
+                            ]
+                        ),
+                    ],
+                    relationships: [
+                        NormalizedRelationship(
+                            name: "notes",
+                            kind: "toMany",
+                            destination: "PatientNote",
+                            inverse: "patient",
+                            deleteRule: "cascade",
+                            optional: true
+                        ),
+                    ],
+                    cloudKit: cloudKit
+                ),
+                NormalizedEntity(
+                    swiftName: "PatientNote",
+                    entityName: "PatientNote",
+                    mutableName: "DatabasePatientNote",
+                    sourceKind: "struct",
+                    attributes: [
+                        NormalizedAttribute(
+                            swiftName: "body",
+                            storageName: "body",
+                            swiftType: "String?",
+                            storageType: "string",
+                            optional: true
+                        ),
+                    ],
+                    relationships: [
+                        NormalizedRelationship(
+                            name: "patient",
+                            kind: "toOne",
+                            destination: "Patient",
+                            inverse: "notes",
+                            deleteRule: "nullify",
+                            optional: true
+                        ),
+                    ],
+                    cloudKit: cloudKit
+                ),
+            ]
+        )
+    }
+
+    @Test
+    func validatesExternalStorageOnlyOnBinaryAttributes() throws {
+        // `externalStorage: true` on a non-Data (String) attribute is an error.
+        let invalid = NormalizedSchema(
+            schemaName: "BadSchema",
+            schemaFingerprint: "bad",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Patient",
+                    entityName: "Patient",
+                    mutableName: "DatabasePatient",
+                    sourceKind: "struct",
+                    attributes: [
+                        NormalizedAttribute(
+                            swiftName: "patientId",
+                            storageName: "patientId",
+                            swiftType: "String",
+                            storageType: "string",
+                            optional: false,
+                            externalStorage: true
+                        ),
+                    ]
+                ),
+            ]
+        )
+
+        do {
+            try SchemaValidator().validate(invalid)
+            Issue.record("Expected validation to fail")
+        } catch let error as SchemaValidationError {
+            #expect(error.description.contains(
+                "attribute 'patientId' sets 'externalStorage: true' but its storage type is 'string', not binary; external storage applies only to 'Data' attributes."
+            ))
+        }
+
+        // `externalStorage: true` on a Data attribute validates without throwing.
+        let valid = NormalizedSchema(
+            schemaName: "GoodSchema",
+            schemaFingerprint: "good",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Patient",
+                    entityName: "Patient",
+                    mutableName: "DatabasePatient",
+                    sourceKind: "struct",
+                    attributes: [
+                        NormalizedAttribute(
+                            swiftName: "avatar",
+                            storageName: "avatar",
+                            swiftType: "Data",
+                            storageType: "binary",
+                            optional: true,
+                            externalStorage: true
+                        ),
+                    ]
+                ),
+            ]
+        )
+
+        try SchemaValidator().validate(valid)
+    }
+
+    @Test
+    func validatesCloudKitSubsetRejectionMatrix() throws {
+        // A conforming CloudKit schema validates without throwing. It exercises
+        // the passing forms: an optional attribute, a non-optional attribute with
+        // a default, a non-optional enum with a default, and two well-formed
+        // (unordered, non-`deny`) relationships with valid inverses.
+        try SchemaValidator().validate(makeCloudKitSubsetSchema())
+
+        // 1. Non-optional attribute with no default.
+        expectCloudKitSubsetIssue(
+            makeCloudKitSubsetSchema(extraPatientAttributes: [
+                NormalizedAttribute(
+                    swiftName: "ssn",
+                    storageName: "ssn",
+                    swiftType: "String",
+                    storageType: "string",
+                    optional: false
+                ),
+            ]),
+            contains: "Entity 'Patient' attribute 'ssn' is non-optional with no default; CloudKit requires every attribute to be optional or carry a default. Add '@SlateAttribute(default:)' or make 'ssn' optional."
+        )
+
+        // 1b. Non-optional attribute whose `default:` cannot be lowered (e.g.
+        // `default: Date()`). The renderer drops un-lowerable defaults, so such an
+        // attribute would emit `isOptional = false` with no `defaultValue` — the
+        // exact CloudKit-invalid shape this rule guards. The validator must treat a
+        // non-lowerable default as absent (agreement with `DefaultValueLowering`),
+        // not let it pass on `defaultExpression != nil`.
+        expectCloudKitSubsetIssue(
+            makeCloudKitSubsetSchema(extraPatientAttributes: [
+                NormalizedAttribute(
+                    swiftName: "createdAt",
+                    storageName: "createdAt",
+                    swiftType: "Date",
+                    storageType: "date",
+                    optional: false,
+                    defaultExpression: "Date()"
+                ),
+            ]),
+            contains: "Entity 'Patient' attribute 'createdAt' is non-optional with no default; CloudKit requires every attribute to be optional or carry a default. Add '@SlateAttribute(default:)' or make 'createdAt' optional."
+        )
+
+        // 1c. A non-optional attribute *with* a lowerable default (a literal) still
+        // passes — proving the tightened check did not over-reject genuine defaults.
+        try SchemaValidator().validate(
+            makeCloudKitSubsetSchema(extraPatientAttributes: [
+                NormalizedAttribute(
+                    swiftName: "score",
+                    storageName: "score",
+                    swiftType: "Int",
+                    storageType: "integer64",
+                    optional: false,
+                    defaultExpression: "0"
+                ),
+            ])
+        )
+
+        // 2. Ordered relationship.
+        expectCloudKitSubsetIssue(
+            makeCloudKitSubsetSchema(notesOrdered: true),
+            contains: "Entity 'Patient' relationship 'notes' is ordered; CloudKit does not support ordered relationships. Remove 'ordered: true' and model an explicit sort-key attribute."
+        )
+
+        // 3. `deny` delete rule.
+        expectCloudKitSubsetIssue(
+            makeCloudKitSubsetSchema(patientNoteDeleteRule: "deny"),
+            contains: "Entity 'PatientNote' relationship 'patient' uses the 'deny' delete rule, which CloudKit does not support. Use 'nullify', 'cascade', or 'noAction', or model a soft-delete flag (e.g. 'isTrashed') instead."
+        )
+
+        // 4. `#Unique` constraint.
+        expectCloudKitSubsetIssue(
+            makeCloudKitSubsetSchema(patientUniqueness: [NormalizedUniqueness(storageNames: ["name"])]),
+            contains: "Entity 'Patient' declares a '#Unique' constraint, which CloudKit does not support. Remove it; 'upsert' then fails at runtime via the existing uniqueness check while 'firstOrCreate' still works."
+        )
+    }
+
+    @Test
+    func cloudKitSubsetRulesDoNotApplyToLocalSchemas() throws {
+        // The same schema shape that trips all four CloudKit-subset rules must
+        // validate without throwing when it is a non-CloudKit (local) schema —
+        // proving the rules are gated on `schema.cloudKit`.
+        let schema = makeCloudKitSubsetSchema(
+            extraPatientAttributes: [
+                NormalizedAttribute(
+                    swiftName: "ssn",
+                    storageName: "ssn",
+                    swiftType: "String",
+                    storageType: "string",
+                    optional: false
+                ),
+            ],
+            notesOrdered: true,
+            patientNoteDeleteRule: "deny",
+            patientUniqueness: [NormalizedUniqueness(storageNames: ["name"])],
+            cloudKit: false
+        )
+        try SchemaValidator().validate(schema)
+    }
+
+    /// Builds a two-entity schema (`Patient` ⇄ `PatientNote`) that conforms to the
+    /// CloudKit subset by default, with knobs to inject each subset violation.
+    private func makeCloudKitSubsetSchema(
+        extraPatientAttributes: [NormalizedAttribute] = [],
+        notesOrdered: Bool = false,
+        patientNoteDeleteRule: String = "nullify",
+        patientUniqueness: [NormalizedUniqueness] = [],
+        cloudKit: Bool = true
+    ) -> NormalizedSchema {
+        NormalizedSchema(
+            schemaName: "CloudKitSchema",
+            schemaFingerprint: "ck",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: [
+                NormalizedEntity(
+                    swiftName: "Patient",
+                    entityName: "Patient",
+                    mutableName: "DatabasePatient",
+                    sourceKind: "struct",
+                    attributes: [
+                        NormalizedAttribute(
+                            swiftName: "name",
+                            storageName: "name",
+                            swiftType: "String?",
+                            storageType: "string",
+                            optional: true
+                        ),
+                        NormalizedAttribute(
+                            swiftName: "count",
+                            storageName: "count",
+                            swiftType: "Int",
+                            storageType: "integer64",
+                            optional: false,
+                            defaultExpression: "0"
+                        ),
+                        NormalizedAttribute(
+                            swiftName: "status",
+                            storageName: "status",
+                            swiftType: "Status",
+                            storageType: "rawRepresentable",
+                            optional: false,
+                            defaultExpression: "Patient.Status.active.rawValue",
+                            enumKind: NormalizedEnumKind(typeName: "Status", rawType: "String")
+                        ),
+                    ] + extraPatientAttributes,
+                    relationships: [
+                        NormalizedRelationship(
+                            name: "notes",
+                            kind: "toMany",
+                            destination: "PatientNote",
+                            inverse: "patient",
+                            deleteRule: "cascade",
+                            ordered: notesOrdered,
+                            optional: true
+                        ),
+                    ],
+                    uniqueness: patientUniqueness,
+                    cloudKit: cloudKit
+                ),
+                NormalizedEntity(
+                    swiftName: "PatientNote",
+                    entityName: "PatientNote",
+                    mutableName: "DatabasePatientNote",
+                    sourceKind: "struct",
+                    attributes: [
+                        NormalizedAttribute(
+                            swiftName: "body",
+                            storageName: "body",
+                            swiftType: "String?",
+                            storageType: "string",
+                            optional: true
+                        ),
+                    ],
+                    relationships: [
+                        NormalizedRelationship(
+                            name: "patient",
+                            kind: "toOne",
+                            destination: "Patient",
+                            inverse: "notes",
+                            deleteRule: patientNoteDeleteRule,
+                            optional: true
+                        ),
+                    ],
+                    cloudKit: cloudKit
+                ),
+            ]
+        )
+    }
+
+    /// Asserts that validating `schema` throws a `SchemaValidationError` whose
+    /// aggregated description contains `substring`.
+    private func expectCloudKitSubsetIssue(_ schema: NormalizedSchema, contains substring: String) {
+        do {
+            try SchemaValidator().validate(schema)
+            Issue.record("Expected CloudKit-subset validation to fail for: \(substring)")
+        } catch let error as SchemaValidationError {
+            #expect(error.description.contains(substring))
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
+    @Test
+    func parserHarvestsExternalStorageAtTopLevelAndEmbedded() throws {
+        let source = """
+        import SlateSchema
+
+        @SlateEntity
+        public struct Patient {
+            public let patientId: String
+
+            @SlateAttribute(externalStorage: true)
+            public let avatar: Data
+
+            public let thumbnail: Data
+
+            @SlateEmbedded
+            public let media: Media?
+
+            @SlateEmbedded
+            public struct Media: Equatable, Sendable {
+                @SlateAttribute(externalStorage: true)
+                public let blob: Data?
+
+                public let caption: String?
+            }
+        }
+        """
+        let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString + ".swift")
+        try source.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let schema = try SwiftSchemaParser().parseFiles(
+            at: [url],
+            schemaName: "PatientSchema",
+            modelModule: "PatientModels",
+            runtimeModule: "PatientPersistence"
+        )
+        let entity = try #require(schema.entities.first)
+
+        // Top-level: only the flagged Data attribute harvests externalStorage.
+        let avatar = try #require(entity.attributes.first { $0.swiftName == "avatar" })
+        let thumbnail = try #require(entity.attributes.first { $0.swiftName == "thumbnail" })
+        #expect(avatar.externalStorage == true)
+        #expect(thumbnail.externalStorage == false)
+
+        // Embedded: the flag is harvested on the flattened embedded field too.
+        let embedded = try #require(entity.embedded.first { $0.swiftName == "media" })
+        let blob = try #require(embedded.attributes.first { $0.swiftName == "blob" })
+        let caption = try #require(embedded.attributes.first { $0.swiftName == "caption" })
+        #expect(blob.externalStorage == true)
+        #expect(caption.externalStorage == false)
+    }
+
+    @Test
     func parserCapturesDefaultExpressions() throws {
         let source = """
         import SlateSchema

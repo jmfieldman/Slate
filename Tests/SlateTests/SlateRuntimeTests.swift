@@ -1154,6 +1154,48 @@ struct SlateRuntimeTests {
         }
     }
 
+    @Test
+    func clearedEnumColumnConvertsToDefaultWithoutThrowing() async throws {
+        // Q4 runtime invariant (object-trump × the enum convert path):
+        // `Patient.status` is a non-optional enum with default `.active`. A
+        // managed object whose raw `status` column is cleared/unmappable — as a
+        // `mergeByPropertyObjectTrump` down-merge could leave it before Core Data
+        // backfills the emitted `defaultValue` — converts to the default `.active`
+        // through the silent `?? Patient.Status.active` fallback, never throwing
+        // `invalidStoredValue`. CloudKit's subset rule (every CloudKit enum carries
+        // a default) is exactly what guarantees this is the branch generated; the
+        // convert path itself is not CloudKit-gated, so the local `Patient` fixture
+        // exercises it. (`status` is non-optional in Core Data, so an unmappable raw
+        // value stands in for an absent one — both flatMap to nil and hit the same
+        // fallback, while avoiding a non-optional-nil save-validation failure.)
+        let slate = SlateFixtures.PatientSlate(storeURL: nil, storeType: NSInMemoryStoreType)
+        try slate.configure()
+
+        try await slate.mutate { context in
+            let row = context.create(DatabasePatient.self)
+            row.patientId = "P1"
+            row.firstName = "Ada"
+            row.lastName = "Lovelace"
+            row.status = .archived
+            row.address_has = false
+        }
+
+        // Plant a stored raw value that no longer maps to any `Status` case.
+        try await slate.mutate { context in
+            guard let row = try context[DatabasePatient.self].one() else {
+                Issue.record("expected a row")
+                return
+            }
+            row.willChangeValue(forKey: "status")
+            row.setPrimitiveValue("legacy_status", forKey: "status")
+            row.didChangeValue(forKey: "status")
+        }
+
+        // The convert path returns the default `.active`, not a throw.
+        let row = try await slate.one(Patient.self)
+        #expect(row?.status == .active)
+    }
+
     // The sort: parameter accepts three shapes:
     //   - [SlateSort<Value>]                       — full control
     //   - [.asc(\.x), .desc(\.y)]                  — leading-dot shorthand
