@@ -44,6 +44,19 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
             throw SlateError.alreadyConfigured
         }
 
+        guard storageMode.isCloudKit == Schema.cloudKitEnabled else {
+            throw SlateError.storageModeSchemaMismatch(
+                mode: storageMode,
+                schemaCloudKitEnabled: Schema.cloudKitEnabled
+            )
+        }
+        guard !(storageMode.isCloudKit && storeKind == .cacheStore) else {
+            throw SlateError.storageModeStoreKindMismatch(
+                mode: storageMode,
+                storeKind: storeKind
+            )
+        }
+
         var registry = SlateTableRegistry()
         Schema.registerTables(&registry)
 
