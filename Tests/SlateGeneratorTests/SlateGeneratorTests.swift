@@ -2692,6 +2692,17 @@ struct SlateGeneratorTests {
         #expect(defaultSchema.cloudKit == false)
         // The per-entity default is `false` when the argument is absent.
         #expect(defaultSchema.entities.first?.cloudKit == false)
+
+        // Empty schema collapses to `false` via the `?? false` fallback (locked
+        // "Schema-level collapse" decision: empty schema ⇒ false).
+        let emptySchema = NormalizedSchema(
+            schemaName: "EmptySchema",
+            schemaFingerprint: "fp",
+            modelModule: "Models",
+            runtimeModule: "Persistence",
+            entities: []
+        )
+        #expect(emptySchema.cloudKit == false)
     }
 
     private func makeImportSampleSchema(
