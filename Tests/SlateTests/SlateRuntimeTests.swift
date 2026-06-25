@@ -994,6 +994,50 @@ struct SlateRuntimeTests {
         }
     }
 
+    @Test
+    func localCacheStoreWipesIncompatibleSQLiteAndRetries() async throws {
+        let directory = URL(
+            fileURLWithPath: NSTemporaryDirectory(),
+            isDirectory: true
+        ).appendingPathComponent("SlateCacheStoreTest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let storeURL = directory.appendingPathComponent("Test.sqlite")
+        let legacyAttribute = NSAttributeDescription()
+        legacyAttribute.name = "legacyName"
+        legacyAttribute.attributeType = .stringAttributeType
+        legacyAttribute.isOptional = false
+
+        let legacyEntity = NSEntityDescription()
+        legacyEntity.name = "LegacyAuthor"
+        legacyEntity.managedObjectClassName = NSStringFromClass(NSManagedObject.self)
+        legacyEntity.properties = [legacyAttribute]
+
+        let legacyModel = NSManagedObjectModel()
+        legacyModel.entities = [legacyEntity]
+        let legacyCoordinator = NSPersistentStoreCoordinator(managedObjectModel: legacyModel)
+        try legacyCoordinator.addPersistentStore(
+            ofType: NSSQLiteStoreType,
+            configurationName: nil,
+            at: storeURL
+        )
+
+        let slate = Slate<TestSchema>(
+            storeURL: storeURL,
+            storeType: NSSQLiteStoreType,
+            storeKind: .cacheStore
+        )
+        try slate.configure()
+
+        #expect(try await slate.count(TestAuthor.self) == 0)
+    }
+
     // SQLite stores do support `NSBatchDeleteRequest`. This test goes through
     // the real batch path: it provisions a temporary on-disk store, runs a
     // batch delete, and verifies the writer-context's cache and on-disk row

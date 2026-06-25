@@ -598,7 +598,8 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         do {
             try addStore(description: description, coordinator: coordinator)
         } catch {
-            guard storeKind == .cacheStore,
+            guard storageMode == .local,
+                  storeKind == .cacheStore,
                   description.type == NSSQLiteStoreType,
                   let url = description.url,
                   isLikelyIncompatibleStore(error)
