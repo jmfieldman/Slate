@@ -2705,6 +2705,71 @@ struct SlateGeneratorTests {
         #expect(emptySchema.cloudKit == false)
     }
 
+    @Test
+    func parsesCloudKitArgumentFromSlateEntity() throws {
+        // `Trip` opts into CloudKit; `Leg` omits the argument and must default
+        // to `false`. Both entities are uniform-per-entity (the parser harvests
+        // each independently; the uniform-or-error check is a later step), so a
+        // mixed schema here exercises the harvest in isolation.
+        let source = """
+        import SlateSchema
+
+        @SlateEntity(cloudKit: true)
+        public struct Trip {
+            public let tripId: String
+        }
+
+        @SlateEntity
+        public struct Leg {
+            public let legId: String
+        }
+        """
+        let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString + ".swift")
+        try source.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let schema = try SwiftSchemaParser().parseFiles(
+            at: [url],
+            schemaName: "TripSchema",
+            modelModule: "TripModels",
+            runtimeModule: "TripPersistence"
+        )
+
+        // Entities are sorted alphabetically: Leg, Trip.
+        #expect(schema.entities.map(\.swiftName) == ["Leg", "Trip"])
+        let trip = try #require(schema.entities.first { $0.swiftName == "Trip" })
+        let leg = try #require(schema.entities.first { $0.swiftName == "Leg" })
+        #expect(trip.cloudKit == true)
+        // Argument absent ⇒ defaults to `false`, not nil-propagated.
+        #expect(leg.cloudKit == false)
+    }
+
+    @Test
+    func parsesCloudKitTrueSchemaDerivesSchemaFlag() throws {
+        // A single CloudKit entity: the schema-level flag collapses to `true`.
+        let source = """
+        import SlateSchema
+
+        @SlateEntity(cloudKit: true)
+        public struct Trip {
+            public let tripId: String
+        }
+        """
+        let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString + ".swift")
+        try source.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let schema = try SwiftSchemaParser().parseFiles(
+            at: [url],
+            schemaName: "TripSchema",
+            modelModule: "TripModels",
+            runtimeModule: "TripPersistence"
+        )
+
+        #expect(schema.entities.first?.cloudKit == true)
+        #expect(schema.cloudKit == true)
+    }
+
     private func makeImportSampleSchema(
         modelModule: String,
         runtimeModule: String

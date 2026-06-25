@@ -344,6 +344,8 @@ private final class EntityVisitor: SyntaxVisitor {
         }
         let entityName = stringArgument("name", in: slateEntityAttribute) ?? name
         let mutableName = stringArgument("storageName", in: slateEntityAttribute) ?? "Database\(name)"
+        // Absent `cloudKit:` defaults to `false` (the common case), not nil-propagated.
+        let isCloudKit = boolArgument("cloudKit", in: slateEntityAttribute) ?? false
 
         let nestedStructs = nestedStructDeclarations(in: node)
         let nestedEnums = nestedEnumRawTypes(in: node)
@@ -469,7 +471,8 @@ private final class EntityVisitor: SyntaxVisitor {
                 embedded: embedded,
                 relationships: relationships(in: slateEntityAttribute),
                 indexes: indexes(in: node, storageNameMap: storageNameMap),
-                uniqueness: uniqueness(in: node, storageNameMap: storageNameMap)
+                uniqueness: uniqueness(in: node, storageNameMap: storageNameMap),
+                cloudKit: isCloudKit
             )
         )
     }
@@ -763,6 +766,20 @@ private final class EntityVisitor: SyntaxVisitor {
         for argument in arguments where argument.label?.text == label {
             return argument.expression.trimmedDescription
                 .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+        }
+        return nil
+    }
+
+    /// Read a labeled `true`/`false` argument off an attribute (mirrors
+    /// `stringArgument`). Returns `nil` when the argument is absent so callers
+    /// can supply their own default — for `@SlateEntity(cloudKit:)` the default
+    /// is `false` (the overwhelmingly common, argument-absent case).
+    private func boolArgument(_ label: String, in attribute: AttributeSyntax) -> Bool? {
+        guard let arguments = attribute.arguments?.as(LabeledExprListSyntax.self) else {
+            return nil
+        }
+        for argument in arguments where argument.label?.text == label {
+            return boolLiteralValue(argument.expression)
         }
         return nil
     }
