@@ -99,6 +99,7 @@ let package = Package(
                 "SlateSchema",
                 "SlateFixturePatientModels",
             ],
+            exclude: ["SlateGenerationManifest.json"],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency"),
             ]
