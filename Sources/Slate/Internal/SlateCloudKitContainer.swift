@@ -10,6 +10,10 @@ enum SlateCloudKitContainer {
         String,
         @escaping @Sendable (AccountStatusResult) -> Void
     ) -> Void
+    typealias EventObserverInstaller = (
+        NSPersistentCloudKitContainer,
+        @escaping @Sendable (EventSnapshot) -> Void
+    ) -> EventObserverToken
 
     private final class LoadOverrideBox: @unchecked Sendable {
         let lock = NSLock()
@@ -21,12 +25,72 @@ enum SlateCloudKitContainer {
         var provider: AccountStatusProvider?
     }
 
+    private final class EventObserverInstallerBox: @unchecked Sendable {
+        let lock = NSLock()
+        var installer: EventObserverInstaller?
+    }
+
+    private final class NotificationObserverBox: @unchecked Sendable {
+        let observer: NSObjectProtocol
+
+        init(_ observer: NSObjectProtocol) {
+            self.observer = observer
+        }
+    }
+
     private static let loadOverrideBox = LoadOverrideBox()
     private static let accountStatusProviderBox = AccountStatusProviderBox()
+    private static let eventObserverInstallerBox = EventObserverInstallerBox()
 
     struct AccountStatusResult: Sendable {
         let status: CKAccountStatus?
         let error: (any Error)?
+    }
+
+    struct EventSnapshot: Sendable {
+        let identifier: UUID
+        let type: NSPersistentCloudKitContainer.EventType
+        let endDate: Date?
+        let error: (any Error)?
+
+        init(
+            identifier: UUID,
+            type: NSPersistentCloudKitContainer.EventType,
+            endDate: Date?,
+            error: (any Error)?
+        ) {
+            self.identifier = identifier
+            self.type = type
+            self.endDate = endDate
+            self.error = error
+        }
+
+        init(_ event: NSPersistentCloudKitContainer.Event) {
+            self.init(
+                identifier: event.identifier,
+                type: event.type,
+                endDate: event.endDate,
+                error: event.error
+            )
+        }
+    }
+
+    final class EventObserverToken: @unchecked Sendable {
+        private let lock = NSLock()
+        private var invalidateHandler: (@Sendable () -> Void)?
+
+        init(_ invalidate: @escaping @Sendable () -> Void) {
+            invalidateHandler = invalidate
+        }
+
+        func invalidate() {
+            let handler: (@Sendable () -> Void)?
+            lock.lock()
+            handler = invalidateHandler
+            invalidateHandler = nil
+            lock.unlock()
+            handler?()
+        }
     }
 
     struct BuildResult {
@@ -124,6 +188,37 @@ enum SlateCloudKitContainer {
         }
     }
 
+    static func observeEvents(
+        for container: NSPersistentCloudKitContainer,
+        handler: @escaping @Sendable (EventSnapshot) -> Void
+    ) -> EventObserverToken {
+        eventObserverInstallerBox.lock.lock()
+        let installer = eventObserverInstallerBox.installer
+        eventObserverInstallerBox.lock.unlock()
+
+        if let installer {
+            return installer(container, handler)
+        }
+
+        let observer = NotificationCenter.default.addObserver(
+            forName: NSPersistentCloudKitContainer.eventChangedNotification,
+            object: container,
+            queue: nil
+        ) { notification in
+            guard let event = notification.userInfo?[
+                NSPersistentCloudKitContainer.eventNotificationUserInfoKey
+            ] as? NSPersistentCloudKitContainer.Event else {
+                return
+            }
+            handler(EventSnapshot(event))
+        }
+        let observerBox = NotificationObserverBox(observer)
+
+        return EventObserverToken {
+            NotificationCenter.default.removeObserver(observerBox.observer)
+        }
+    }
+
     private static var shouldUseLiveAccountContainer: Bool {
         accountStatusProviderBox.lock.lock()
         let hasProvider = accountStatusProviderBox.provider != nil
@@ -175,6 +270,21 @@ enum SlateCloudKitContainer {
             accountStatusProviderBox.lock.lock()
             accountStatusProviderBox.provider = nil
             accountStatusProviderBox.lock.unlock()
+        }
+        return try body()
+    }
+
+    static func withEventObserverInstallerOverride<T>(
+        _ installer: @escaping EventObserverInstaller,
+        _ body: () throws -> T
+    ) rethrows -> T {
+        eventObserverInstallerBox.lock.lock()
+        eventObserverInstallerBox.installer = installer
+        eventObserverInstallerBox.lock.unlock()
+        defer {
+            eventObserverInstallerBox.lock.lock()
+            eventObserverInstallerBox.installer = nil
+            eventObserverInstallerBox.lock.unlock()
         }
         return try body()
     }

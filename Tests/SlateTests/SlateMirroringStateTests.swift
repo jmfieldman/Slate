@@ -150,6 +150,146 @@ struct SlateMirroringStateTests {
         #expect(slate.accountStatus == .unavailable)
         await slate.close()
     }
+
+    @Test
+    func importBeginSetsIsImportingTrue() async throws {
+        let slate = try makeCloudKitSlate(prefix: "SlateMirroringImportBegin")
+        let events = CloudKitEventObserverProbe()
+
+        try SlateCloudKitContainer.withEventObserverInstallerOverride(events.installer) {
+            try configureWithSuccessfulCloudKitLoad(slate)
+        }
+
+        events.post(importEvent(endDate: nil))
+        try await waitForImporting(true, on: slate)
+
+        #expect(slate.lastImportError == nil)
+        await slate.close()
+    }
+
+    @Test
+    func overlappingImportsKeepIsImportingTrueUntilBothComplete() async throws {
+        let slate = try makeCloudKitSlate(prefix: "SlateMirroringOverlappingImports")
+        let events = CloudKitEventObserverProbe()
+        let firstID = UUID()
+        let secondID = UUID()
+
+        try SlateCloudKitContainer.withEventObserverInstallerOverride(events.installer) {
+            try configureWithSuccessfulCloudKitLoad(slate)
+        }
+
+        events.post(importEvent(identifier: firstID, endDate: nil))
+        events.post(importEvent(identifier: secondID, endDate: nil))
+        try await waitForImporting(true, on: slate)
+
+        events.post(importEvent(identifier: firstID, endDate: Date()))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        #expect(slate.isImporting)
+
+        events.post(importEvent(identifier: secondID, endDate: Date()))
+        try await waitForImporting(false, on: slate)
+
+        await slate.close()
+    }
+
+    @Test
+    func failedImportStoresLastImportError() async throws {
+        let slate = try makeCloudKitSlate(prefix: "SlateMirroringImportError")
+        let events = CloudKitEventObserverProbe()
+        let importID = UUID()
+        let error = ImportEventProbeError()
+
+        try SlateCloudKitContainer.withEventObserverInstallerOverride(events.installer) {
+            try configureWithSuccessfulCloudKitLoad(slate)
+        }
+
+        events.post(importEvent(identifier: importID, endDate: nil))
+        try await waitForImporting(true, on: slate)
+        events.post(importEvent(identifier: importID, endDate: Date(), error: error))
+        try await waitForImporting(false, on: slate)
+        try await waitForLastImportError(error, on: slate)
+
+        #expect((slate.lastImportError as? ImportEventProbeError) === error)
+        await slate.close()
+    }
+
+    @Test
+    func laterSuccessfulImportDoesNotClearLastImportError() async throws {
+        let slate = try makeCloudKitSlate(prefix: "SlateMirroringRetainsImportError")
+        let events = CloudKitEventObserverProbe()
+        let failedID = UUID()
+        let successfulID = UUID()
+        let error = ImportEventProbeError()
+
+        try SlateCloudKitContainer.withEventObserverInstallerOverride(events.installer) {
+            try configureWithSuccessfulCloudKitLoad(slate)
+        }
+
+        events.post(importEvent(identifier: failedID, endDate: nil))
+        events.post(importEvent(identifier: failedID, endDate: Date(), error: error))
+        try await waitForLastImportError(error, on: slate)
+        #expect((slate.lastImportError as? ImportEventProbeError) === error)
+
+        events.post(importEvent(identifier: successfulID, endDate: nil))
+        try await waitForImporting(true, on: slate)
+        events.post(importEvent(identifier: successfulID, endDate: Date()))
+        try await waitForImporting(false, on: slate)
+
+        #expect((slate.lastImportError as? ImportEventProbeError) === error)
+        await slate.close()
+    }
+
+    @Test
+    func importEventDuringLoadBoundaryIsCaptured() async throws {
+        let slate = try makeCloudKitSlate(prefix: "SlateMirroringImportDuringLoad")
+        let events = CloudKitEventObserverProbe()
+
+        try SlateCloudKitContainer.withEventObserverInstallerOverride(events.installer) {
+            try SlateCloudKitContainer.withLoadPersistentStoresOverride({ _, completion in
+                events.post(importEvent(endDate: nil))
+                completion(nil)
+            }) {
+                try slate.configure()
+            }
+        }
+
+        try await waitForImporting(true, on: slate)
+        await slate.close()
+    }
+
+    @Test
+    func exportAndSetupEventsDoNotChangeIsImporting() async throws {
+        let slate = try makeCloudKitSlate(prefix: "SlateMirroringIgnoredEvents")
+        let events = CloudKitEventObserverProbe()
+
+        try SlateCloudKitContainer.withEventObserverInstallerOverride(events.installer) {
+            try configureWithSuccessfulCloudKitLoad(slate)
+        }
+
+        events.post(event(type: .export, endDate: nil))
+        events.post(event(type: .setup, endDate: nil))
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(!slate.isImporting)
+        #expect(slate.lastImportError == nil)
+        await slate.close()
+    }
+
+    @Test
+    func releasingCloudKitSlateUnregistersImportEventSink() throws {
+        var slate: Slate<TestCloudKitRuntimeSchema>? = try makeCloudKitSlate(prefix: "SlateMirroringImportDeinit")
+        let events = CloudKitEventObserverProbe()
+
+        try SlateCloudKitContainer.withEventObserverInstallerOverride(events.installer) {
+            try configureWithSuccessfulCloudKitLoad(try #require(slate))
+            #expect(events.registrationCount == 1)
+            #expect(events.activeHandlerCount == 1)
+
+            slate = nil
+        }
+
+        #expect(events.activeHandlerCount == 0)
+    }
 }
 
 private func makeCloudKitSlate(prefix: String) throws -> Slate<TestCloudKitRuntimeSchema> {
@@ -204,7 +344,57 @@ private func waitForPendingAccountStatusRequests(
     )
 }
 
+private func waitForImporting<Schema: SlateSchema>(
+    _ expectedValue: Bool,
+    on slate: Slate<Schema>
+) async throws {
+    for _ in 0..<40 {
+        if slate.isImporting == expectedValue {
+            return
+        }
+        try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    Issue.record("Timed out waiting for isImporting \(expectedValue); current value \(slate.isImporting)")
+}
+
+private func waitForLastImportError<Schema: SlateSchema>(
+    _ expectedError: ImportEventProbeError,
+    on slate: Slate<Schema>
+) async throws {
+    for _ in 0..<40 {
+        if (slate.lastImportError as? ImportEventProbeError) === expectedError {
+            return
+        }
+        try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    Issue.record("Timed out waiting for lastImportError to publish")
+}
+
+private func importEvent(
+    identifier: UUID = UUID(),
+    endDate: Date?,
+    error: (any Error)? = nil
+) -> SlateCloudKitContainer.EventSnapshot {
+    event(identifier: identifier, type: .import, endDate: endDate, error: error)
+}
+
+private func event(
+    identifier: UUID = UUID(),
+    type: NSPersistentCloudKitContainer.EventType,
+    endDate: Date?,
+    error: (any Error)? = nil
+) -> SlateCloudKitContainer.EventSnapshot {
+    SlateCloudKitContainer.EventSnapshot(
+        identifier: identifier,
+        type: type,
+        endDate: endDate,
+        error: error
+    )
+}
+
 private struct AccountStatusProbeError: Error {}
+
+private final class ImportEventProbeError: Error {}
 
 private final class AccountStatusProviderProbe: @unchecked Sendable {
     private let lock = NSLock()
@@ -279,5 +469,51 @@ private final class DeferredAccountStatusProviderProbe: @unchecked Sendable {
         lock.unlock()
 
         completion(result)
+    }
+}
+
+private final class CloudKitEventObserverProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var handlers: [UUID: @Sendable (SlateCloudKitContainer.EventSnapshot) -> Void] = [:]
+    private var storedRegistrationCount = 0
+
+    var registrationCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedRegistrationCount
+    }
+
+    var activeHandlerCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return handlers.count
+    }
+
+    func installer(
+        container: NSPersistentCloudKitContainer,
+        handler: @escaping @Sendable (SlateCloudKitContainer.EventSnapshot) -> Void
+    ) -> SlateCloudKitContainer.EventObserverToken {
+        _ = container
+        let id = UUID()
+        lock.lock()
+        storedRegistrationCount += 1
+        handlers[id] = handler
+        lock.unlock()
+
+        return SlateCloudKitContainer.EventObserverToken { [weak self] in
+            self?.lock.lock()
+            self?.handlers.removeValue(forKey: id)
+            self?.lock.unlock()
+        }
+    }
+
+    func post(_ event: SlateCloudKitContainer.EventSnapshot) {
+        lock.lock()
+        let capturedHandlers = Array(handlers.values)
+        lock.unlock()
+
+        for handler in capturedHandlers {
+            handler(event)
+        }
     }
 }

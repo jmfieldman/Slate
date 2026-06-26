@@ -17,6 +17,7 @@ enum SlateStreamRefreshEvent {
 final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     typealias BatchDeleteHandler = @Sendable (SlateStreamRefreshEvent) -> Void
     typealias AccountStatusSink = @MainActor @Sendable (SlateAccountStatus) -> Void
+    typealias ImportEventSink = @MainActor @Sendable (Bool, (any Error)?) -> Void
 
     let id: UUID
     let registry: SlateTableRegistry
@@ -42,6 +43,10 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     private var accountStatusSinks: [UUID: AccountStatusSink] = [:]
     private var accountStatusObserver: NSObjectProtocol?
     private var accountStatusRefreshGeneration = 0
+    private let importEventLock = NSLock()
+    private var importEventSinks: [UUID: ImportEventSink] = [:]
+    private var importEventObserver: SlateCloudKitContainer.EventObserverToken?
+    private var activeImportEventIDs = Set<UUID>()
 
     init(
         id: UUID = UUID(),
@@ -254,6 +259,41 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         }
     }
 
+    @discardableResult
+    func registerImportEventSink(_ sink: @escaping ImportEventSink) -> UUID? {
+        guard cloudKitContainer != nil else {
+            return nil
+        }
+
+        let id = UUID()
+        importEventLock.lock()
+        importEventSinks[id] = sink
+        let shouldStartObserving = importEventObserver == nil
+        importEventLock.unlock()
+
+        if shouldStartObserving {
+            startImportEventObservationIfNeeded()
+        }
+
+        return id
+    }
+
+    func unregisterImportEventSink(_ id: UUID) {
+        let observerToInvalidate: SlateCloudKitContainer.EventObserverToken?
+        importEventLock.lock()
+        importEventSinks.removeValue(forKey: id)
+        if importEventSinks.isEmpty {
+            observerToInvalidate = importEventObserver
+            importEventObserver = nil
+            activeImportEventIDs.removeAll()
+        } else {
+            observerToInvalidate = nil
+        }
+        importEventLock.unlock()
+
+        observerToInvalidate?.invalidate()
+    }
+
     private func notifyStreamSinks(_ event: SlateStreamRefreshEvent) {
         sinkLock.lock()
         let handlers = Array(batchDeleteSinks.values)
@@ -291,6 +331,50 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         }
         accountStatusObserver = observer
         accountStatusLock.unlock()
+    }
+
+    private func startImportEventObservationIfNeeded() {
+        guard let cloudKitContainer else {
+            return
+        }
+
+        importEventLock.lock()
+        guard importEventObserver == nil else {
+            importEventLock.unlock()
+            return
+        }
+        let observer = SlateCloudKitContainer.observeEvents(for: cloudKitContainer) { [weak self] event in
+            self?.recordCloudKitEvent(event)
+        }
+        importEventObserver = observer
+        importEventLock.unlock()
+    }
+
+    func recordCloudKitEvent(_ event: SlateCloudKitContainer.EventSnapshot) {
+        guard event.type == .import else {
+            return
+        }
+
+        importEventLock.lock()
+        if event.endDate == nil, event.error == nil {
+            activeImportEventIDs.insert(event.identifier)
+        } else {
+            activeImportEventIDs.remove(event.identifier)
+        }
+        let isImporting = !activeImportEventIDs.isEmpty
+        let sinks = Array(importEventSinks.values)
+        let error = event.error
+        importEventLock.unlock()
+
+        guard !sinks.isEmpty else {
+            return
+        }
+
+        Task { @MainActor in
+            for sink in sinks {
+                sink(isImporting, error)
+            }
+        }
     }
 
     private func refreshAccountStatusIfNeeded() {
@@ -355,6 +439,7 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         if let accountStatusObserver {
             NotificationCenter.default.removeObserver(accountStatusObserver)
         }
+        importEventObserver?.invalidate()
     }
 }
 
