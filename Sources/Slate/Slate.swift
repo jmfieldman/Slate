@@ -14,6 +14,7 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
     private let persistentStoreDescription: NSPersistentStoreDescription
     private let storeKind: SlateStoreKind
     private let storageMode: SlateStorageMode
+    let mirroringState = SlateMirroringState()
     private let stateLock = NSLock()
     private var owner: SlateStoreOwner<Schema>?
     private var loadingOwner = false
@@ -46,6 +47,22 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
             storeKind: storeKind,
             storageMode: storageMode
         )
+    }
+
+    public var accountStatus: SlateAccountStatus {
+        mirroringState.accountStatus
+    }
+
+    public var isImporting: Bool {
+        mirroringState.isImporting
+    }
+
+    public var isMerging: Bool {
+        mirroringState.isMerging
+    }
+
+    public var lastImportError: Error? {
+        mirroringState.lastImportError
     }
 
     public func configure() throws {

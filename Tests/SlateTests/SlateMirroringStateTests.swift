@@ -1,4 +1,5 @@
 import CloudKit
+import CoreData
 import Foundation
 import Testing
 @testable import Slate
@@ -34,5 +35,15 @@ struct SlateMirroringStateTests {
         #expect(!state.isImporting)
         #expect(!state.isMerging)
         #expect(state.lastImportError == nil)
+    }
+
+    @Test
+    func localSlateExposesNeutralMirroringPropertiesDirectly() {
+        let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
+
+        #expect(slate.accountStatus == .unavailable)
+        #expect(!slate.isImporting)
+        #expect(!slate.isMerging)
+        #expect(slate.lastImportError == nil)
     }
 }
