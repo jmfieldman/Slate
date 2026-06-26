@@ -924,54 +924,81 @@ struct SlateRuntimeTests {
 
     @Test
     func queryWaitsForSharedOwnerLoadReadiness() async throws {
-        let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try slate.configure()
-        let owner = try slateStoreOwner(for: slate)
-        owner.setLoadStateForTesting(.loading)
+        let directory = try temporaryDirectory(prefix: "SlateCloudKitQueryReadiness")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let slate = Slate<TestCloudKitRuntimeSchema>(
+            storeURL: directory.appendingPathComponent("Test.sqlite"),
+            storeType: NSSQLiteStoreType,
+            storageMode: .cloudKitMirrored(containerIdentifier: "iCloud.com.example")
+        )
+        let load = PausedCloudKitLoad()
+        try configureWithPausedCloudKitLoad(slate, load: load)
 
         let enteredQuery = LockedFlag()
         let queryTask = Task {
-            try await slate.query { _ in
+            try await slate.query { context in
                 enteredQuery.set()
-                return 42
+                return try context[TestCloudKitRuntimeRecord.self].count()
             }
         }
 
         try await Task.sleep(nanoseconds: 20_000_000)
         #expect(enteredQuery.value == false)
 
-        owner.setLoadStateForTesting(.loaded)
-        #expect(try await queryTask.value == 42)
+        try load.succeed()
+        #expect(try await queryTask.value == 0)
         #expect(enteredQuery.value == true)
     }
 
     @Test
     func mutateAndBatchDeleteWaitForSharedOwnerLoadReadiness() async throws {
-        let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try slate.configure()
-        let owner = try slateStoreOwner(for: slate)
-        owner.setLoadStateForTesting(.loading)
+        let mutationDirectory = try temporaryDirectory(prefix: "SlateCloudKitMutationReadiness")
+        defer {
+            try? FileManager.default.removeItem(at: mutationDirectory)
+        }
+
+        let mutationSlate = Slate<TestCloudKitRuntimeSchema>(
+            storeURL: mutationDirectory.appendingPathComponent("Test.sqlite"),
+            storeType: NSSQLiteStoreType,
+            storageMode: .cloudKitMirrored(containerIdentifier: "iCloud.com.example")
+        )
+        let mutationLoad = PausedCloudKitLoad()
+        try configureWithPausedCloudKitLoad(mutationSlate, load: mutationLoad)
 
         let enteredMutation = LockedFlag()
         let mutationTask = Task {
-            try await slate.mutate { context in
+            try await mutationSlate.mutate { context in
                 enteredMutation.set()
-                let author = context.create(DatabaseTestAuthor.self)
-                author.name = "Ada"
+                let record = context.create(DatabaseTestCloudKitRuntimeRecord.self)
+                record.title = "Ada"
             }
         }
 
         try await Task.sleep(nanoseconds: 20_000_000)
         #expect(enteredMutation.value == false)
 
-        owner.setLoadStateForTesting(.loaded)
+        try mutationLoad.succeed()
         try await mutationTask.value
         #expect(enteredMutation.value == true)
 
-        owner.setLoadStateForTesting(.loading)
+        let batchDeleteDirectory = try temporaryDirectory(prefix: "SlateCloudKitBatchDeleteWait")
+        defer {
+            try? FileManager.default.removeItem(at: batchDeleteDirectory)
+        }
+
+        let slate = Slate<TestCloudKitRuntimeSchema>(
+            storeURL: batchDeleteDirectory.appendingPathComponent("Test.sqlite"),
+            storeType: NSSQLiteStoreType,
+            storageMode: .cloudKitMirrored(containerIdentifier: "iCloud.com.example")
+        )
+        let batchDeleteLoad = PausedCloudKitLoad()
+        try configureWithPausedCloudKitLoad(slate, load: batchDeleteLoad)
         let completedDelete = LockedFlag()
         let deleteTask = Task {
-            let count = try await slate.batchDelete(TestAuthor.self)
+            let count = try await slate.batchDelete(TestCloudKitRuntimeRecord.self)
             completedDelete.set()
             return count
         }
@@ -979,17 +1006,26 @@ struct SlateRuntimeTests {
         try await Task.sleep(nanoseconds: 20_000_000)
         #expect(completedDelete.value == false)
 
-        owner.setLoadStateForTesting(.loaded)
-        #expect(try await deleteTask.value == 1)
+        try batchDeleteLoad.succeed()
+        #expect(try await deleteTask.value == 0)
         #expect(completedDelete.value == true)
     }
 
     @Test
     func querySurfacesCapturedOwnerLoadFailure() async throws {
-        let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try slate.configure()
-        let owner = try slateStoreOwner(for: slate)
-        owner.setLoadStateForTesting(.failed(SlateError.coreData("load failed")))
+        let directory = try temporaryDirectory(prefix: "SlateCloudKitLoadFailure")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let slate = Slate<TestCloudKitRuntimeSchema>(
+            storeURL: directory.appendingPathComponent("Test.sqlite"),
+            storeType: NSSQLiteStoreType,
+            storageMode: .cloudKitMirrored(containerIdentifier: "iCloud.com.example")
+        )
+        let load = PausedCloudKitLoad()
+        try configureWithPausedCloudKitLoad(slate, load: load)
+        load.fail(SlateError.coreData("load failed"))
 
         await #expect(throws: SlateError.coreData("load failed")) {
             try await slate.query { _ in }
@@ -998,10 +1034,18 @@ struct SlateRuntimeTests {
 
     @Test
     func closeDuringOwnerLoadCausesWaitingQueryToThrowClosed() async throws {
-        let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
-        try slate.configure()
-        let owner = try slateStoreOwner(for: slate)
-        owner.setLoadStateForTesting(.loading)
+        let directory = try temporaryDirectory(prefix: "SlateCloudKitCloseDuringLoad")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let slate = Slate<TestCloudKitRuntimeSchema>(
+            storeURL: directory.appendingPathComponent("Test.sqlite"),
+            storeType: NSSQLiteStoreType,
+            storageMode: .cloudKitMirrored(containerIdentifier: "iCloud.com.example")
+        )
+        let load = PausedCloudKitLoad()
+        try configureWithPausedCloudKitLoad(slate, load: load)
 
         let queryTask = Task {
             try await slate.query { _ in
@@ -1018,40 +1062,50 @@ struct SlateRuntimeTests {
         } catch let error as SlateError {
             #expect(error == .closed)
         }
+
+        try load.succeed()
     }
 
     @Test
     func reusedSlateWrapperObservesOwnerLevelLoadReadiness() async throws {
-        let directory = try temporaryDirectory(prefix: "SlateOwnerReadinessReuse")
+        let directory = try temporaryDirectory(prefix: "SlateCloudKitOwnerReadinessReuse")
         defer {
             try? FileManager.default.removeItem(at: directory)
         }
 
         let storeURL = directory.appendingPathComponent("Test.sqlite")
-        let first = Slate<TestSchema>(storeURL: storeURL, storeType: NSSQLiteStoreType)
-        try first.configure()
+        let first = Slate<TestCloudKitRuntimeSchema>(
+            storeURL: storeURL,
+            storeType: NSSQLiteStoreType,
+            storageMode: .cloudKitMirrored(containerIdentifier: "iCloud.com.example")
+        )
+        let load = PausedCloudKitLoad()
+        try configureWithPausedCloudKitLoad(first, load: load)
 
-        let second = Slate<TestSchema>(storeURL: storeURL, storeType: NSSQLiteStoreType)
+        let second = Slate<TestCloudKitRuntimeSchema>(
+            storeURL: storeURL,
+            storeType: NSSQLiteStoreType,
+            storageMode: .cloudKitMirrored(containerIdentifier: "iCloud.com.example")
+        )
         try second.configure()
 
         let firstOwner = try slateStoreOwner(for: first)
         let secondOwner = try slateStoreOwner(for: second)
         #expect(firstOwner === secondOwner)
 
-        firstOwner.setLoadStateForTesting(.loading)
         let enteredQuery = LockedFlag()
         let queryTask = Task {
-            try await second.query { _ in
+            try await second.query { context in
                 enteredQuery.set()
-                return 7
+                return try context[TestCloudKitRuntimeRecord.self].count()
             }
         }
 
         try await Task.sleep(nanoseconds: 20_000_000)
         #expect(enteredQuery.value == false)
 
-        firstOwner.setLoadStateForTesting(.loaded)
-        #expect(try await queryTask.value == 7)
+        try load.succeed()
+        #expect(try await queryTask.value == 0)
         #expect(enteredQuery.value == true)
     }
 
@@ -1947,6 +2001,18 @@ private func configureWithSuccessfulCloudKitLoad<Schema: SlateSchema>(_ slate: S
     }
 }
 
+private func configureWithPausedCloudKitLoad<Schema: SlateSchema>(
+    _ slate: Slate<Schema>,
+    load: PausedCloudKitLoad
+) throws {
+    try SlateCloudKitContainer.withLoadPersistentStoresOverride({ container, completion in
+        load.capture(container: container, completion: completion)
+    }) {
+        try slate.configure()
+    }
+    try load.requireCaptured()
+}
+
 private func slateStoreOwner<Schema: SlateSchema>(for slate: Slate<Schema>) throws -> SlateStoreOwner<Schema> {
     let mirror = Mirror(reflecting: slate)
     for child in mirror.children where child.label == "owner" {
@@ -1955,6 +2021,90 @@ private func slateStoreOwner<Schema: SlateSchema>(for slate: Slate<Schema>) thro
         }
     }
     throw NSError(domain: "SlateRuntimeTests", code: -1)
+}
+
+private final class PausedCloudKitLoad: @unchecked Sendable {
+    private let lock = NSLock()
+    private var capturedContainer: NSPersistentCloudKitContainer?
+    private var capturedCompletion: ((Error?) -> Void)?
+
+    func capture(
+        container: NSPersistentCloudKitContainer,
+        completion: @escaping (Error?) -> Void
+    ) {
+        lock.lock()
+        precondition(capturedCompletion == nil, "CloudKit load was captured more than once")
+        capturedContainer = container
+        capturedCompletion = completion
+        lock.unlock()
+    }
+
+    func requireCaptured() throws {
+        lock.lock()
+        let hasCompletion = capturedCompletion != nil
+        lock.unlock()
+        if !hasCompletion {
+            throw NSError(
+                domain: "SlateRuntimeTests",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "CloudKit load was not captured"]
+            )
+        }
+    }
+
+    func succeed() throws {
+        let (container, completion) = try capturedLoad()
+        try installDeterministicStore(in: container)
+        completion(nil)
+    }
+
+    func fail(_ error: Error) {
+        do {
+            let (_, completion) = try capturedLoad()
+            completion(error)
+        } catch {
+            Issue.record("CloudKit load was not captured before failure release")
+        }
+    }
+
+    private func capturedLoad() throws -> (NSPersistentCloudKitContainer, (Error?) -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let capturedContainer, let capturedCompletion else {
+            throw NSError(
+                domain: "SlateRuntimeTests",
+                code: -3,
+                userInfo: [NSLocalizedDescriptionKey: "CloudKit load has not started"]
+            )
+        }
+        self.capturedContainer = nil
+        self.capturedCompletion = nil
+        return (capturedContainer, capturedCompletion)
+    }
+
+    private func installDeterministicStore(in container: NSPersistentCloudKitContainer) throws {
+        guard container.persistentStoreCoordinator.persistentStores.isEmpty else {
+            return
+        }
+        let sourceDescription = try #require(container.persistentStoreDescriptions.first)
+        let description = NSPersistentStoreDescription()
+        description.type = sourceDescription.type
+        description.url = sourceDescription.url
+        description.shouldMigrateStoreAutomatically = sourceDescription.shouldMigrateStoreAutomatically
+        description.shouldInferMappingModelAutomatically = sourceDescription.shouldInferMappingModelAutomatically
+
+        var capturedError: Error?
+        let semaphore = DispatchSemaphore(value: 0)
+        container.persistentStoreCoordinator.addPersistentStore(with: description) { _, error in
+            capturedError = error
+            semaphore.signal()
+        }
+        semaphore.wait()
+
+        if let capturedError {
+            throw capturedError
+        }
+    }
 }
 
 private final class LockedFlag: @unchecked Sendable {
