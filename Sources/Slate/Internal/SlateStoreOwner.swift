@@ -27,6 +27,8 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     private var batchDeleteSinks: [UUID: BatchDeleteHandler] = [:]
     private let ingestorLock = NSLock()
     private var storedRemoteChangeIngestor: SlateRemoteChangeIngestor<Schema>?
+    private let mergeStateLock = NSLock()
+    private var storedIsMerging = false
 
     init(
         id: UUID = UUID(),
@@ -113,6 +115,18 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         ingestorLock.lock()
         defer { ingestorLock.unlock() }
         return storedRemoteChangeIngestor
+    }
+
+    var isMerging: Bool {
+        mergeStateLock.lock()
+        defer { mergeStateLock.unlock() }
+        return storedIsMerging
+    }
+
+    func setIsMerging(_ isMerging: Bool) {
+        mergeStateLock.lock()
+        storedIsMerging = isMerging
+        mergeStateLock.unlock()
     }
 
     func installRemoteChangeIngestor(_ ingestor: SlateRemoteChangeIngestor<Schema>) {

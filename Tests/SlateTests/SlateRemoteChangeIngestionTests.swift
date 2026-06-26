@@ -220,6 +220,93 @@ struct SlateRemoteChangeIngestionTests {
         #expect(secondWindow.changedObjectIDs.isEmpty)
         #expect(secondWindow.nextToken == nil)
     }
+
+    @Test
+    func ingestionSetsIsMergingDuringBarrierHeldMergeAndPersistsTokenAfterSuccess() async throws {
+        let fixture = try SlateRemoteChangeIngestionTestSupport.makeHistoryFixture(
+            prefix: "SlateRemoteMergeStateSuccess"
+        )
+        defer {
+            fixture.remove()
+        }
+
+        _ = try fixture.writeInsertedUpdatedAndDeletedRowsFromSecondContext()
+        let observedMergeState = LockedCounter()
+        fixture.ingestor.setMergeHookForTesting {
+            #expect(fixture.owner.isMerging)
+            observedMergeState.increment()
+        }
+
+        #expect(!fixture.owner.isMerging)
+
+        try await fixture.ingestor.ingestRemoteChangeForTesting()
+
+        #expect(observedMergeState.value == 1)
+        #expect(!fixture.owner.isMerging)
+        let token = try #require(try fixture.tokenStore.load())
+        #expect(try fixture.historyTransactionCount(after: token) == 0)
+    }
+
+    @Test
+    func ingestionRestoresIsMergingAndLeavesTokenAfterInjectedMergeFailure() async throws {
+        let fixture = try SlateRemoteChangeIngestionTestSupport.makeHistoryFixture(
+            prefix: "SlateRemoteMergeStateFailure"
+        )
+        defer {
+            fixture.remove()
+        }
+
+        _ = try fixture.writeInsertedUpdatedAndDeletedRowsFromSecondContext()
+        fixture.ingestor.setMergeHookForTesting {
+            #expect(fixture.owner.isMerging)
+            throw InjectedMergeFailure()
+        }
+
+        await #expect(throws: InjectedMergeFailure.self) {
+            try await fixture.ingestor.ingestRemoteChangeForTesting()
+        }
+
+        #expect(!fixture.owner.isMerging)
+        #expect(try fixture.tokenStore.load() == nil)
+        #expect(try fixture.historyTransactionCount(after: nil) > 0)
+    }
+
+    @Test
+    func localMutationAndRemoteIngestionCriticalSectionsDoNotOverlap() async throws {
+        let fixture = try SlateRemoteChangeIngestionTestSupport.makeHistoryFixture(
+            prefix: "SlateRemoteMergeGateOrdering"
+        )
+        defer {
+            fixture.remove()
+        }
+
+        _ = try fixture.writeInsertedUpdatedAndDeletedRowsFromSecondContext()
+        let tracker = CriticalSectionTracker()
+        fixture.ingestor.setMergeHookForTesting {
+            tracker.enter("ingestion")
+            tracker.exit("ingestion")
+        }
+
+        let mutationTask = Task {
+            try await fixture.runLocalWriterCriticalSectionForTesting {
+                tracker.enter("mutation")
+                Thread.sleep(forTimeInterval: 0.05)
+                tracker.exit("mutation")
+            }
+        }
+
+        try await tracker.waitForEntryCount(1)
+
+        let ingestionTask = Task {
+            try await fixture.ingestor.ingestRemoteChangeForTesting()
+        }
+
+        try await mutationTask.value
+        try await ingestionTask.value
+
+        #expect(tracker.entryCount == 2)
+        #expect(!tracker.didOverlap)
+    }
 }
 
 struct HistoryChangeIDs: Sendable {
@@ -388,6 +475,16 @@ enum SlateRemoteChangeIngestionTestSupport {
             }
         }
 
+        func runLocalWriterCriticalSectionForTesting(
+            _ body: @Sendable @escaping () throws -> Void
+        ) async throws {
+            try await owner.accessGate.write {
+                try await writerContext.slatePerform {
+                    try body()
+                }
+            }
+        }
+
         private func latestHistoryToken() throws -> NSPersistentHistoryToken {
             try writerContext.performAndWaitReturning {
                 let request = NSPersistentHistoryChangeRequest.fetchHistory(
@@ -471,6 +568,56 @@ enum SlateRemoteChangeIngestionTestSupport {
                 throw capturedError
             }
         }
+    }
+}
+
+private struct InjectedMergeFailure: Error, Equatable {}
+
+private final class CriticalSectionTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var activeName: String?
+    private var storedDidOverlap = false
+    private var storedEntryCount = 0
+
+    var didOverlap: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedDidOverlap
+    }
+
+    var entryCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedEntryCount
+    }
+
+    func enter(_ name: String) {
+        lock.lock()
+        if activeName != nil {
+            storedDidOverlap = true
+        }
+        activeName = name
+        storedEntryCount += 1
+        lock.unlock()
+    }
+
+    func exit(_ name: String) {
+        lock.lock()
+        if activeName != name {
+            storedDidOverlap = true
+        }
+        activeName = nil
+        lock.unlock()
+    }
+
+    func waitForEntryCount(_ expectedCount: Int) async throws {
+        for _ in 0..<40 {
+            if entryCount >= expectedCount {
+                return
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        Issue.record("Timed out waiting for entry count \(expectedCount); current value \(entryCount)")
     }
 }
 

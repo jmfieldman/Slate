@@ -20,6 +20,7 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
     private let lock = NSLock()
     private var observer: NSObjectProtocol?
     private var ingestionHookForTesting: (@Sendable () -> Void)?
+    private var mergeHookForTesting: (@Sendable () throws -> Void)?
 
     init(
         owner: SlateStoreOwner<Schema>,
@@ -81,6 +82,12 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
         lock.unlock()
     }
 
+    func setMergeHookForTesting(_ hook: (@Sendable () throws -> Void)?) {
+        lock.lock()
+        mergeHookForTesting = hook
+        lock.unlock()
+    }
+
     var isObservingForTesting: Bool {
         lock.lock()
         defer { lock.unlock() }
@@ -94,13 +101,43 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
     }
 
     private func ingestRemoteChange() async throws {
-        _ = try await fetchPersistentHistory()
+        let owner = try await requireLoadedOwner()
+
+        try await owner.accessGate.write {
+            owner.setIsMerging(true)
+            defer {
+                owner.setIsMerging(false)
+            }
+
+            do {
+                let window = try await fetchPersistentHistory(for: owner)
+                guard !window.isEmpty else {
+                    return
+                }
+
+                try await applyMerge(window, to: owner)
+                if let nextToken = window.nextToken {
+                    try tokenStore.save(nextToken)
+                }
+            } catch {
+                try? await owner.writerContext.slatePerform {
+                    owner.writerContext.rollback()
+                }
+                throw error
+            }
+        }
 
         currentIngestionHookForTesting()?()
     }
 
     private func fetchPersistentHistory() async throws -> SlateRemoteChangeHistoryWindow {
         let owner = try await requireLoadedOwner()
+        return try await fetchPersistentHistory(for: owner)
+    }
+
+    private func fetchPersistentHistory(
+        for owner: SlateStoreOwner<Schema>
+    ) async throws -> SlateRemoteChangeHistoryWindow {
         let token = SlateUncheckedPersistentHistoryToken(try tokenStore.load())
         let targetStore = try targetStore(in: owner)
         let targetStoreBox = SlateUncheckedPersistentStore(targetStore)
@@ -130,6 +167,29 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
                 changedObjectIDs: changedObjectIDs,
                 nextToken: transactions.last?.token
             )
+        }
+    }
+
+    private func applyMerge(
+        _ window: SlateRemoteChangeHistoryWindow,
+        to owner: SlateStoreOwner<Schema>
+    ) async throws {
+        let payloads = SlateUncheckedMergePayloads(window.mergeNotificationPayloads)
+
+        try await owner.writerContext.slatePerform {
+            do {
+                try self.currentMergeHookForTesting()?()
+
+                for payload in payloads.value {
+                    NSManagedObjectContext.mergeChanges(
+                        fromRemoteContextSave: payload,
+                        into: [owner.writerContext]
+                    )
+                }
+            } catch {
+                owner.writerContext.rollback()
+                throw error
+            }
         }
     }
 
@@ -176,6 +236,13 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
         return hook
     }
 
+    private func currentMergeHookForTesting() -> (@Sendable () throws -> Void)? {
+        lock.lock()
+        defer { lock.unlock() }
+        let hook = mergeHookForTesting
+        return hook
+    }
+
     private func requireLoadedOwner() async throws -> SlateStoreOwner<Schema> {
         while true {
             guard let owner else {
@@ -206,6 +273,14 @@ private struct SlateUncheckedPersistentStore: @unchecked Sendable {
     let value: NSPersistentStore
 
     init(_ value: NSPersistentStore) {
+        self.value = value
+    }
+}
+
+private struct SlateUncheckedMergePayloads: @unchecked Sendable {
+    let value: [[AnyHashable: Any]]
+
+    init(_ value: [[AnyHashable: Any]]) {
         self.value = value
     }
 }
