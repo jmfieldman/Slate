@@ -30,6 +30,42 @@ enum SlateCloudKitContainer {
         var installers: [UUID: ScopedEventObserverInstaller] = [:]
     }
 
+    private final class StoreLoadCompletionAggregator: @unchecked Sendable {
+        private let lock = NSLock()
+        private var remainingCompletions: Int
+        private var didComplete = false
+        private let completion: (Error?) -> Void
+
+        init(expectedCompletions: Int, completion: @escaping (Error?) -> Void) {
+            remainingCompletions = max(expectedCompletions, 1)
+            self.completion = completion
+        }
+
+        func complete(error: Error?) {
+            let result: Error??
+            lock.lock()
+            if didComplete {
+                result = nil
+            } else if let error {
+                didComplete = true
+                result = .some(error)
+            } else {
+                remainingCompletions -= 1
+                if remainingCompletions == 0 {
+                    didComplete = true
+                    result = .some(nil)
+                } else {
+                    result = nil
+                }
+            }
+            lock.unlock()
+
+            if let result {
+                completion(result)
+            }
+        }
+    }
+
     private struct ScopedLoadPersistentStoresOverride {
         let matches: @Sendable (NSPersistentCloudKitContainer) -> Bool
         let override: LoadPersistentStoresOverride
@@ -229,17 +265,24 @@ enum SlateCloudKitContainer {
         for container: NSPersistentCloudKitContainer,
         completion: @escaping (Error?) -> Void
     ) {
+        let aggregator = StoreLoadCompletionAggregator(
+            expectedCompletions: container.persistentStoreDescriptions.count,
+            completion: completion
+        )
+
         loadOverrideBox.lock.lock()
         let override = loadOverrideBox.overrides.values.first { $0.matches(container) }?.override
         loadOverrideBox.lock.unlock()
 
         if let override {
-            override(container, completion)
+            override(container) { error in
+                aggregator.complete(error: error)
+            }
             return
         }
 
         container.loadPersistentStores { _, error in
-            completion(error)
+            aggregator.complete(error: error)
         }
     }
 
