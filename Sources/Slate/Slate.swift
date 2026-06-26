@@ -279,6 +279,19 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         return owner
     }
 
+    func makeSharingFacade() throws -> SlateSharing {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        if closed { throw SlateError.closed }
+        guard case .cloudKitShared = storageMode else {
+            throw SlateError.sharingUnavailable(mode: storageMode)
+        }
+        guard let owner else {
+            throw SlateError.notConfigured
+        }
+        return SlateSharing(owner: owner)
+    }
+
     @discardableResult
     public func query<Output: Sendable>(
         _ block: @Sendable @escaping (SlateQueryContext<Schema>) throws -> Output

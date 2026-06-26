@@ -149,6 +149,56 @@ struct SlateSharingTests {
     }
 
     @Test
+    func localSharingGateThrowsSharingUnavailable() throws {
+        let slate = Slate<TestSchema>(
+            storeURL: nil,
+            storeType: NSInMemoryStoreType,
+            storageMode: .local
+        )
+
+        #expect(throws: SlateError.sharingUnavailable(mode: .local)) {
+            _ = try slate.sharing
+        }
+    }
+
+    @Test
+    func cloudKitMirroredSharingGateThrowsSharingUnavailable() throws {
+        let mode = SlateStorageMode.cloudKitMirrored(containerIdentifier: "iCloud.com.example.mirrored-sharing")
+        let slate = Slate<TestCloudKitRuntimeSchema>(
+            storeURL: nil,
+            storeType: NSSQLiteStoreType,
+            storageMode: mode
+        )
+
+        #expect(throws: SlateError.sharingUnavailable(mode: mode)) {
+            _ = try slate.sharing
+        }
+    }
+
+    @Test
+    func cloudKitSharedSharingGateReturnsSendableFacadeShellAfterConfigure() throws {
+        let directory = try temporaryDirectory(prefix: "SlateSharingFacadeGate")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let slate = Slate<TestCloudKitRuntimeSchema>(
+            storeURL: directory.appendingPathComponent("Private.sqlite"),
+            storeType: NSSQLiteStoreType,
+            storageMode: .cloudKitShared(containerIdentifier: "iCloud.com.example.facade-gate")
+        )
+        try configureWithSuccessfulCloudKitLoad(slate)
+
+        let sharing = try slate.sharing
+        let capture: @Sendable () -> SlateSharing = {
+            sharing
+        }
+
+        #expect(Mirror(reflecting: capture()).displayStyle == .struct)
+        #expect(Mirror(reflecting: sharing).children.count == 1)
+    }
+
+    @Test
     func cloudKitMirroredBuildProducesSinglePrivateDescription() throws {
         let directory = try temporaryDirectory(prefix: "SlateSharingMirroredBuild")
         defer {
