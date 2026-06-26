@@ -618,6 +618,83 @@ struct SlateRuntimeTests {
     }
 
     @Test
+    func cloudKitContainerBuildsMirroredSQLiteDescriptionWithoutMutatingSource() throws {
+        let directory = try temporaryDirectory(prefix: "SlateCloudKitContainerBuild")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let sourceDescription = NSPersistentStoreDescription()
+        sourceDescription.type = NSSQLiteStoreType
+        sourceDescription.url = directory.appendingPathComponent("Test.sqlite")
+        sourceDescription.shouldMigrateStoreAutomatically = true
+        sourceDescription.shouldInferMappingModelAutomatically = true
+
+        let result = try SlateCloudKitContainer.build(
+            name: TestCloudKitSchema.schemaIdentifier,
+            model: TestCloudKitSchema.makeManagedObjectModel(),
+            sourceDescription: sourceDescription,
+            mode: .cloudKitMirrored(containerIdentifier: "iCloud.com.example")
+        )
+
+        #expect(result.container.persistentStoreDescriptions.count == 1)
+        let description = try #require(result.container.persistentStoreDescriptions.first)
+        #expect(description === result.storeDescription)
+        #expect(description.url == sourceDescription.url)
+        #expect(description.type == NSSQLiteStoreType)
+        #expect(description.shouldMigrateStoreAutomatically == true)
+        #expect(description.shouldInferMappingModelAutomatically == true)
+        #expect(description.cloudKitContainerOptions != nil)
+        let historyTracking = try #require(description.options[NSPersistentHistoryTrackingKey] as? NSNumber)
+        let remoteChangeNotifications = try #require(
+            description.options[NSPersistentStoreRemoteChangeNotificationPostOptionKey] as? NSNumber
+        )
+        #expect(historyTracking.boolValue == true)
+        #expect(remoteChangeNotifications.boolValue == true)
+        #expect(sourceDescription.cloudKitContainerOptions == nil)
+        #expect(sourceDescription.options[NSPersistentHistoryTrackingKey] == nil)
+        #expect(sourceDescription.options[NSPersistentStoreRemoteChangeNotificationPostOptionKey] == nil)
+    }
+
+    @Test
+    func cloudKitContainerRejectsUnsupportedModesAndStoreTypes() throws {
+        let sqliteDescription = NSPersistentStoreDescription()
+        sqliteDescription.type = NSSQLiteStoreType
+
+        let inMemoryDescription = NSPersistentStoreDescription()
+        inMemoryDescription.type = NSInMemoryStoreType
+
+        let mirroredMode = SlateStorageMode.cloudKitMirrored(containerIdentifier: "iCloud.com.example")
+        let sharedMode = SlateStorageMode.cloudKitShared(containerIdentifier: "iCloud.com.example")
+        let model = try TestCloudKitSchema.makeManagedObjectModel()
+
+        #expect(throws: SlateError.cloudKitUnavailable(mode: mirroredMode)) {
+            try SlateCloudKitContainer.build(
+                name: TestCloudKitSchema.schemaIdentifier,
+                model: model,
+                sourceDescription: inMemoryDescription,
+                mode: mirroredMode
+            )
+        }
+        #expect(throws: SlateError.sharingUnavailable(mode: sharedMode)) {
+            try SlateCloudKitContainer.build(
+                name: TestCloudKitSchema.schemaIdentifier,
+                model: model,
+                sourceDescription: sqliteDescription,
+                mode: sharedMode
+            )
+        }
+        #expect(throws: SlateError.cloudKitUnavailable(mode: .local)) {
+            try SlateCloudKitContainer.build(
+                name: TestCloudKitSchema.schemaIdentifier,
+                model: model,
+                sourceDescription: sqliteDescription,
+                mode: .local
+            )
+        }
+    }
+
+    @Test
     func configureRejectsCacheStoreForCloudKitModeWithoutWiping() throws {
         let directory = try temporaryDirectory(prefix: "SlateCloudKitCacheStoreRejection")
         defer {
