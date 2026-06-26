@@ -25,6 +25,8 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     private var loadStarted = false
     private let sinkLock = NSLock()
     private var batchDeleteSinks: [UUID: BatchDeleteHandler] = [:]
+    private let ingestorLock = NSLock()
+    private var storedRemoteChangeIngestor: SlateRemoteChangeIngestor<Schema>?
 
     init(
         id: UUID = UUID(),
@@ -58,6 +60,7 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         loadStateLock.lock()
         storedLoadState = .loaded
         loadStateLock.unlock()
+        startRemoteChangeIngestorIfNeeded()
     }
 
     func markFailed(_ error: Error) {
@@ -91,14 +94,53 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
                 newState = .loaded
             }
 
-            self?.loadStateLock.lock()
-            self?.storedLoadState = newState
-            self?.loadStateLock.unlock()
+            switch newState {
+            case .loaded:
+                self?.markLoaded()
+            case .failed(let error):
+                self?.markFailed(error)
+            case .loading:
+                break
+            }
 
             completion(newState)
         }
 
         return true
+    }
+
+    var remoteChangeIngestor: SlateRemoteChangeIngestor<Schema>? {
+        ingestorLock.lock()
+        defer { ingestorLock.unlock() }
+        return storedRemoteChangeIngestor
+    }
+
+    func installRemoteChangeIngestor(_ ingestor: SlateRemoteChangeIngestor<Schema>) {
+        ingestorLock.lock()
+        storedRemoteChangeIngestor = ingestor
+        let shouldStart = {
+            loadStateLock.lock()
+            defer { loadStateLock.unlock() }
+            if case .loaded = storedLoadState {
+                return true
+            }
+            return false
+        }()
+        ingestorLock.unlock()
+
+        if shouldStart {
+            ingestor.start()
+        }
+    }
+
+    func startRemoteChangeIngestorIfNeeded() {
+        let ingestor = remoteChangeIngestor
+        ingestor?.start()
+    }
+
+    func stopRemoteChangeIngestor() {
+        let ingestor = remoteChangeIngestor
+        ingestor?.stop()
     }
 
     func makeReaderContext() -> NSManagedObjectContext {
@@ -150,6 +192,13 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         loadStateLock.lock()
         storedLoadState = loadState
         loadStateLock.unlock()
+        if case .loaded = loadState {
+            startRemoteChangeIngestorIfNeeded()
+        }
+    }
+
+    deinit {
+        stopRemoteChangeIngestor()
     }
 }
 

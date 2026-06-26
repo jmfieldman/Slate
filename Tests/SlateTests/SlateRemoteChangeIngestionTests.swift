@@ -1,9 +1,10 @@
 @preconcurrency import CoreData
 import Foundation
+import SlateSchema
 import Testing
 @testable import Slate
 
-@Suite("Remote change ingestion")
+@Suite("Remote change ingestion", .serialized)
 struct SlateRemoteChangeIngestionTests {
     @Test
     func missingHistoryTokenSidecarReturnsNil() throws {
@@ -86,6 +87,95 @@ struct SlateRemoteChangeIngestionTests {
         #expect(canonicalStore.tokenURL == unstandardizedStore.tokenURL)
         #expect(canonicalStore.tokenURL != otherStore.tokenURL)
     }
+
+    @Test
+    func localOwnersHaveNoRemoteChangeIngestor() throws {
+        let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
+
+        try slate.configure()
+
+        #expect(try slateStoreOwner(for: slate).remoteChangeIngestor == nil)
+    }
+
+    @Test
+    func cloudKitMirroredOwnerRetainsStartedIngestorAfterLoad() throws {
+        let fixture = try SlateRemoteChangeIngestionTestSupport.makeCloudKitSlate(
+            prefix: "SlateRemoteChangeIngestorRetained"
+        )
+        defer {
+            fixture.remove()
+        }
+
+        try fixture.configureWithSuccessfulCloudKitLoad()
+
+        let ingestor = try #require(try fixture.owner().remoteChangeIngestor)
+        #expect(ingestor.isObservingForTesting)
+    }
+
+    @Test
+    func stoppedIngestorIgnoresLaterRemoteChangeNotifications() async throws {
+        let fixture = try SlateRemoteChangeIngestionTestSupport.makeCloudKitSlate(
+            prefix: "SlateRemoteChangeIngestorStop"
+        )
+        defer {
+            fixture.remove()
+        }
+
+        try fixture.configureWithSuccessfulCloudKitLoad()
+        let owner = try fixture.owner()
+        let ingestor = try #require(owner.remoteChangeIngestor)
+        let counter = LockedCounter()
+        ingestor.setIngestionHookForTesting {
+            counter.increment()
+        }
+
+        NotificationCenter.default.post(
+            name: .NSPersistentStoreRemoteChange,
+            object: owner.coordinator
+        )
+        try await counter.waitForValue(1)
+
+        ingestor.stop()
+        #expect(!ingestor.isObservingForTesting)
+
+        NotificationCenter.default.post(
+            name: .NSPersistentStoreRemoteChange,
+            object: owner.coordinator
+        )
+        try await Task.sleep(nanoseconds: 75_000_000)
+
+        #expect(counter.value == 1)
+    }
+
+    @Test
+    func testingIngestionWaitsForOwnerLoadReadiness() async throws {
+        let fixture = try SlateRemoteChangeIngestionTestSupport.makeCloudKitSlate(
+            prefix: "SlateRemoteChangeIngestorReadiness"
+        )
+        defer {
+            fixture.remove()
+        }
+        let load = PausedCloudKitLoad()
+
+        try fixture.configureWithPausedCloudKitLoad(load)
+        let ingestor = try #require(try fixture.owner().remoteChangeIngestor)
+        let enteredIngestion = LockedCounter()
+        ingestor.setIngestionHookForTesting {
+            enteredIngestion.increment()
+        }
+
+        let task = Task {
+            try await ingestor.ingestRemoteChangeForTesting()
+        }
+
+        try await Task.sleep(nanoseconds: 20_000_000)
+        #expect(enteredIngestion.value == 0)
+
+        try load.succeed()
+        try await task.value
+
+        #expect(enteredIngestion.value == 1)
+    }
 }
 
 enum SlateRemoteChangeIngestionTestSupport {
@@ -110,6 +200,17 @@ enum SlateRemoteChangeIngestionTestSupport {
             try? FileManager.default.removeItem(at: directory)
             throw error
         }
+    }
+
+    static func makeCloudKitSlate(prefix: String) throws -> CloudKitSlateFixture {
+        let directory = try temporaryDirectory(prefix: prefix)
+        let storeURL = directory.appendingPathComponent("Test.sqlite")
+        let slate = Slate<TestCloudKitSchema>(
+            storeURL: storeURL,
+            storeType: NSSQLiteStoreType,
+            storageMode: .cloudKitMirrored(containerIdentifier: "iCloud.com.example")
+        )
+        return CloudKitSlateFixture(directory: directory, slate: slate)
     }
 
     final class HistoryFixture: @unchecked Sendable {
@@ -192,6 +293,158 @@ enum SlateRemoteChangeIngestionTestSupport {
                 return transaction.token
             }
         }
+    }
+
+    final class CloudKitSlateFixture: @unchecked Sendable {
+        let directory: URL
+        let slate: Slate<TestCloudKitSchema>
+
+        init(directory: URL, slate: Slate<TestCloudKitSchema>) {
+            self.directory = directory
+            self.slate = slate
+        }
+
+        func configureWithSuccessfulCloudKitLoad() throws {
+            try SlateCloudKitContainer.withLoadPersistentStoresOverride({ container, completion in
+                do {
+                    try Self.installDeterministicStore(in: container)
+                    completion(nil)
+                } catch {
+                    completion(error)
+                }
+            }) {
+                try slate.configure()
+            }
+        }
+
+        fileprivate func configureWithPausedCloudKitLoad(_ load: PausedCloudKitLoad) throws {
+            try SlateCloudKitContainer.withLoadPersistentStoresOverride({ container, completion in
+                load.capture(container: container, completion: completion)
+            }) {
+                try slate.configure()
+            }
+            try load.requireCaptured()
+        }
+
+        func owner() throws -> SlateStoreOwner<TestCloudKitSchema> {
+            try slateStoreOwner(for: slate)
+        }
+
+        func remove() {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        fileprivate static func installDeterministicStore(in container: NSPersistentCloudKitContainer) throws {
+            guard container.persistentStoreCoordinator.persistentStores.isEmpty else {
+                return
+            }
+            let sourceDescription = try #require(container.persistentStoreDescriptions.first)
+            let description = NSPersistentStoreDescription()
+            description.type = sourceDescription.type
+            description.url = sourceDescription.url
+            description.shouldMigrateStoreAutomatically = sourceDescription.shouldMigrateStoreAutomatically
+            description.shouldInferMappingModelAutomatically = sourceDescription.shouldInferMappingModelAutomatically
+
+            var capturedError: Error?
+            let semaphore = DispatchSemaphore(value: 0)
+            container.persistentStoreCoordinator.addPersistentStore(with: description) { _, error in
+                capturedError = error
+                semaphore.signal()
+            }
+            semaphore.wait()
+
+            if let capturedError {
+                throw capturedError
+            }
+        }
+    }
+}
+
+private func slateStoreOwner<Schema: SlateSchema>(for slate: Slate<Schema>) throws -> SlateStoreOwner<Schema> {
+    let mirror = Mirror(reflecting: slate)
+    for child in mirror.children where child.label == "owner" {
+        if let owner = child.value as? SlateStoreOwner<Schema> {
+            return owner
+        }
+    }
+    throw NSError(domain: "SlateRemoteChangeIngestionTests", code: -1)
+}
+
+private final class PausedCloudKitLoad: @unchecked Sendable {
+    private let lock = NSLock()
+    private var capturedContainer: NSPersistentCloudKitContainer?
+    private var capturedCompletion: ((Error?) -> Void)?
+
+    func capture(
+        container: NSPersistentCloudKitContainer,
+        completion: @escaping (Error?) -> Void
+    ) {
+        lock.lock()
+        precondition(capturedCompletion == nil, "CloudKit load was captured more than once")
+        capturedContainer = container
+        capturedCompletion = completion
+        lock.unlock()
+    }
+
+    func requireCaptured() throws {
+        lock.lock()
+        let hasCompletion = capturedCompletion != nil
+        lock.unlock()
+        if !hasCompletion {
+            throw NSError(
+                domain: "SlateRemoteChangeIngestionTests",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "CloudKit load was not captured"]
+            )
+        }
+    }
+
+    func succeed() throws {
+        let (container, completion) = try capturedLoad()
+        try SlateRemoteChangeIngestionTestSupport.CloudKitSlateFixture.installDeterministicStore(in: container)
+        completion(nil)
+    }
+
+    private func capturedLoad() throws -> (NSPersistentCloudKitContainer, (Error?) -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let capturedContainer, let capturedCompletion else {
+            throw NSError(
+                domain: "SlateRemoteChangeIngestionTests",
+                code: -3,
+                userInfo: [NSLocalizedDescriptionKey: "CloudKit load has not started"]
+            )
+        }
+        self.capturedContainer = nil
+        self.capturedCompletion = nil
+        return (capturedContainer, capturedCompletion)
+    }
+}
+
+private final class LockedCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedValue = 0
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedValue
+    }
+
+    func increment() {
+        lock.lock()
+        storedValue += 1
+        lock.unlock()
+    }
+
+    func waitForValue(_ expectedValue: Int) async throws {
+        for _ in 0..<40 {
+            if value >= expectedValue {
+                return
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        Issue.record("Timed out waiting for counter to reach \(expectedValue); current value \(value)")
     }
 }
 

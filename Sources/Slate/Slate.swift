@@ -772,7 +772,7 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         writerContext.undoManager = nil
         writerContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
 
-        return SlateStoreOwner(
+        let owner = SlateStoreOwner<Schema>(
             registry: registry,
             coordinator: coordinator,
             cloudKitContainer: buildResult.container,
@@ -780,6 +780,15 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
             storageMode: storageMode,
             loadState: .loading
         )
+        if let storeURL = buildResult.storeDescription.url {
+            owner.installRemoteChangeIngestor(
+                SlateRemoteChangeIngestor<Schema>(
+                    owner: owner,
+                    tokenStore: SlateHistoryTokenStore(storeURL: storeURL)
+                )
+            )
+        }
+        return owner
     }
 
     private static func addStore(
