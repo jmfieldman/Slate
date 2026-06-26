@@ -112,8 +112,17 @@ enum SlateCloudKitContainer {
         let container: NSPersistentCloudKitContainer
         let accountContainer: CKContainer?
         let accountContainerIdentifier: String
-        let storeDescription: NSPersistentStoreDescription
+        let privateStoreDescription: NSPersistentStoreDescription
+        let sharedStoreDescription: NSPersistentStoreDescription?
+        let storeDescriptions: [NSPersistentStoreDescription]
+
+        var storeDescription: NSPersistentStoreDescription {
+            privateStoreDescription
+        }
     }
+
+    static let privateStoreConfigurationName = "SlateCloudKitPrivateStore"
+    static let sharedStoreConfigurationName = "SlateCloudKitSharedStore"
 
     static func build(
         name: String,
@@ -125,8 +134,8 @@ enum SlateCloudKitContainer {
         switch mode {
         case .cloudKitMirrored(let identifier):
             containerIdentifier = identifier
-        case .cloudKitShared:
-            throw SlateError.sharingUnavailable(mode: mode)
+        case .cloudKitShared(let identifier):
+            containerIdentifier = identifier
         case .local:
             throw SlateError.cloudKitUnavailable(mode: mode)
         }
@@ -135,11 +144,76 @@ enum SlateCloudKitContainer {
             throw SlateError.cloudKitUnavailable(mode: mode)
         }
 
+        let privateDescription = cloudKitDescription(
+            cloning: sourceDescription,
+            containerIdentifier: containerIdentifier
+        )
+        privateDescription.cloudKitContainerOptions?.databaseScope = .private
+
+        let storeDescriptions: [NSPersistentStoreDescription]
+        let sharedDescription: NSPersistentStoreDescription?
+        switch mode {
+        case .cloudKitMirrored:
+            sharedDescription = nil
+            storeDescriptions = [privateDescription]
+        case .cloudKitShared:
+            guard let privateURL = sourceDescription.url?.standardizedFileURL else {
+                throw SlateError.cloudKitUnavailable(mode: mode)
+            }
+            model.setEntities(model.entities, forConfigurationName: privateStoreConfigurationName)
+            model.setEntities(model.entities, forConfigurationName: sharedStoreConfigurationName)
+            privateDescription.configuration = privateStoreConfigurationName
+
+            let description = cloudKitDescription(
+                cloning: sourceDescription,
+                containerIdentifier: containerIdentifier
+            )
+            description.url = sharedStoreURL(forPrivateStoreURL: privateURL)
+            description.configuration = sharedStoreConfigurationName
+            description.cloudKitContainerOptions?.databaseScope = .shared
+            sharedDescription = description
+            storeDescriptions = [privateDescription, description]
+        case .local:
+            throw SlateError.cloudKitUnavailable(mode: mode)
+        }
+
+        let container = NSPersistentCloudKitContainer(name: name, managedObjectModel: model)
+        container.persistentStoreDescriptions = storeDescriptions
+        let accountContainer = shouldUseLiveAccountContainer ? CKContainer(identifier: containerIdentifier) : nil
+
+        return BuildResult(
+            container: container,
+            accountContainer: accountContainer,
+            accountContainerIdentifier: containerIdentifier,
+            privateStoreDescription: privateDescription,
+            sharedStoreDescription: sharedDescription,
+            storeDescriptions: storeDescriptions
+        )
+    }
+
+    static func sharedStoreURL(forPrivateStoreURL privateURL: URL) -> URL {
+        privateURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("\(privateURL.lastPathComponent).slate-shared.sqlite")
+            .standardizedFileURL
+    }
+
+    private static func cloudKitDescription(
+        cloning sourceDescription: NSPersistentStoreDescription,
+        containerIdentifier: String
+    ) -> NSPersistentStoreDescription {
         let description = NSPersistentStoreDescription()
         description.url = sourceDescription.url
         description.type = sourceDescription.type
+        description.configuration = sourceDescription.configuration
+        description.isReadOnly = sourceDescription.isReadOnly
+        description.timeout = sourceDescription.timeout
+        description.shouldAddStoreAsynchronously = sourceDescription.shouldAddStoreAsynchronously
         description.shouldMigrateStoreAutomatically = sourceDescription.shouldMigrateStoreAutomatically
         description.shouldInferMappingModelAutomatically = sourceDescription.shouldInferMappingModelAutomatically
+        for (key, value) in sourceDescription.options {
+            description.setOption(value as NSObject?, forKey: key)
+        }
         description.cloudKitContainerOptions = NSPersistentCloudKitContainerOptions(
             containerIdentifier: containerIdentifier
         )
@@ -148,17 +222,7 @@ enum SlateCloudKitContainer {
             true as NSNumber,
             forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey
         )
-
-        let container = NSPersistentCloudKitContainer(name: name, managedObjectModel: model)
-        container.persistentStoreDescriptions = [description]
-        let accountContainer = shouldUseLiveAccountContainer ? CKContainer(identifier: containerIdentifier) : nil
-
-        return BuildResult(
-            container: container,
-            accountContainer: accountContainer,
-            accountContainerIdentifier: containerIdentifier,
-            storeDescription: description
-        )
+        return description
     }
 
     static func loadPersistentStores(

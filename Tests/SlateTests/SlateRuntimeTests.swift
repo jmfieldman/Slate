@@ -793,7 +793,6 @@ struct SlateRuntimeTests {
         inMemoryDescription.type = NSInMemoryStoreType
 
         let mirroredMode = SlateStorageMode.cloudKitMirrored(containerIdentifier: "iCloud.com.example")
-        let sharedMode = SlateStorageMode.cloudKitShared(containerIdentifier: "iCloud.com.example")
         let model = try TestCloudKitRuntimeSchema.makeManagedObjectModel()
 
         #expect(throws: SlateError.cloudKitUnavailable(mode: mirroredMode)) {
@@ -802,14 +801,6 @@ struct SlateRuntimeTests {
                 model: model,
                 sourceDescription: inMemoryDescription,
                 mode: mirroredMode
-            )
-        }
-        #expect(throws: SlateError.sharingUnavailable(mode: sharedMode)) {
-            try SlateCloudKitContainer.build(
-                name: TestCloudKitRuntimeSchema.schemaIdentifier,
-                model: model,
-                sourceDescription: sqliteDescription,
-                mode: sharedMode
             )
         }
         #expect(throws: SlateError.cloudKitUnavailable(mode: .local)) {
