@@ -199,6 +199,27 @@ struct SlateSharingTests {
     }
 
     @Test
+    func sprintSevenDoesNotExposeSchemaInitializationOrShareLifecycleAPI() throws {
+        let sourceText = try slateSourceText()
+        let forbiddenTokens = [
+            "initializeCloudKitSchema",
+            "func share(",
+            "func share<",
+            "func share (",
+            "func prepareShare",
+            "func persist",
+            "func stopSharing",
+            "func acceptShare",
+            "func lookupParticipants",
+            "CKShare(",
+        ]
+
+        for token in forbiddenTokens {
+            #expect(!sourceText.contains(token), "Unexpected Sprint 08 sharing surface found: \(token)")
+        }
+    }
+
+    @Test
     func cloudKitMirroredBuildProducesSinglePrivateDescription() throws {
         let directory = try temporaryDirectory(prefix: "SlateSharingMirroredBuild")
         defer {
@@ -473,6 +494,51 @@ private func temporaryDirectory(prefix: String) throws -> URL {
     .appendingPathComponent("\(prefix)-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory
+}
+
+private func slateSourceText() throws -> String {
+    let fileManager = FileManager.default
+    var directory = URL(fileURLWithPath: #filePath)
+    while directory.path != "/" {
+        let sourcesDirectory = directory.appendingPathComponent("Sources/Slate", isDirectory: true)
+        if fileManager.fileExists(atPath: directory.appendingPathComponent("Package.swift").path),
+           fileManager.fileExists(atPath: sourcesDirectory.path) {
+            return try swiftSourceText(in: sourcesDirectory)
+        }
+        directory.deleteLastPathComponent()
+    }
+
+    throw NSError(
+        domain: "SlateSharingTests",
+        code: -6,
+        userInfo: [NSLocalizedDescriptionKey: "Could not locate package root from \(#filePath)"]
+    )
+}
+
+private func swiftSourceText(in directory: URL) throws -> String {
+    let fileManager = FileManager.default
+    guard let enumerator = fileManager.enumerator(
+        at: directory,
+        includingPropertiesForKeys: [.isRegularFileKey]
+    ) else {
+        throw NSError(
+            domain: "SlateSharingTests",
+            code: -7,
+            userInfo: [NSLocalizedDescriptionKey: "Could not enumerate \(directory.path)"]
+        )
+    }
+
+    let files = enumerator.compactMap { item -> URL? in
+        guard let url = item as? URL, url.pathExtension == "swift" else {
+            return nil
+        }
+        return url
+    }
+    .sorted { $0.path < $1.path }
+
+    return try files
+        .map { try String(contentsOf: $0, encoding: .utf8) }
+        .joined(separator: "\n")
 }
 
 private func configureWithCapturedCloudKitLoad<Schema: SlateSchema>(
