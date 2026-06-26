@@ -309,6 +309,74 @@ struct SlateStreamTests {
     }
 
     @Test
+    func lazyMainStreamBindsAfterLoadingCompletesAndEmitsInitialValues() async throws {
+        let loading = LockedBoolean(true)
+        let builderCalls = LockedCounter()
+        let stream = SlateStream<TestAuthor>(
+            loading: {
+                loading.value
+            },
+            coreBuilder: {
+                builderCalls.increment()
+                return try makeTestAuthorStreamCore(initialNames: ["Ada", "Bea"])
+            }
+        )
+
+        var iterator = stream.valuesAsync.makeAsyncIterator()
+        let loadingValues = try await iterator.next()
+        #expect(loadingValues?.isEmpty == true)
+
+        try await Task.sleep(for: .milliseconds(70))
+        #expect(stream.state == .loading)
+        #expect(builderCalls.value == 0)
+
+        loading.set(false)
+        try await waitForReady(stream)
+
+        #expect(stream.state == .ready)
+        #expect(builderCalls.value == 1)
+        #expect(stream.values.map(\.name) == ["Ada", "Bea"])
+
+        let readyValues = try await iterator.next()
+        #expect(readyValues?.map(\.name) == ["Ada", "Bea"])
+
+        stream.cancel()
+        let terminal = try await iterator.next()
+        #expect(terminal == nil)
+    }
+
+    @Test
+    func lazyBackgroundStreamBindsAfterLoadingCompletesAndEmitsInitialValues() async throws {
+        let loading = LockedBoolean(true)
+        let builderCalls = LockedCounter()
+        let stream = SlateBackgroundStream<TestAuthor>(
+            loading: {
+                loading.value
+            },
+            coreBuilder: {
+                builderCalls.increment()
+                return try makeTestAuthorStreamCore(initialNames: ["Ada", "Bea"])
+            }
+        )
+
+        try await Task.sleep(for: .milliseconds(70))
+        let loadingState = await SlateStreamActor.shared.run { stream.state }
+        #expect(loadingState == .loading)
+        #expect(builderCalls.value == 0)
+
+        loading.set(false)
+        try await waitForBackgroundReady(stream)
+
+        let readyState = await SlateStreamActor.shared.run { stream.state }
+        let names = await SlateStreamActor.shared.run { stream.values.map(\.name) }
+        #expect(readyState == .ready)
+        #expect(builderCalls.value == 1)
+        #expect(names == ["Ada", "Bea"])
+
+        await SlateStreamActor.shared.run { stream.cancel() }
+    }
+
+    @Test
     func lazyMainStreamDefersBuilderUntilLoadingCompletesAndSurfacesFailure() async throws {
         let loading = LockedBoolean(true)
         let builderCalls = LockedCounter()
@@ -322,6 +390,10 @@ struct SlateStreamTests {
             }
         )
 
+        var iterator = stream.valuesAsync.makeAsyncIterator()
+        let loadingValues = try await iterator.next()
+        #expect(loadingValues?.isEmpty == true)
+
         try await Task.sleep(for: .milliseconds(70))
         #expect(stream.state == .loading)
         #expect(builderCalls.value == 0)
@@ -330,6 +402,12 @@ struct SlateStreamTests {
         try await waitFor(stream) { $0.state == .failed }
         #expect(builderCalls.value == 1)
         #expect(stream.error != nil)
+        do {
+            _ = try await iterator.next()
+            Issue.record("Expected valuesAsync to finish with the builder error")
+        } catch {
+            #expect(error as? SlateError == .coreData("builder failed"))
+        }
     }
 
     @Test
@@ -346,6 +424,11 @@ struct SlateStreamTests {
             }
         )
 
+        let valuesAsync = await SlateStreamActor.shared.run { stream.valuesAsync }
+        var iterator = valuesAsync.makeAsyncIterator()
+        let loadingValues = try await iterator.next()
+        #expect(loadingValues?.isEmpty == true)
+
         try await Task.sleep(for: .milliseconds(70))
         let loadingState = await SlateStreamActor.shared.run { stream.state }
         #expect(loadingState == .loading)
@@ -356,6 +439,12 @@ struct SlateStreamTests {
         #expect(builderCalls.value == 1)
         let error = await SlateStreamActor.shared.run { stream.error }
         #expect(error != nil)
+        do {
+            _ = try await iterator.next()
+            Issue.record("Expected background valuesAsync to finish with the builder error")
+        } catch {
+            #expect(error as? SlateError == .coreData("builder failed"))
+        }
     }
 
     @Test
@@ -372,6 +461,10 @@ struct SlateStreamTests {
             }
         )
 
+        var iterator = stream.valuesAsync.makeAsyncIterator()
+        let loadingValues = try await iterator.next()
+        #expect(loadingValues?.isEmpty == true)
+
         try await Task.sleep(for: .milliseconds(20))
         stream.cancel()
         loading.set(false)
@@ -379,6 +472,8 @@ struct SlateStreamTests {
 
         #expect(stream.state == .cancelled)
         #expect(builderCalls.value == 0)
+        let terminal = try await iterator.next()
+        #expect(terminal == nil)
     }
 
     @Test
@@ -455,6 +550,54 @@ private func waitForBackground<V>(
         }
         try await Task.sleep(for: .milliseconds(2))
     }
+}
+
+private func makeTestAuthorStreamCore(initialNames: [String]) throws -> SlateStreamCore<TestAuthor> {
+    let model = try TestSchema.makeManagedObjectModel()
+    let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
+    try coordinator.addPersistentStore(
+        ofType: NSInMemoryStoreType,
+        configurationName: nil,
+        at: nil
+    )
+
+    let writerContext = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+    writerContext.persistentStoreCoordinator = coordinator
+    writerContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
+
+    try writerContext.performAndWait {
+        for name in initialNames {
+            let author = DatabaseTestAuthor.create(in: writerContext)
+            author.name = name
+        }
+        try writerContext.save()
+    }
+
+    let streamContext = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+    streamContext.persistentStoreCoordinator = coordinator
+    streamContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
+
+    let request = NSFetchRequest<NSFetchRequestResult>(entityName: DatabaseTestAuthor.slateEntityName)
+    request.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
+
+    let controller = NSFetchedResultsController(
+        fetchRequest: request,
+        managedObjectContext: streamContext,
+        sectionNameKeyPath: nil,
+        cacheName: nil
+    )
+
+    return SlateStreamCore(
+        context: streamContext,
+        frc: controller,
+        convert: { object in
+            guard let author = object as? DatabaseTestAuthor else {
+                throw SlateError.coreData("Unexpected stream object \(type(of: object))")
+            }
+            return author.slateObject
+        },
+        writerContext: writerContext
+    )
 }
 
 private enum StreamWaitTimeout: Error {
