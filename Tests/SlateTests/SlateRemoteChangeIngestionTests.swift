@@ -346,6 +346,71 @@ struct SlateRemoteChangeIngestionTests {
         #expect(try fixture.historyTransactionCount(after: token) == 0)
     }
 
+    @Test
+    func emptySecondRemoteIngestionDoesNotRefreshOrRewriteToken() async throws {
+        let fixture = try SlateRemoteChangeIngestionTestSupport.makeHistoryFixture(
+            prefix: "SlateRemoteMergeEmptySecondIngestion"
+        )
+        defer {
+            fixture.remove()
+        }
+
+        let id = try fixture.insertRecordFromSecondContext(title: "Before")
+        try await fixture.ingestor.ingestRemoteChangeForTesting()
+        fixture.cacheRecord(id: id, title: "Cached after first ingest")
+        let tokenData = try Data(contentsOf: fixture.tokenStore.tokenURL)
+
+        let events = StreamEventRecorder()
+        let sinkID = fixture.owner.registerBatchDeleteSink { event in
+            events.record(event)
+        }
+        defer {
+            fixture.owner.unregisterBatchDeleteSink(sinkID)
+        }
+
+        try await fixture.ingestor.ingestRemoteChangeForTesting()
+
+        #expect(events.remoteMergeCount == 0)
+        #expect(events.batchDeleteCount == 0)
+        #expect(fixture.owner.cache.get(id) != nil)
+        #expect(try Data(contentsOf: fixture.tokenStore.tokenURL) == tokenData)
+    }
+
+    @Test
+    func ingestionAfterTokenResetReplaysAvailableHistoryAndAdvancesAgain() async throws {
+        let fixture = try SlateRemoteChangeIngestionTestSupport.makeHistoryFixture(
+            prefix: "SlateRemoteMergeTokenReset"
+        )
+        defer {
+            fixture.remove()
+        }
+
+        _ = try fixture.insertRecordFromSecondContext(title: "Before reset")
+        try await fixture.ingestor.ingestRemoteChangeForTesting()
+        let firstToken = try #require(try fixture.tokenStore.load())
+        #expect(try fixture.historyTransactionCount(after: firstToken) == 0)
+
+        try fixture.tokenStore.save(nil)
+        #expect(try fixture.tokenStore.load() == nil)
+
+        _ = try fixture.insertRecordFromSecondContext(title: "After reset")
+        let refreshes = LockedCounter()
+        let sinkID = fixture.owner.registerBatchDeleteSink { event in
+            if case .remoteMerge = event {
+                refreshes.increment()
+            }
+        }
+        defer {
+            fixture.owner.unregisterBatchDeleteSink(sinkID)
+        }
+
+        try await fixture.ingestor.ingestRemoteChangeForTesting()
+
+        #expect(refreshes.value == 1)
+        let resetToken = try #require(try fixture.tokenStore.load())
+        #expect(try fixture.historyTransactionCount(after: resetToken) == 0)
+    }
+
     @MainActor
     @Test
     func remoteInsertRefreshesDiffPathStream() async throws {
