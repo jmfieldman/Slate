@@ -41,6 +41,7 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     private let mergeStateLock = NSLock()
     private var storedIsMerging = false
     private var mergeStateSinks: [UUID: MergeStateSink] = [:]
+    private var mergeStateRevision = 0
     private let accountStatusLock = NSLock()
     private var accountStatusSinks: [UUID: AccountStatusSink] = [:]
     private var accountStatusObserver: NSObjectProtocol?
@@ -49,6 +50,8 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     private var importEventSinks: [UUID: ImportEventSink] = [:]
     private var importEventObserver: SlateCloudKitContainer.EventObserverToken?
     private var activeImportEventIDs = Set<UUID>()
+    private var lastImportEventError: Error?
+    private var importEventRevision = 0
 
     init(
         id: UUID = UUID(),
@@ -151,14 +154,19 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     func setIsMerging(_ isMerging: Bool) {
         mergeStateLock.lock()
         storedIsMerging = isMerging
-        let sinks = Array(mergeStateSinks.values)
+        mergeStateRevision += 1
+        let revision = mergeStateRevision
+        let sinkIDs = Set(mergeStateSinks.keys)
         mergeStateLock.unlock()
 
-        guard !sinks.isEmpty else {
+        guard !sinkIDs.isEmpty else {
             return
         }
 
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
+            guard let sinks = self?.mergeStateSinks(for: revision, sinkIDs: sinkIDs) else {
+                return
+            }
             for sink in sinks {
                 sink(isMerging)
             }
@@ -315,13 +323,20 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
 
         let id = UUID()
         let currentValue: Bool
+        let revision: Int
         mergeStateLock.lock()
         mergeStateSinks[id] = sink
         currentValue = storedIsMerging
+        revision = mergeStateRevision
         mergeStateLock.unlock()
 
-        Task { @MainActor in
-            sink(currentValue)
+        Task { @MainActor [weak self] in
+            guard let sinks = self?.mergeStateSinks(for: revision, sinkIDs: [id]) else {
+                return
+            }
+            for sink in sinks {
+                sink(currentValue)
+            }
         }
 
         return id
@@ -400,16 +415,24 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         } else {
             activeImportEventIDs.remove(event.identifier)
         }
+        if let error = event.error {
+            lastImportEventError = error
+        }
         let isImporting = !activeImportEventIDs.isEmpty
-        let sinks = Array(importEventSinks.values)
-        let error = event.error
+        importEventRevision += 1
+        let revision = importEventRevision
+        let sinkIDs = Set(importEventSinks.keys)
+        let error = lastImportEventError
         importEventLock.unlock()
 
-        guard !sinks.isEmpty else {
+        guard !sinkIDs.isEmpty else {
             return
         }
 
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
+            guard let sinks = self?.importEventSinks(for: revision, sinkIDs: sinkIDs) else {
+                return
+            }
             for sink in sinks {
                 sink(isImporting, error)
             }
@@ -450,18 +473,48 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
             accountStatusLock.unlock()
             return
         }
-        let sinks = Array(accountStatusSinks.values)
+        let sinkIDs = Set(accountStatusSinks.keys)
         accountStatusLock.unlock()
 
-        guard !sinks.isEmpty else {
+        guard !sinkIDs.isEmpty else {
             return
         }
 
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
+            guard let sinks = self?.accountStatusSinks(for: generation, sinkIDs: sinkIDs) else {
+                return
+            }
             for sink in sinks {
                 sink(status)
             }
         }
+    }
+
+    private func mergeStateSinks(for revision: Int, sinkIDs: Set<UUID>) -> [MergeStateSink]? {
+        mergeStateLock.lock()
+        defer { mergeStateLock.unlock() }
+        guard revision == mergeStateRevision else {
+            return nil
+        }
+        return sinkIDs.compactMap { mergeStateSinks[$0] }
+    }
+
+    private func importEventSinks(for revision: Int, sinkIDs: Set<UUID>) -> [ImportEventSink]? {
+        importEventLock.lock()
+        defer { importEventLock.unlock() }
+        guard revision == importEventRevision else {
+            return nil
+        }
+        return sinkIDs.compactMap { importEventSinks[$0] }
+    }
+
+    private func accountStatusSinks(for generation: Int, sinkIDs: Set<UUID>) -> [AccountStatusSink]? {
+        accountStatusLock.lock()
+        defer { accountStatusLock.unlock() }
+        guard generation == accountStatusRefreshGeneration else {
+            return nil
+        }
+        return sinkIDs.compactMap { accountStatusSinks[$0] }
     }
 
     func setLoadStateForTesting(_ loadState: SlateStoreLoadState) {

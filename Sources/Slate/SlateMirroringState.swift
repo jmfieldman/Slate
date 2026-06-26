@@ -26,16 +26,81 @@ public enum SlateAccountStatus: Sendable, Equatable {
 
 @Observable
 public final class SlateMirroringState {
-    public private(set) var accountStatus: SlateAccountStatus
-    public private(set) var isImporting: Bool
-    public private(set) var isMerging: Bool
-    public private(set) var lastImportError: Error?
+    @ObservationIgnored private let lock = NSLock()
+    @ObservationIgnored private var storedAccountStatus: SlateAccountStatus
+    @ObservationIgnored private var storedIsImporting: Bool
+    @ObservationIgnored private var storedIsMerging: Bool
+    @ObservationIgnored private var storedLastImportError: Error?
 
     public init() {
-        self.accountStatus = .unavailable
-        self.isImporting = false
-        self.isMerging = false
-        self.lastImportError = nil
+        self.storedAccountStatus = .unavailable
+        self.storedIsImporting = false
+        self.storedIsMerging = false
+        self.storedLastImportError = nil
+    }
+
+    public private(set) var accountStatus: SlateAccountStatus {
+        get {
+            access(keyPath: \.accountStatus)
+            lock.lock()
+            defer { lock.unlock() }
+            return storedAccountStatus
+        }
+        set {
+            withMutation(keyPath: \.accountStatus) {
+                lock.lock()
+                storedAccountStatus = newValue
+                lock.unlock()
+            }
+        }
+    }
+
+    public private(set) var isImporting: Bool {
+        get {
+            access(keyPath: \.isImporting)
+            lock.lock()
+            defer { lock.unlock() }
+            return storedIsImporting
+        }
+        set {
+            withMutation(keyPath: \.isImporting) {
+                lock.lock()
+                storedIsImporting = newValue
+                lock.unlock()
+            }
+        }
+    }
+
+    public private(set) var isMerging: Bool {
+        get {
+            access(keyPath: \.isMerging)
+            lock.lock()
+            defer { lock.unlock() }
+            return storedIsMerging
+        }
+        set {
+            withMutation(keyPath: \.isMerging) {
+                lock.lock()
+                storedIsMerging = newValue
+                lock.unlock()
+            }
+        }
+    }
+
+    public private(set) var lastImportError: Error? {
+        get {
+            access(keyPath: \.lastImportError)
+            lock.lock()
+            defer { lock.unlock() }
+            return storedLastImportError
+        }
+        set {
+            withMutation(keyPath: \.lastImportError) {
+                lock.lock()
+                storedLastImportError = newValue
+                lock.unlock()
+            }
+        }
     }
 
     @MainActor
