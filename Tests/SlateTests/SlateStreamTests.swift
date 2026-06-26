@@ -1,8 +1,8 @@
 import CoreData
 import Foundation
-import Slate
 import SlateSchema
 import Testing
+@testable import Slate
 
 @MainActor
 @Suite
@@ -307,6 +307,104 @@ struct SlateStreamTests {
 
         await SlateStreamActor.shared.run { stream.cancel() }
     }
+
+    @Test
+    func lazyMainStreamDefersBuilderUntilLoadingCompletesAndSurfacesFailure() async throws {
+        let loading = LockedBoolean(true)
+        let builderCalls = LockedCounter()
+        let stream = SlateStream<TestAuthor>(
+            loading: {
+                loading.value
+            },
+            coreBuilder: {
+                builderCalls.increment()
+                throw SlateError.coreData("builder failed")
+            }
+        )
+
+        try await Task.sleep(for: .milliseconds(70))
+        #expect(stream.state == .loading)
+        #expect(builderCalls.value == 0)
+
+        loading.set(false)
+        try await waitFor(stream) { $0.state == .failed }
+        #expect(builderCalls.value == 1)
+        #expect(stream.error != nil)
+    }
+
+    @Test
+    func lazyBackgroundStreamDefersBuilderUntilLoadingCompletesAndSurfacesFailure() async throws {
+        let loading = LockedBoolean(true)
+        let builderCalls = LockedCounter()
+        let stream = SlateBackgroundStream<TestAuthor>(
+            loading: {
+                loading.value
+            },
+            coreBuilder: {
+                builderCalls.increment()
+                throw SlateError.coreData("builder failed")
+            }
+        )
+
+        try await Task.sleep(for: .milliseconds(70))
+        let loadingState = await SlateStreamActor.shared.run { stream.state }
+        #expect(loadingState == .loading)
+        #expect(builderCalls.value == 0)
+
+        loading.set(false)
+        try await waitForBackground(stream) { $0.state == .failed }
+        #expect(builderCalls.value == 1)
+        let error = await SlateStreamActor.shared.run { stream.error }
+        #expect(error != nil)
+    }
+
+    @Test
+    func cancelledLazyMainStreamDoesNotBuildAfterReadiness() async throws {
+        let loading = LockedBoolean(true)
+        let builderCalls = LockedCounter()
+        let stream = SlateStream<TestAuthor>(
+            loading: {
+                loading.value
+            },
+            coreBuilder: {
+                builderCalls.increment()
+                throw SlateError.coreData("unexpected builder call")
+            }
+        )
+
+        try await Task.sleep(for: .milliseconds(20))
+        stream.cancel()
+        loading.set(false)
+        try await Task.sleep(for: .milliseconds(70))
+
+        #expect(stream.state == .cancelled)
+        #expect(builderCalls.value == 0)
+    }
+
+    @Test
+    func droppedLazyMainStreamStopsPolling() async throws {
+        let loadingCalls = LockedCounter()
+        weak var releasedStream: SlateStream<TestAuthor>?
+
+        var stream: SlateStream<TestAuthor>? = SlateStream(
+            loading: {
+                loadingCalls.increment()
+                return true
+            },
+            coreBuilder: {
+                throw SlateError.coreData("unexpected builder call")
+            }
+        )
+        releasedStream = stream
+        stream = nil
+
+        try await waitUntilReleased { releasedStream == nil }
+        try await Task.sleep(for: .milliseconds(100))
+        let countAfterRelease = loadingCalls.value
+        try await Task.sleep(for: .milliseconds(120))
+
+        #expect(loadingCalls.value == countAfterRelease)
+    }
 }
 
 @MainActor
@@ -361,6 +459,55 @@ private func waitForBackground<V>(
 
 private enum StreamWaitTimeout: Error {
     case timedOut
+}
+
+private final class LockedBoolean: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedValue: Bool
+
+    init(_ value: Bool) {
+        storedValue = value
+    }
+
+    var value: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedValue
+    }
+
+    func set(_ value: Bool) {
+        lock.lock()
+        storedValue = value
+        lock.unlock()
+    }
+}
+
+private final class LockedCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedValue = 0
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedValue
+    }
+
+    func increment() {
+        lock.lock()
+        storedValue += 1
+        lock.unlock()
+    }
+}
+
+@MainActor
+private func waitUntilReleased(_ condition: @MainActor () -> Bool) async throws {
+    let deadline = ContinuousClock.now + .seconds(2)
+    while !condition() {
+        if ContinuousClock.now > deadline {
+            throw StreamWaitTimeout.timedOut
+        }
+        try await Task.sleep(for: .milliseconds(2))
+    }
 }
 
 extension SlateStreamActor {

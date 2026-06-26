@@ -35,7 +35,7 @@ public final class SlateStream<Value> where Value: SlateObject {
     ) {
         Task { @MainActor [weak self] in
             while loading() {
-                guard !Task.isCancelled, self?.state != .cancelled else { return }
+                guard !Task.isCancelled, let self, state != .cancelled else { return }
                 try? await Task.sleep(nanoseconds: 50_000_000)
             }
 
@@ -158,7 +158,7 @@ public final class SlateBackgroundStream<Value> where Value: SlateObject {
     ) {
         Task { @SlateStreamActor [weak self] in
             while loading() {
-                guard !Task.isCancelled, self?.state != .cancelled else { return }
+                guard !Task.isCancelled, let self, state != .cancelled else { return }
                 try? await Task.sleep(nanoseconds: 50_000_000)
             }
 
