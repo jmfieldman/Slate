@@ -176,6 +176,60 @@ struct SlateRemoteChangeIngestionTests {
 
         #expect(enteredIngestion.value == 1)
     }
+
+    @Test
+    func firstHistoryFetchWithoutTokenIncludesInsertedUpdatedAndDeletedRows() async throws {
+        let fixture = try SlateRemoteChangeIngestionTestSupport.makeHistoryFixture(
+            prefix: "SlateHistoryFetchChanges"
+        )
+        defer {
+            fixture.remove()
+        }
+
+        let changedIDs = try fixture.writeInsertedUpdatedAndDeletedRowsFromSecondContext()
+
+        let window = try await fixture.ingestor.fetchPersistentHistoryForTesting()
+
+        #expect(window.transactions.count >= 4)
+        #expect(window.mergeNotificationPayloads.count == window.transactions.count)
+        #expect(window.changedObjectIDs.isSuperset(of: changedIDs.all))
+        #expect(window.changedObjectIDs.contains(changedIDs.inserted))
+        #expect(window.changedObjectIDs.contains(changedIDs.updated))
+        #expect(window.changedObjectIDs.contains(changedIDs.deleted))
+        #expect(window.nextToken != nil)
+        #expect(try fixture.tokenStore.load() == nil)
+    }
+
+    @Test
+    func historyFetchAfterSavedTokenReturnsEmptyWindow() async throws {
+        let fixture = try SlateRemoteChangeIngestionTestSupport.makeHistoryFixture(
+            prefix: "SlateHistoryFetchAfterToken"
+        )
+        defer {
+            fixture.remove()
+        }
+
+        _ = try fixture.writeInsertedUpdatedAndDeletedRowsFromSecondContext()
+        let firstWindow = try await fixture.ingestor.fetchPersistentHistoryForTesting()
+        try fixture.tokenStore.save(firstWindow.nextToken)
+
+        let secondWindow = try await fixture.ingestor.fetchPersistentHistoryForTesting()
+
+        #expect(secondWindow.transactions.isEmpty)
+        #expect(secondWindow.mergeNotificationPayloads.isEmpty)
+        #expect(secondWindow.changedObjectIDs.isEmpty)
+        #expect(secondWindow.nextToken == nil)
+    }
+}
+
+struct HistoryChangeIDs: Sendable {
+    let inserted: NSManagedObjectID
+    let updated: NSManagedObjectID
+    let deleted: NSManagedObjectID
+
+    var all: Set<NSManagedObjectID> {
+        [inserted, updated, deleted]
+    }
 }
 
 enum SlateRemoteChangeIngestionTestSupport {
@@ -216,16 +270,21 @@ enum SlateRemoteChangeIngestionTestSupport {
     final class HistoryFixture: @unchecked Sendable {
         let directory: URL
         let storeURL: URL
+        let tokenStore: SlateHistoryTokenStore
+        let owner: SlateStoreOwner<TestCloudKitRuntimeSchema>
+        let ingestor: SlateRemoteChangeIngestor<TestCloudKitRuntimeSchema>
 
         private let coordinator: NSPersistentStoreCoordinator
-        private let context: NSManagedObjectContext
+        private let writerContext: NSManagedObjectContext
+        private let secondContext: NSManagedObjectContext
 
         init(directory: URL, storeURL: URL) throws {
             self.directory = directory
             self.storeURL = storeURL
+            self.tokenStore = SlateHistoryTokenStore(storeURL: storeURL)
 
             coordinator = NSPersistentStoreCoordinator(
-                managedObjectModel: try TestSchema.makeManagedObjectModel()
+                managedObjectModel: try TestCloudKitRuntimeSchema.makeManagedObjectModel()
             )
 
             let description = NSPersistentStoreDescription(url: storeURL)
@@ -246,10 +305,29 @@ enum SlateRemoteChangeIngestionTestSupport {
                 throw capturedError
             }
 
-            context = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
-            context.persistentStoreCoordinator = coordinator
-            context.undoManager = nil
-            context.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
+            writerContext = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+            writerContext.persistentStoreCoordinator = coordinator
+            writerContext.undoManager = nil
+            writerContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
+
+            secondContext = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+            secondContext.persistentStoreCoordinator = coordinator
+            secondContext.undoManager = nil
+            secondContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
+
+            var registry = SlateTableRegistry()
+            TestCloudKitRuntimeSchema.registerTables(&registry)
+            owner = SlateStoreOwner<TestCloudKitRuntimeSchema>(
+                registry: registry,
+                coordinator: coordinator,
+                writerContext: writerContext,
+                storageMode: .cloudKitMirrored(containerIdentifier: "iCloud.com.example"),
+                loadState: .loaded
+            )
+            ingestor = SlateRemoteChangeIngestor(
+                owner: owner,
+                tokenStore: tokenStore
+            )
         }
 
         func remove() {
@@ -257,22 +335,53 @@ enum SlateRemoteChangeIngestionTestSupport {
         }
 
         func makeHistoryToken(authorName: String) throws -> NSPersistentHistoryToken {
-            try context.performAndWaitReturning {
-                let author = DatabaseTestAuthor.create(in: context)
-                author.name = authorName
-                try context.save()
+            try secondContext.performAndWaitReturning {
+                let record = DatabaseTestCloudKitRuntimeRecord.create(in: secondContext)
+                record.title = authorName
+                try secondContext.save()
             }
 
             return try latestHistoryToken()
         }
 
+        func writeInsertedUpdatedAndDeletedRowsFromSecondContext() throws -> HistoryChangeIDs {
+            try secondContext.performAndWaitReturning {
+                let inserted = DatabaseTestCloudKitRuntimeRecord.create(in: secondContext)
+                inserted.title = "Inserted"
+                try secondContext.save()
+                let insertedID = inserted.objectID
+
+                let updated = DatabaseTestCloudKitRuntimeRecord.create(in: secondContext)
+                updated.title = "Before update"
+                try secondContext.save()
+                let updatedID = updated.objectID
+
+                updated.title = "After update"
+                try secondContext.save()
+
+                let deleted = DatabaseTestCloudKitRuntimeRecord.create(in: secondContext)
+                deleted.title = "Deleted"
+                try secondContext.save()
+                let deletedID = deleted.objectID
+
+                secondContext.delete(deleted)
+                try secondContext.save()
+
+                return HistoryChangeIDs(
+                    inserted: insertedID,
+                    updated: updatedID,
+                    deleted: deletedID
+                )
+            }
+        }
+
         func historyTransactionCount(after token: NSPersistentHistoryToken?) throws -> Int {
             let tokenBox = UncheckedPersistentHistoryToken(token)
-            return try context.performAndWaitReturning {
+            return try writerContext.performAndWaitReturning {
                 let request = NSPersistentHistoryChangeRequest.fetchHistory(after: tokenBox.value)
                 request.resultType = .transactionsOnly
                 let result = try #require(
-                    try context.execute(request) as? NSPersistentHistoryResult
+                    try writerContext.execute(request) as? NSPersistentHistoryResult
                 )
                 let transactions = (result.result as? [NSPersistentHistoryTransaction]) ?? []
                 return transactions.count
@@ -280,13 +389,13 @@ enum SlateRemoteChangeIngestionTestSupport {
         }
 
         private func latestHistoryToken() throws -> NSPersistentHistoryToken {
-            try context.performAndWaitReturning {
+            try writerContext.performAndWaitReturning {
                 let request = NSPersistentHistoryChangeRequest.fetchHistory(
                     after: nil as NSPersistentHistoryToken?
                 )
                 request.resultType = .transactionsOnly
                 let result = try #require(
-                    try context.execute(request) as? NSPersistentHistoryResult
+                    try writerContext.execute(request) as? NSPersistentHistoryResult
                 )
                 let transactions = try #require(result.result as? [NSPersistentHistoryTransaction])
                 let transaction = try #require(transactions.last)
@@ -344,6 +453,11 @@ enum SlateRemoteChangeIngestionTestSupport {
             description.url = sourceDescription.url
             description.shouldMigrateStoreAutomatically = sourceDescription.shouldMigrateStoreAutomatically
             description.shouldInferMappingModelAutomatically = sourceDescription.shouldInferMappingModelAutomatically
+            description.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
+            description.setOption(
+                true as NSNumber,
+                forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey
+            )
 
             var capturedError: Error?
             let semaphore = DispatchSemaphore(value: 0)
