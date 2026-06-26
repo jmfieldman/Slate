@@ -65,6 +65,8 @@ public enum SlateSharePermission: Sendable, Equatable {
 }
 
 public enum SlateShareRole: Sendable, Equatable {
+    private static let cloudKitAdministratorRawValue = 2
+
     case unknown
     case owner
     case privateUser
@@ -72,6 +74,11 @@ public enum SlateShareRole: Sendable, Equatable {
     case administrator
 
     init(cloudKitRole: CKShare.ParticipantRole) {
+        if cloudKitRole.rawValue == Self.cloudKitAdministratorRawValue {
+            self = .administrator
+            return
+        }
+
         switch cloudKitRole {
         case .unknown:
             self = .unknown
@@ -81,9 +88,7 @@ public enum SlateShareRole: Sendable, Equatable {
             self = .privateUser
         case .publicUser:
             self = .publicUser
-        case .administrator:
-            self = .administrator
-        @unknown default:
+        default:
             self = .unknown
         }
     }
