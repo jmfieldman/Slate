@@ -8,8 +8,13 @@ enum SlateStoreLoadState {
     case failed(Error)
 }
 
+enum SlateStreamRefreshEvent {
+    case batchDelete(deletedIDs: [NSManagedObjectID])
+    case remoteMerge
+}
+
 final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
-    typealias BatchDeleteHandler = @Sendable ([NSManagedObjectID]) -> Void
+    typealias BatchDeleteHandler = @Sendable (SlateStreamRefreshEvent) -> Void
 
     let id: UUID
     let registry: SlateTableRegistry
@@ -173,11 +178,9 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         return context
     }
 
-    /// Register a sink that wants to receive batch-delete object IDs after a
-    /// `Slate.batchDelete(...)` call commits to the persistent store. Stream
-    /// cores use this because `NSBatchDeleteRequest` bypasses
-    /// `NSManagedObjectContextDidSave`, so the writer-context save observer
-    /// they normally rely on never fires.
+    /// Register a sink that wants to receive batch-delete or remote-merge
+    /// refresh events after store-level changes that bypass the writer
+    /// context's normal save notification.
     @discardableResult
     func registerBatchDeleteSink(_ handler: @escaping BatchDeleteHandler) -> UUID {
         let id = UUID()
@@ -194,11 +197,19 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     }
 
     func notifyBatchDelete(deletedIDs: [NSManagedObjectID]) {
+        notifyStreamSinks(.batchDelete(deletedIDs: deletedIDs))
+    }
+
+    func notifyStreamsRefresh() {
+        notifyStreamSinks(.remoteMerge)
+    }
+
+    private func notifyStreamSinks(_ event: SlateStreamRefreshEvent) {
         sinkLock.lock()
         let handlers = Array(batchDeleteSinks.values)
         sinkLock.unlock()
         for handler in handlers {
-            handler(deletedIDs)
+            handler(event)
         }
     }
 

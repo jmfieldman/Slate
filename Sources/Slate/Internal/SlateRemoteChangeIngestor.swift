@@ -116,6 +116,8 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
                 }
 
                 try await applyMerge(window, to: owner)
+                owner.cache.remove(window.changedObjectIDs)
+                owner.notifyStreamsRefresh()
                 if let nextToken = window.nextToken {
                     try tokenStore.save(nextToken)
                 }

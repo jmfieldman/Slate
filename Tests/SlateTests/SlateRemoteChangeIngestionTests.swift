@@ -307,6 +307,129 @@ struct SlateRemoteChangeIngestionTests {
         #expect(tracker.entryCount == 2)
         #expect(!tracker.didOverlap)
     }
+
+    @Test
+    func remoteIngestionInvalidatesCacheAndRefreshesBeforePersistingToken() async throws {
+        let fixture = try SlateRemoteChangeIngestionTestSupport.makeHistoryFixture(
+            prefix: "SlateRemoteMergeCacheRefreshOrder"
+        )
+        defer {
+            fixture.remove()
+        }
+
+        let id = try fixture.insertRecordFromSecondContext(title: "Before")
+        fixture.cacheRecord(id: id, title: "Cached")
+        try fixture.updateRecordFromSecondContext(id, title: "After")
+
+        let refreshes = LockedCounter()
+        let sinkID = fixture.owner.registerBatchDeleteSink { event in
+            switch event {
+            case .remoteMerge:
+                #expect(fixture.owner.cache.get(id) == nil)
+                #expect((try? fixture.tokenStore.load()) == nil)
+                refreshes.increment()
+            case .batchDelete:
+                Issue.record("Remote merge should not send a batch-delete stream event")
+            }
+        }
+        defer {
+            fixture.owner.unregisterBatchDeleteSink(sinkID)
+        }
+
+        #expect(fixture.owner.cache.get(id) != nil)
+
+        try await fixture.ingestor.ingestRemoteChangeForTesting()
+
+        #expect(refreshes.value == 1)
+        #expect(fixture.owner.cache.get(id) == nil)
+        let token = try #require(try fixture.tokenStore.load())
+        #expect(try fixture.historyTransactionCount(after: token) == 0)
+    }
+
+    @MainActor
+    @Test
+    func remoteInsertRefreshesDiffPathStream() async throws {
+        let fixture = try SlateRemoteChangeIngestionTestSupport.makeHistoryFixture(
+            prefix: "SlateRemoteMergeStreamInsert"
+        )
+        defer {
+            fixture.remove()
+        }
+
+        let stream = fixture.makeRecordStream(useDiffPath: true)
+        defer {
+            stream.cancel()
+        }
+        try await waitForReady(stream)
+        #expect(stream.values.isEmpty)
+
+        _ = try fixture.insertRecordFromSecondContext(title: "Ada")
+        try await fixture.ingestor.ingestRemoteChangeForTesting()
+
+        try await waitFor(stream) { $0.values.map(\.title) == ["Ada"] }
+    }
+
+    @MainActor
+    @Test
+    func remoteUpdateRefreshesNonDiffPathStream() async throws {
+        let fixture = try SlateRemoteChangeIngestionTestSupport.makeHistoryFixture(
+            prefix: "SlateRemoteMergeStreamUpdate"
+        )
+        defer {
+            fixture.remove()
+        }
+
+        let id = try fixture.insertRecordFromSecondContext(title: "Before")
+        try await fixture.ingestor.ingestRemoteChangeForTesting()
+
+        let stream = fixture.makeRecordStream(useDiffPath: false)
+        defer {
+            stream.cancel()
+        }
+        try await waitForReady(stream)
+        #expect(stream.values.map(\.title) == ["Before"])
+
+        try fixture.updateRecordFromSecondContext(id, title: "After")
+        try await fixture.ingestor.ingestRemoteChangeForTesting()
+
+        try await waitFor(stream) { $0.values.map(\.title) == ["After"] }
+    }
+
+    @MainActor
+    @Test
+    func remoteDeleteRefreshesStreamWithoutBatchDeleteEvent() async throws {
+        let fixture = try SlateRemoteChangeIngestionTestSupport.makeHistoryFixture(
+            prefix: "SlateRemoteMergeStreamDelete"
+        )
+        defer {
+            fixture.remove()
+        }
+
+        let id = try fixture.insertRecordFromSecondContext(title: "Ada")
+        try await fixture.ingestor.ingestRemoteChangeForTesting()
+
+        let stream = fixture.makeRecordStream(useDiffPath: true)
+        defer {
+            stream.cancel()
+        }
+        try await waitForReady(stream)
+        #expect(stream.values.map(\.title) == ["Ada"])
+
+        let events = StreamEventRecorder()
+        let sinkID = fixture.owner.registerBatchDeleteSink { event in
+            events.record(event)
+        }
+        defer {
+            fixture.owner.unregisterBatchDeleteSink(sinkID)
+        }
+
+        try fixture.deleteRecordFromSecondContext(id)
+        try await fixture.ingestor.ingestRemoteChangeForTesting()
+
+        try await waitFor(stream) { $0.values.isEmpty }
+        #expect(events.remoteMergeCount == 1)
+        #expect(events.batchDeleteCount == 0)
+    }
 }
 
 struct HistoryChangeIDs: Sendable {
@@ -462,6 +585,53 @@ enum SlateRemoteChangeIngestionTestSupport {
             }
         }
 
+        func insertRecordFromSecondContext(title: String) throws -> NSManagedObjectID {
+            try secondContext.performAndWaitReturning {
+                let record = DatabaseTestCloudKitRuntimeRecord.create(in: secondContext)
+                record.title = title
+                try secondContext.save()
+                return record.objectID
+            }
+        }
+
+        func updateRecordFromSecondContext(
+            _ id: NSManagedObjectID,
+            title: String
+        ) throws {
+            try secondContext.performAndWaitReturning {
+                let record = try #require(
+                    try secondContext.existingObject(with: id) as? DatabaseTestCloudKitRuntimeRecord
+                )
+                record.title = title
+                try secondContext.save()
+            }
+        }
+
+        func deleteRecordFromSecondContext(_ id: NSManagedObjectID) throws {
+            try secondContext.performAndWaitReturning {
+                let record = try secondContext.existingObject(with: id)
+                secondContext.delete(record)
+                try secondContext.save()
+            }
+        }
+
+        func cacheRecord(id: NSManagedObjectID, title: String) {
+            owner.cache.set(
+                id,
+                TestCloudKitRuntimeRecord(slateID: id, title: title)
+            )
+        }
+
+        @MainActor
+        func makeRecordStream(useDiffPath: Bool) -> SlateStream<TestCloudKitRuntimeRecord> {
+            SlateStream(
+                loading: { false },
+                coreBuilder: {
+                    try self.makeRecordStreamCore(useDiffPath: useDiffPath)
+                }
+            )
+        }
+
         func historyTransactionCount(after token: NSPersistentHistoryToken?) throws -> Int {
             let tokenBox = UncheckedPersistentHistoryToken(token)
             return try writerContext.performAndWaitReturning {
@@ -483,6 +653,42 @@ enum SlateRemoteChangeIngestionTestSupport {
                     try body()
                 }
             }
+        }
+
+        private func makeRecordStreamCore(
+            useDiffPath: Bool
+        ) throws -> SlateStreamCore<TestCloudKitRuntimeRecord> {
+            let streamContext = owner.makeStreamContext()
+            let request = NSFetchRequest<NSFetchRequestResult>(
+                entityName: DatabaseTestCloudKitRuntimeRecord.slateEntityName
+            )
+            request.sortDescriptors = [NSSortDescriptor(key: "title", ascending: true)]
+
+            let controller = NSFetchedResultsController(
+                fetchRequest: request,
+                managedObjectContext: streamContext,
+                sectionNameKeyPath: nil,
+                cacheName: nil
+            )
+
+            return SlateStreamCore(
+                context: streamContext,
+                frc: controller,
+                convert: { object in
+                    guard let record = object as? DatabaseTestCloudKitRuntimeRecord else {
+                        throw SlateError.coreData("Unexpected stream object \(type(of: object))")
+                    }
+                    return record.slateObject
+                },
+                writerContext: writerContext,
+                useDiffPath: useDiffPath,
+                registerBatchDeleteSink: { handler in
+                    self.owner.registerBatchDeleteSink(handler)
+                },
+                unregisterBatchDeleteSink: { id in
+                    self.owner.unregisterBatchDeleteSink(id)
+                }
+            )
         }
 
         private func latestHistoryToken() throws -> NSPersistentHistoryToken {
@@ -621,6 +827,35 @@ private final class CriticalSectionTracker: @unchecked Sendable {
     }
 }
 
+private final class StreamEventRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedRemoteMergeCount = 0
+    private var storedBatchDeleteCount = 0
+
+    var remoteMergeCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedRemoteMergeCount
+    }
+
+    var batchDeleteCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedBatchDeleteCount
+    }
+
+    func record(_ event: SlateStreamRefreshEvent) {
+        lock.lock()
+        switch event {
+        case .remoteMerge:
+            storedRemoteMergeCount += 1
+        case .batchDelete:
+            storedBatchDeleteCount += 1
+        }
+        lock.unlock()
+    }
+}
+
 private func slateStoreOwner<Schema: SlateSchema>(for slate: Slate<Schema>) throws -> SlateStoreOwner<Schema> {
     let mirror = Mirror(reflecting: slate)
     for child in mirror.children where child.label == "owner" {
@@ -715,6 +950,35 @@ private struct UncheckedPersistentHistoryToken: @unchecked Sendable {
     init(_ value: NSPersistentHistoryToken?) {
         self.value = value
     }
+}
+
+@MainActor
+private func waitForReady<V>(_ stream: SlateStream<V>) async throws {
+    let deadline = ContinuousClock.now + .seconds(2)
+    while stream.state == .loading {
+        if ContinuousClock.now > deadline {
+            throw RemoteStreamWaitTimeout.timedOut
+        }
+        try await Task.sleep(for: .milliseconds(2))
+    }
+}
+
+@MainActor
+private func waitFor<V>(
+    _ stream: SlateStream<V>,
+    condition: @MainActor (SlateStream<V>) -> Bool
+) async throws {
+    let deadline = ContinuousClock.now + .seconds(2)
+    while !condition(stream) {
+        if ContinuousClock.now > deadline {
+            throw RemoteStreamWaitTimeout.timedOut
+        }
+        try await Task.sleep(for: .milliseconds(2))
+    }
+}
+
+private enum RemoteStreamWaitTimeout: Error {
+    case timedOut
 }
 
 private extension NSManagedObjectContext {
