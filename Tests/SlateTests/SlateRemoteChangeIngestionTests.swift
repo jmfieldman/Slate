@@ -385,13 +385,15 @@ struct SlateRemoteChangeIngestionTests {
             fixture.remove()
         }
 
-        _ = try fixture.insertRecordFromSecondContext(title: "Before reset")
+        let beforeResetID = try fixture.insertRecordFromSecondContext(title: "Before reset")
         try await fixture.ingestor.ingestRemoteChangeForTesting()
         let firstToken = try #require(try fixture.tokenStore.load())
         #expect(try fixture.historyTransactionCount(after: firstToken) == 0)
 
         try fixture.tokenStore.save(nil)
         #expect(try fixture.tokenStore.load() == nil)
+        fixture.cacheRecord(id: beforeResetID, title: "Cached before reset")
+        #expect(fixture.owner.cache.get(beforeResetID) != nil)
 
         _ = try fixture.insertRecordFromSecondContext(title: "After reset")
         let refreshes = LockedCounter()
@@ -407,6 +409,7 @@ struct SlateRemoteChangeIngestionTests {
         try await fixture.ingestor.ingestRemoteChangeForTesting()
 
         #expect(refreshes.value == 1)
+        #expect(fixture.owner.cache.get(beforeResetID) == nil)
         let resetToken = try #require(try fixture.tokenStore.load())
         #expect(try fixture.historyTransactionCount(after: resetToken) == 0)
     }
