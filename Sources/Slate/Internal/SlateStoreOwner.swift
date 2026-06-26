@@ -18,6 +18,7 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     typealias BatchDeleteHandler = @Sendable (SlateStreamRefreshEvent) -> Void
     typealias AccountStatusSink = @MainActor @Sendable (SlateAccountStatus) -> Void
     typealias ImportEventSink = @MainActor @Sendable (Bool, (any Error)?) -> Void
+    typealias MergeStateSink = @MainActor @Sendable (Bool) -> Void
 
     let id: UUID
     let registry: SlateTableRegistry
@@ -39,6 +40,7 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     private var storedRemoteChangeIngestor: SlateRemoteChangeIngestor<Schema>?
     private let mergeStateLock = NSLock()
     private var storedIsMerging = false
+    private var mergeStateSinks: [UUID: MergeStateSink] = [:]
     private let accountStatusLock = NSLock()
     private var accountStatusSinks: [UUID: AccountStatusSink] = [:]
     private var accountStatusObserver: NSObjectProtocol?
@@ -149,7 +151,18 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     func setIsMerging(_ isMerging: Bool) {
         mergeStateLock.lock()
         storedIsMerging = isMerging
+        let sinks = Array(mergeStateSinks.values)
         mergeStateLock.unlock()
+
+        guard !sinks.isEmpty else {
+            return
+        }
+
+        Task { @MainActor in
+            for sink in sinks {
+                sink(isMerging)
+            }
+        }
     }
 
     func installRemoteChangeIngestor(_ ingestor: SlateRemoteChangeIngestor<Schema>) {
@@ -292,6 +305,32 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         importEventLock.unlock()
 
         observerToInvalidate?.invalidate()
+    }
+
+    @discardableResult
+    func registerMergeStateSink(_ sink: @escaping MergeStateSink) -> UUID? {
+        guard remoteChangeIngestor != nil else {
+            return nil
+        }
+
+        let id = UUID()
+        let currentValue: Bool
+        mergeStateLock.lock()
+        mergeStateSinks[id] = sink
+        currentValue = storedIsMerging
+        mergeStateLock.unlock()
+
+        Task { @MainActor in
+            sink(currentValue)
+        }
+
+        return id
+    }
+
+    func unregisterMergeStateSink(_ id: UUID) {
+        mergeStateLock.lock()
+        mergeStateSinks.removeValue(forKey: id)
+        mergeStateLock.unlock()
     }
 
     private func notifyStreamSinks(_ event: SlateStreamRefreshEvent) {

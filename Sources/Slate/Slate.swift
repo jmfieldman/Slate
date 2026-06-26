@@ -19,6 +19,7 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
     private var owner: SlateStoreOwner<Schema>?
     private var accountStatusSinkID: UUID?
     private var importEventSinkID: UUID?
+    private var mergeStateSinkID: UUID?
     private var loadingOwner = false
     private var ownerLoadError: Error?
     private var closed = false
@@ -103,6 +104,7 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         }
         installAccountStatusSink(for: newOwner)
         installImportEventSink(for: newOwner)
+        installMergeStateSink(for: newOwner)
         startCloudKitStoreLoadIfNeeded(for: newOwner)
     }
 
@@ -113,6 +115,9 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         }
         if let sinkID = closedState.importEventSinkID {
             closedState.owner?.unregisterImportEventSink(sinkID)
+        }
+        if let sinkID = closedState.mergeStateSinkID {
+            closedState.owner?.unregisterMergeStateSink(sinkID)
         }
         if let activeOwner = closedState.owner {
             try? await activeOwner.accessGate.write { /* drain in-flight */ }
@@ -126,6 +131,9 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         }
         if let sinkID = closedState.importEventSinkID {
             closedState.owner?.unregisterImportEventSink(sinkID)
+        }
+        if let sinkID = closedState.mergeStateSinkID {
+            closedState.owner?.unregisterMergeStateSink(sinkID)
         }
     }
 
@@ -158,17 +166,20 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
     private func markClosed() -> (
         owner: SlateStoreOwner<Schema>?,
         accountStatusSinkID: UUID?,
-        importEventSinkID: UUID?
+        importEventSinkID: UUID?,
+        mergeStateSinkID: UUID?
     ) {
         stateLock.lock()
         defer { stateLock.unlock() }
         let active = owner
         let accountSinkID = accountStatusSinkID
         let importSinkID = importEventSinkID
+        let mergeSinkID = mergeStateSinkID
         accountStatusSinkID = nil
         importEventSinkID = nil
+        mergeStateSinkID = nil
         closed = true
-        return (active, accountSinkID, importSinkID)
+        return (active, accountSinkID, importSinkID, mergeSinkID)
     }
 
     private func installAccountStatusSink(for owner: SlateStoreOwner<Schema>) {
@@ -206,6 +217,25 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
 
         if !shouldKeepSink {
             owner.unregisterImportEventSink(sinkID)
+        }
+    }
+
+    private func installMergeStateSink(for owner: SlateStoreOwner<Schema>) {
+        guard let sinkID = owner.registerMergeStateSink({ [mirroringState] isMerging in
+            mirroringState.updateIsMerging(isMerging)
+        }) else {
+            return
+        }
+
+        stateLock.lock()
+        let shouldKeepSink = !closed && self.owner === owner
+        if shouldKeepSink {
+            mergeStateSinkID = sinkID
+        }
+        stateLock.unlock()
+
+        if !shouldKeepSink {
+            owner.unregisterMergeStateSink(sinkID)
         }
     }
 

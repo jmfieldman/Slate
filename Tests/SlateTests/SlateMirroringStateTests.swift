@@ -290,6 +290,24 @@ struct SlateMirroringStateTests {
 
         #expect(events.activeHandlerCount == 0)
     }
+
+    @Test
+    func cloudKitSlateIsMergingFollowsOwnerMergeState() async throws {
+        let slate = try makeCloudKitSlate(prefix: "SlateMirroringMergeState")
+
+        try configureWithSuccessfulCloudKitLoad(slate)
+        let owner = try slateStoreOwner(for: slate)
+
+        #expect(!slate.isMerging)
+
+        owner.setIsMerging(true)
+        try await waitForMerging(true, on: slate)
+
+        owner.setIsMerging(false)
+        try await waitForMerging(false, on: slate)
+
+        await slate.close()
+    }
 }
 
 private func makeCloudKitSlate(prefix: String) throws -> Slate<TestCloudKitRuntimeSchema> {
@@ -357,6 +375,19 @@ private func waitForImporting<Schema: SlateSchema>(
     Issue.record("Timed out waiting for isImporting \(expectedValue); current value \(slate.isImporting)")
 }
 
+private func waitForMerging<Schema: SlateSchema>(
+    _ expectedValue: Bool,
+    on slate: Slate<Schema>
+) async throws {
+    for _ in 0..<40 {
+        if slate.isMerging == expectedValue {
+            return
+        }
+        try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    Issue.record("Timed out waiting for isMerging \(expectedValue); current value \(slate.isMerging)")
+}
+
 private func waitForLastImportError<Schema: SlateSchema>(
     _ expectedError: ImportEventProbeError,
     on slate: Slate<Schema>
@@ -390,6 +421,16 @@ private func event(
         endDate: endDate,
         error: error
     )
+}
+
+private func slateStoreOwner<Schema: SlateSchema>(for slate: Slate<Schema>) throws -> SlateStoreOwner<Schema> {
+    let mirror = Mirror(reflecting: slate)
+    for child in mirror.children where child.label == "owner" {
+        if let owner = child.value as? SlateStoreOwner<Schema> {
+            return owner
+        }
+    }
+    throw NSError(domain: "SlateMirroringStateTests", code: -1)
 }
 
 private struct AccountStatusProbeError: Error {}
