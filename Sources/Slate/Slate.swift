@@ -2,12 +2,22 @@
 import Foundation
 import SlateSchema
 
+private struct UncheckedRelationshipKeyPaths<Root>: @unchecked Sendable {
+    let value: [PartialKeyPath<Root>]
+
+    init(_ value: [PartialKeyPath<Root>]) {
+        self.value = value
+    }
+}
+
 public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
     private let persistentStoreDescription: NSPersistentStoreDescription
     private let storeKind: SlateStoreKind
     private let storageMode: SlateStorageMode
     private let stateLock = NSLock()
     private var owner: SlateStoreOwner<Schema>?
+    private var loadingOwner = false
+    private var ownerLoadError: Error?
     private var closed = false
 
     public init(
@@ -72,6 +82,7 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         if !installOwner(newOwner) {
             throw SlateError.closed
         }
+        startCloudKitStoreLoadIfNeeded(for: newOwner)
     }
 
     public func close() async {
@@ -98,10 +109,12 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
     }
 
     private func installOwner(_ newOwner: SlateStoreOwner<Schema>) -> Bool {
+        let loadState = newOwner.loadState
         stateLock.lock()
         defer { stateLock.unlock() }
         if closed { return false }
         owner = newOwner
+        applyOwnerLoadStateLocked(loadState)
         return true
     }
 
@@ -113,6 +126,46 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         return active
     }
 
+    private func startCloudKitStoreLoadIfNeeded(for owner: SlateStoreOwner<Schema>) {
+        owner.loadCloudKitStoresIfNeeded { [weak self, weak owner] loadState in
+            guard let owner else { return }
+            self?.recordOwnerLoadState(loadState, for: owner)
+        }
+    }
+
+    private func recordOwnerLoadState(_ loadState: SlateStoreLoadState, for loadedOwner: SlateStoreOwner<Schema>) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard owner === loadedOwner else {
+            return
+        }
+        applyOwnerLoadStateLocked(loadState)
+    }
+
+    private func applyOwnerLoadStateLocked(_ loadState: SlateStoreLoadState) {
+        switch loadState {
+        case .loading:
+            loadingOwner = true
+            ownerLoadError = nil
+        case .loaded:
+            loadingOwner = false
+            ownerLoadError = nil
+        case .failed(let error):
+            loadingOwner = false
+            ownerLoadError = error
+        }
+    }
+
+    private func ownerForReadinessPolling() throws -> SlateStoreOwner<Schema> {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        if closed { throw SlateError.closed }
+        guard let owner else {
+            throw SlateError.notConfigured
+        }
+        return owner
+    }
+
     @discardableResult
     public func query<Output: Sendable>(
         _ block: @Sendable @escaping (SlateQueryContext<Schema>) throws -> Output
@@ -121,7 +174,7 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         guard SlateTransactionScopeKey.current == nil else {
             throw SlateError.nestedTransaction
         }
-        let owner = try requireOwner()
+        let owner = try await requireOwner()
 
         return try await owner.accessGate.read {
             let context = owner.makeReaderContext()
@@ -150,7 +203,7 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         guard SlateTransactionScopeKey.current == nil else {
             throw SlateError.nestedTransaction
         }
-        let owner = try requireOwner()
+        let owner = try await requireOwner()
 
         return try await owner.accessGate.write {
             let scope = SlateTransactionScope(ownerID: owner.id, scopeID: UUID(), kind: .mutation)
@@ -342,7 +395,7 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         guard SlateTransactionScopeKey.current == nil else {
             throw SlateError.nestedTransaction
         }
-        let owner = try requireOwner()
+        let owner = try await requireOwner()
         guard let table = owner.registry.table(for: type) else {
             throw SlateError.missingTable(String(describing: type))
         }
@@ -406,15 +459,20 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
     ) -> SlateStream<Value> where
         Value: SlateObject & SlateKeypathAttributeProviding & SlateKeypathRelationshipProviding
     {
-        let core = makeStreamCore(
-            type: type,
-            predicate: predicate,
-            sort: sort,
-            limit: limit,
-            offset: offset,
-            relationships: relationships
+        let relationshipKeyPaths = UncheckedRelationshipKeyPaths<Value>(relationships)
+        return SlateStream(
+            loading: { self.isOwnerLoadingForStreams() },
+            coreBuilder: {
+                try self.makeStreamCore(
+                    type: type,
+                    predicate: predicate,
+                    sort: sort,
+                    limit: limit,
+                    offset: offset,
+                    relationships: relationshipKeyPaths.value
+                )
+            }
         )
-        return SlateStream(core: core)
     }
 
     /// Ascending-only key-path overload of `stream(...)`.
@@ -449,15 +507,20 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
     ) -> SlateBackgroundStream<Value> where
         Value: SlateObject & SlateKeypathAttributeProviding & SlateKeypathRelationshipProviding
     {
-        let core = makeStreamCore(
-            type: type,
-            predicate: predicate,
-            sort: sort,
-            limit: limit,
-            offset: offset,
-            relationships: relationships
+        let relationshipKeyPaths = UncheckedRelationshipKeyPaths<Value>(relationships)
+        return SlateBackgroundStream(
+            loading: { self.isOwnerLoadingForStreams() },
+            coreBuilder: {
+                try self.makeStreamCore(
+                    type: type,
+                    predicate: predicate,
+                    sort: sort,
+                    limit: limit,
+                    offset: offset,
+                    relationships: relationshipKeyPaths.value
+                )
+            }
         )
-        return SlateBackgroundStream(core: core)
     }
 
     /// Ascending-only key-path overload of `streamBackground(...)`.
@@ -488,14 +551,22 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         limit: Int?,
         offset: Int?,
         relationships: [PartialKeyPath<Value>]
-    ) -> SlateStreamCore<Value> where
+    ) throws -> SlateStreamCore<Value> where
         Value: SlateObject & SlateKeypathAttributeProviding & SlateKeypathRelationshipProviding
     {
-        guard let owner else {
-            preconditionFailure("Slate.stream(...) requires configure() to have completed before stream creation.")
+        let owner = try ownerForStreamCore()
+        recordOwnerLoadState(owner.loadState, for: owner)
+        switch owner.loadState {
+        case .loaded:
+            break
+        case .failed(let error):
+            throw error.slateError
+        case .loading:
+            throw SlateError.coreData("Stream core requested before persistent stores finished loading")
         }
+
         guard let table = owner.registry.table(for: type) else {
-            preconditionFailure("Slate.stream(...): no table registered for \(type).")
+            throw SlateError.missingTable(String(describing: type))
         }
 
         let relationshipNames = Set(relationships.map { Value.keypathToRelationship($0) })
@@ -556,7 +627,44 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         )
     }
 
-    private func requireOwner() throws -> SlateStoreOwner<Schema> {
+    private func requireOwner() async throws -> SlateStoreOwner<Schema> {
+        while true {
+            let currentOwner = try ownerForReadinessPolling()
+            let loadState = currentOwner.loadState
+            recordOwnerLoadState(loadState, for: currentOwner)
+
+            switch loadState {
+            case .loaded:
+                return currentOwner
+            case .failed(let error):
+                throw error.slateError
+            case .loading:
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
+        }
+    }
+
+    private func isOwnerLoadingForStreams() -> Bool {
+        stateLock.lock()
+        let isClosed = closed
+        let currentOwner = owner
+        stateLock.unlock()
+
+        guard !isClosed, let currentOwner else {
+            return false
+        }
+
+        let loadState = currentOwner.loadState
+        recordOwnerLoadState(loadState, for: currentOwner)
+        switch loadState {
+        case .loading:
+            return true
+        case .loaded, .failed:
+            return false
+        }
+    }
+
+    private func ownerForStreamCore() throws -> SlateStoreOwner<Schema> {
         stateLock.lock()
         defer { stateLock.unlock() }
         if closed { throw SlateError.closed }
@@ -592,14 +700,36 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         storageMode: SlateStorageMode,
         registry: SlateTableRegistry
     ) throws -> SlateStoreOwner<Schema> {
+        switch storageMode {
+        case .local:
+            return try openLocalOwner(
+                description: description,
+                storeKind: storeKind,
+                registry: registry
+            )
+        case .cloudKitMirrored:
+            return try openCloudKitMirroredOwner(
+                description: description,
+                storageMode: storageMode,
+                registry: registry
+            )
+        case .cloudKitShared:
+            throw SlateError.sharingUnavailable(mode: storageMode)
+        }
+    }
+
+    private static func openLocalOwner(
+        description: NSPersistentStoreDescription,
+        storeKind: SlateStoreKind,
+        registry: SlateTableRegistry
+    ) throws -> SlateStoreOwner<Schema> {
         let model = try Schema.makeManagedObjectModel()
         let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
 
         do {
             try addStore(description: description, coordinator: coordinator)
         } catch {
-            guard storageMode == .local,
-                  storeKind == .cacheStore,
+            guard storeKind == .cacheStore,
                   description.type == NSSQLiteStoreType,
                   let url = description.url,
                   isLikelyIncompatibleStore(error)
@@ -620,7 +750,35 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
             registry: registry,
             coordinator: coordinator,
             writerContext: writerContext,
-            storageMode: storageMode
+            storageMode: .local
+        )
+    }
+
+    private static func openCloudKitMirroredOwner(
+        description: NSPersistentStoreDescription,
+        storageMode: SlateStorageMode,
+        registry: SlateTableRegistry
+    ) throws -> SlateStoreOwner<Schema> {
+        let buildResult = try SlateCloudKitContainer.build(
+            name: Schema.schemaIdentifier,
+            model: Schema.makeManagedObjectModel(),
+            sourceDescription: description,
+            mode: storageMode
+        )
+        let coordinator = buildResult.container.persistentStoreCoordinator
+
+        let writerContext = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+        writerContext.persistentStoreCoordinator = coordinator
+        writerContext.undoManager = nil
+        writerContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
+
+        return SlateStoreOwner(
+            registry: registry,
+            coordinator: coordinator,
+            cloudKitContainer: buildResult.container,
+            writerContext: writerContext,
+            storageMode: storageMode,
+            loadState: .loading
         )
     }
 

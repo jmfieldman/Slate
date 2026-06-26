@@ -24,19 +24,40 @@ public final class SlateStream<Value> where Value: SlateObject {
     public private(set) var error: Error?
 
     @ObservationIgnored
-    private let core: SlateStreamCore<Value>
+    private var core: SlateStreamCore<Value>?
 
     @ObservationIgnored
     private var asyncContinuations: [UUID: AsyncThrowingStream<[Value], Error>.Continuation] = [:]
 
-    init(core: SlateStreamCore<Value>) {
-        self.core = core
-        core.bindMain(self)
+    init(
+        loading: @escaping @Sendable () -> Bool,
+        coreBuilder: @escaping @Sendable () throws -> SlateStreamCore<Value>
+    ) {
+        Task { @MainActor [weak self] in
+            while loading() {
+                guard !Task.isCancelled, let self, state != .cancelled else { return }
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+
+            guard !Task.isCancelled, let self, state != .cancelled else { return }
+
+            do {
+                let core = try coreBuilder()
+                guard state != .cancelled else {
+                    core.cancel()
+                    return
+                }
+                self.core = core
+                core.bindMain(self)
+            } catch {
+                updateError(error)
+            }
+        }
     }
 
     public func cancel() {
         guard state != .cancelled else { return }
-        core.cancel()
+        core?.cancel()
         state = .cancelled
         finishAsyncStreams()
     }
@@ -113,7 +134,7 @@ public final class SlateStream<Value> where Value: SlateObject {
     }
 
     deinit {
-        core.cancel()
+        core?.cancel()
     }
 }
 
@@ -126,19 +147,40 @@ public final class SlateBackgroundStream<Value> where Value: SlateObject {
     public private(set) var error: Error?
 
     @ObservationIgnored
-    private let core: SlateStreamCore<Value>
+    private var core: SlateStreamCore<Value>?
 
     @ObservationIgnored
     private var asyncContinuations: [UUID: AsyncThrowingStream<[Value], Error>.Continuation] = [:]
 
-    nonisolated init(core: SlateStreamCore<Value>) {
-        self.core = core
-        core.bindBackground(self)
+    nonisolated init(
+        loading: @escaping @Sendable () -> Bool,
+        coreBuilder: @escaping @Sendable () throws -> SlateStreamCore<Value>
+    ) {
+        Task { @SlateStreamActor [weak self] in
+            while loading() {
+                guard !Task.isCancelled, let self, state != .cancelled else { return }
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+
+            guard !Task.isCancelled, let self, state != .cancelled else { return }
+
+            do {
+                let core = try coreBuilder()
+                guard state != .cancelled else {
+                    core.cancel()
+                    return
+                }
+                self.core = core
+                core.bindBackground(self)
+            } catch {
+                updateError(error)
+            }
+        }
     }
 
     public func cancel() {
         guard state != .cancelled else { return }
-        core.cancel()
+        core?.cancel()
         state = .cancelled
         finishAsyncStreams()
     }
@@ -215,7 +257,7 @@ public final class SlateBackgroundStream<Value> where Value: SlateObject {
     }
 
     deinit {
-        core.cancel()
+        core?.cancel()
     }
 }
 
