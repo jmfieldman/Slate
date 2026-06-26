@@ -1,9 +1,12 @@
 import CloudKit
 import CoreData
 import Foundation
+import Observation
 import SlateSchema
 import Testing
 @testable import Slate
+
+private let mirroringContainerIdentifierPrefix = "iCloud.com.example.SlateMirroring"
 
 @Suite(.serialized)
 struct SlateMirroringStateTests {
@@ -53,7 +56,10 @@ struct SlateMirroringStateTests {
         let slate = try makeCloudKitSlate(prefix: "SlateMirroringInitialAccountStatus")
         let provider = AccountStatusProviderProbe(statuses: [.available])
 
-        try SlateCloudKitContainer.withAccountStatusProviderOverride(provider.provider) {
+        try SlateCloudKitContainer.withAccountStatusProviderOverride(
+            matchingContainerIdentifierPrefix: mirroringContainerIdentifierPrefix,
+            provider.provider
+        ) {
             try configureWithSuccessfulCloudKitLoad(slate)
         }
         try await waitForAccountStatus(.available, on: slate)
@@ -69,7 +75,10 @@ struct SlateMirroringStateTests {
             SlateCloudKitContainer.AccountStatusResult(status: nil, error: AccountStatusProbeError()),
         ])
 
-        try SlateCloudKitContainer.withAccountStatusProviderOverride(provider.provider) {
+        try SlateCloudKitContainer.withAccountStatusProviderOverride(
+            matchingContainerIdentifierPrefix: mirroringContainerIdentifierPrefix,
+            provider.provider
+        ) {
             try configureWithSuccessfulCloudKitLoad(slate)
         }
         try await waitForAccountStatus(.couldNotDetermine, on: slate)
@@ -83,7 +92,10 @@ struct SlateMirroringStateTests {
         let slate = try makeCloudKitSlate(prefix: "SlateMirroringAccountChange")
         let provider = AccountStatusProviderProbe(statuses: [.available, .restricted])
 
-        try SlateCloudKitContainer.withAccountStatusProviderOverride(provider.provider) {
+        try SlateCloudKitContainer.withAccountStatusProviderOverride(
+            matchingContainerIdentifierPrefix: mirroringContainerIdentifierPrefix,
+            provider.provider
+        ) {
             try configureWithSuccessfulCloudKitLoad(slate)
             NotificationCenter.default.post(name: Notification.Name.CKAccountChanged, object: nil)
         }
@@ -98,7 +110,10 @@ struct SlateMirroringStateTests {
         let slate = try makeCloudKitSlate(prefix: "SlateMirroringAccountStatusOrdering")
         let provider = DeferredAccountStatusProviderProbe()
 
-        try SlateCloudKitContainer.withAccountStatusProviderOverride(provider.provider) {
+        try SlateCloudKitContainer.withAccountStatusProviderOverride(
+            matchingContainerIdentifierPrefix: mirroringContainerIdentifierPrefix,
+            provider.provider
+        ) {
             try configureWithSuccessfulCloudKitLoad(slate)
             NotificationCenter.default.post(name: Notification.Name.CKAccountChanged, object: nil)
         }
@@ -126,7 +141,10 @@ struct SlateMirroringStateTests {
         var slate: Slate<TestCloudKitRuntimeSchema>? = try makeCloudKitSlate(prefix: "SlateMirroringAccountStatusDeinit")
         let provider = AccountStatusProviderProbe(statuses: [.available, .restricted])
 
-        try SlateCloudKitContainer.withAccountStatusProviderOverride(provider.provider) {
+        try SlateCloudKitContainer.withAccountStatusProviderOverride(
+            matchingContainerIdentifierPrefix: mirroringContainerIdentifierPrefix,
+            provider.provider
+        ) {
             try configureWithSuccessfulCloudKitLoad(try #require(slate))
             #expect(provider.callCount == 1)
 
@@ -142,7 +160,10 @@ struct SlateMirroringStateTests {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
         let provider = AccountStatusProviderProbe(statuses: [.available])
 
-        try SlateCloudKitContainer.withAccountStatusProviderOverride(provider.provider) {
+        try SlateCloudKitContainer.withAccountStatusProviderOverride(
+            matchingContainerIdentifierPrefix: mirroringContainerIdentifierPrefix,
+            provider.provider
+        ) {
             try slate.configure()
         }
 
@@ -156,7 +177,10 @@ struct SlateMirroringStateTests {
         let slate = try makeCloudKitSlate(prefix: "SlateMirroringImportBegin")
         let events = CloudKitEventObserverProbe()
 
-        try SlateCloudKitContainer.withEventObserverInstallerOverride(events.installer) {
+        try SlateCloudKitContainer.withEventObserverInstallerOverride(
+            matchingContainerIdentifierPrefix: mirroringContainerIdentifierPrefix,
+            events.installer
+        ) {
             try configureWithSuccessfulCloudKitLoad(slate)
         }
 
@@ -174,7 +198,10 @@ struct SlateMirroringStateTests {
         let firstID = UUID()
         let secondID = UUID()
 
-        try SlateCloudKitContainer.withEventObserverInstallerOverride(events.installer) {
+        try SlateCloudKitContainer.withEventObserverInstallerOverride(
+            matchingContainerIdentifierPrefix: mirroringContainerIdentifierPrefix,
+            events.installer
+        ) {
             try configureWithSuccessfulCloudKitLoad(slate)
         }
 
@@ -199,7 +226,10 @@ struct SlateMirroringStateTests {
         let importID = UUID()
         let error = ImportEventProbeError()
 
-        try SlateCloudKitContainer.withEventObserverInstallerOverride(events.installer) {
+        try SlateCloudKitContainer.withEventObserverInstallerOverride(
+            matchingContainerIdentifierPrefix: mirroringContainerIdentifierPrefix,
+            events.installer
+        ) {
             try configureWithSuccessfulCloudKitLoad(slate)
         }
 
@@ -221,7 +251,10 @@ struct SlateMirroringStateTests {
         let successfulID = UUID()
         let error = ImportEventProbeError()
 
-        try SlateCloudKitContainer.withEventObserverInstallerOverride(events.installer) {
+        try SlateCloudKitContainer.withEventObserverInstallerOverride(
+            matchingContainerIdentifierPrefix: mirroringContainerIdentifierPrefix,
+            events.installer
+        ) {
             try configureWithSuccessfulCloudKitLoad(slate)
         }
 
@@ -244,11 +277,17 @@ struct SlateMirroringStateTests {
         let slate = try makeCloudKitSlate(prefix: "SlateMirroringImportDuringLoad")
         let events = CloudKitEventObserverProbe()
 
-        try SlateCloudKitContainer.withEventObserverInstallerOverride(events.installer) {
-            try SlateCloudKitContainer.withLoadPersistentStoresOverride({ _, completion in
-                events.post(importEvent(endDate: nil))
-                completion(nil)
-            }) {
+        try SlateCloudKitContainer.withEventObserverInstallerOverride(
+            matchingContainerIdentifierPrefix: mirroringContainerIdentifierPrefix,
+            events.installer
+        ) {
+            try SlateCloudKitContainer.withLoadPersistentStoresOverride(
+                matchingContainerIdentifierPrefix: mirroringContainerIdentifierPrefix,
+                { _, completion in
+                    events.post(importEvent(endDate: nil))
+                    completion(nil)
+                }
+            ) {
                 try slate.configure()
             }
         }
@@ -262,7 +301,10 @@ struct SlateMirroringStateTests {
         let slate = try makeCloudKitSlate(prefix: "SlateMirroringIgnoredEvents")
         let events = CloudKitEventObserverProbe()
 
-        try SlateCloudKitContainer.withEventObserverInstallerOverride(events.installer) {
+        try SlateCloudKitContainer.withEventObserverInstallerOverride(
+            matchingContainerIdentifierPrefix: mirroringContainerIdentifierPrefix,
+            events.installer
+        ) {
             try configureWithSuccessfulCloudKitLoad(slate)
         }
 
@@ -280,7 +322,10 @@ struct SlateMirroringStateTests {
         var slate: Slate<TestCloudKitRuntimeSchema>? = try makeCloudKitSlate(prefix: "SlateMirroringImportDeinit")
         let events = CloudKitEventObserverProbe()
 
-        try SlateCloudKitContainer.withEventObserverInstallerOverride(events.installer) {
+        try SlateCloudKitContainer.withEventObserverInstallerOverride(
+            matchingContainerIdentifierPrefix: mirroringContainerIdentifierPrefix,
+            events.installer
+        ) {
             try configureWithSuccessfulCloudKitLoad(try #require(slate))
             #expect(events.registrationCount == 1)
             #expect(events.activeHandlerCount == 1)
@@ -308,6 +353,113 @@ struct SlateMirroringStateTests {
 
         await slate.close()
     }
+
+    @Test
+    func observingPublicAccountStatusInvalidatesWhenAccountStatusChanges() async throws {
+        let slate = try makeCloudKitSlate(prefix: "SlateMirroringObserveAccountStatus")
+        let provider = AccountStatusProviderProbe(statuses: [.available, .restricted])
+
+        try SlateCloudKitContainer.withAccountStatusProviderOverride(
+            matchingContainerIdentifierPrefix: mirroringContainerIdentifierPrefix,
+            provider.provider
+        ) {
+            try configureWithSuccessfulCloudKitLoad(slate)
+        }
+        try await waitForAccountStatus(.available, on: slate)
+
+        let observation = ObservationProbe()
+        withObservationTracking {
+            _ = slate.accountStatus
+        } onChange: {
+            observation.recordChange()
+        }
+
+        SlateCloudKitContainer.withAccountStatusProviderOverride(
+            matchingContainerIdentifierPrefix: mirroringContainerIdentifierPrefix,
+            provider.provider
+        ) {
+            NotificationCenter.default.post(name: Notification.Name.CKAccountChanged, object: nil)
+        }
+        try await observation.waitForChange()
+        try await waitForAccountStatus(.restricted, on: slate)
+
+        #expect(provider.callCount == 2)
+        await slate.close()
+    }
+
+    @Test
+    func observingPublicImportingInvalidatesWhenImportStateChanges() async throws {
+        let slate = try makeCloudKitSlate(prefix: "SlateMirroringObserveImporting")
+        let events = CloudKitEventObserverProbe()
+
+        try SlateCloudKitContainer.withEventObserverInstallerOverride(
+            matchingContainerIdentifierPrefix: mirroringContainerIdentifierPrefix,
+            events.installer
+        ) {
+            try configureWithSuccessfulCloudKitLoad(slate)
+        }
+
+        let observation = ObservationProbe()
+        withObservationTracking {
+            _ = slate.isImporting
+        } onChange: {
+            observation.recordChange()
+        }
+
+        events.post(importEvent(endDate: nil))
+        try await observation.waitForChange()
+        try await waitForImporting(true, on: slate)
+
+        await slate.close()
+    }
+
+    @Test
+    func observingPublicLastImportErrorInvalidatesWhenImportErrorChanges() async throws {
+        let slate = try makeCloudKitSlate(prefix: "SlateMirroringObserveImportError")
+        let events = CloudKitEventObserverProbe()
+        let error = ImportEventProbeError()
+
+        try SlateCloudKitContainer.withEventObserverInstallerOverride(
+            matchingContainerIdentifierPrefix: mirroringContainerIdentifierPrefix,
+            events.installer
+        ) {
+            try configureWithSuccessfulCloudKitLoad(slate)
+        }
+
+        let observation = ObservationProbe()
+        withObservationTracking {
+            _ = slate.lastImportError
+        } onChange: {
+            observation.recordChange()
+        }
+
+        events.post(importEvent(endDate: Date(), error: error))
+        try await observation.waitForChange()
+        try await waitForLastImportError(error, on: slate)
+
+        await slate.close()
+    }
+
+    @Test
+    func observingPublicMergingInvalidatesWhenMergeStateChanges() async throws {
+        let slate = try makeCloudKitSlate(prefix: "SlateMirroringObserveMerging")
+
+        try configureWithSuccessfulCloudKitLoad(slate)
+        let owner = try slateStoreOwner(for: slate)
+
+        let observation = ObservationProbe()
+        withObservationTracking {
+            _ = slate.isMerging
+        } onChange: {
+            observation.recordChange()
+        }
+
+        owner.setIsMerging(true)
+        try await observation.waitForChange()
+        try await waitForMerging(true, on: slate)
+
+        await slate.close()
+    }
 }
 
 private func makeCloudKitSlate(prefix: String) throws -> Slate<TestCloudKitRuntimeSchema> {
@@ -322,14 +474,17 @@ private func makeCloudKitSlate(prefix: String) throws -> Slate<TestCloudKitRunti
     return Slate<TestCloudKitRuntimeSchema>(
         storeURL: directory.appendingPathComponent("Test.sqlite"),
         storeType: NSSQLiteStoreType,
-        storageMode: .cloudKitMirrored(containerIdentifier: "iCloud.com.example")
+        storageMode: .cloudKitMirrored(containerIdentifier: "\(mirroringContainerIdentifierPrefix).\(prefix)")
     )
 }
 
 private func configureWithSuccessfulCloudKitLoad<Schema: SlateSchema>(_ slate: Slate<Schema>) throws {
-    try SlateCloudKitContainer.withLoadPersistentStoresOverride({ _, completion in
-        completion(nil)
-    }) {
+    try SlateCloudKitContainer.withLoadPersistentStoresOverride(
+        matchingContainerIdentifierPrefix: mirroringContainerIdentifierPrefix,
+        { _, completion in
+            completion(nil)
+        }
+    ) {
         try slate.configure()
     }
 }
@@ -462,7 +617,11 @@ private final class AccountStatusProviderProbe: @unchecked Sendable {
         containerIdentifier: String,
         completion: @escaping @Sendable (SlateCloudKitContainer.AccountStatusResult) -> Void
     ) {
-        _ = containerIdentifier
+        guard containerIdentifier.hasPrefix("iCloud.com.example.SlateMirroring") else {
+            completion(SlateCloudKitContainer.AccountStatusResult(status: .couldNotDetermine, error: nil))
+            return
+        }
+
         let result: SlateCloudKitContainer.AccountStatusResult
         lock.lock()
         storedCallCount += 1
@@ -495,7 +654,11 @@ private final class DeferredAccountStatusProviderProbe: @unchecked Sendable {
         containerIdentifier: String,
         completion: @escaping @Sendable (SlateCloudKitContainer.AccountStatusResult) -> Void
     ) {
-        _ = containerIdentifier
+        guard containerIdentifier.hasPrefix("iCloud.com.example.SlateMirroring") else {
+            completion(SlateCloudKitContainer.AccountStatusResult(status: .couldNotDetermine, error: nil))
+            return
+        }
+
         lock.lock()
         completions.append(completion)
         lock.unlock()
@@ -556,5 +719,32 @@ private final class CloudKitEventObserverProbe: @unchecked Sendable {
         for handler in capturedHandlers {
             handler(event)
         }
+    }
+}
+
+private final class ObservationProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var changeCount = 0
+
+    private var didChange: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return changeCount > 0
+    }
+
+    func recordChange() {
+        lock.lock()
+        changeCount += 1
+        lock.unlock()
+    }
+
+    func waitForChange() async throws {
+        for _ in 0..<40 {
+            if didChange {
+                return
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        Issue.record("Timed out waiting for Observation invalidation")
     }
 }

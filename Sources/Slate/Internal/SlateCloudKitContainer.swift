@@ -17,17 +17,32 @@ enum SlateCloudKitContainer {
 
     private final class LoadOverrideBox: @unchecked Sendable {
         let lock = NSLock()
-        var override: LoadPersistentStoresOverride?
+        var overrides: [UUID: ScopedLoadPersistentStoresOverride] = [:]
     }
 
     private final class AccountStatusProviderBox: @unchecked Sendable {
         let lock = NSLock()
-        var provider: AccountStatusProvider?
+        var providers: [UUID: ScopedAccountStatusProvider] = [:]
     }
 
     private final class EventObserverInstallerBox: @unchecked Sendable {
         let lock = NSLock()
-        var installer: EventObserverInstaller?
+        var installers: [UUID: ScopedEventObserverInstaller] = [:]
+    }
+
+    private struct ScopedLoadPersistentStoresOverride {
+        let matches: @Sendable (NSPersistentCloudKitContainer) -> Bool
+        let override: LoadPersistentStoresOverride
+    }
+
+    private struct ScopedAccountStatusProvider {
+        let matches: @Sendable (String) -> Bool
+        let provider: AccountStatusProvider
+    }
+
+    private struct ScopedEventObserverInstaller {
+        let matches: @Sendable (NSPersistentCloudKitContainer) -> Bool
+        let installer: EventObserverInstaller
     }
 
     private final class NotificationObserverBox: @unchecked Sendable {
@@ -151,7 +166,7 @@ enum SlateCloudKitContainer {
         completion: @escaping (Error?) -> Void
     ) {
         loadOverrideBox.lock.lock()
-        let override = loadOverrideBox.override
+        let override = loadOverrideBox.overrides.values.first { $0.matches(container) }?.override
         loadOverrideBox.lock.unlock()
 
         if let override {
@@ -170,7 +185,8 @@ enum SlateCloudKitContainer {
         completion: @escaping @Sendable (AccountStatusResult) -> Void
     ) {
         accountStatusProviderBox.lock.lock()
-        let provider = accountStatusProviderBox.provider
+        let provider = accountStatusProviderBox.providers.values
+            .first { $0.matches(containerIdentifier) }?.provider
         accountStatusProviderBox.lock.unlock()
 
         if let provider {
@@ -193,7 +209,8 @@ enum SlateCloudKitContainer {
         handler: @escaping @Sendable (EventSnapshot) -> Void
     ) -> EventObserverToken {
         eventObserverInstallerBox.lock.lock()
-        let installer = eventObserverInstallerBox.installer
+        let installer = eventObserverInstallerBox.installers.values
+            .first { $0.matches(container) }?.installer
         eventObserverInstallerBox.lock.unlock()
 
         if let installer {
@@ -221,7 +238,7 @@ enum SlateCloudKitContainer {
 
     private static var shouldUseLiveAccountContainer: Bool {
         accountStatusProviderBox.lock.lock()
-        let hasProvider = accountStatusProviderBox.provider != nil
+        let hasProvider = !accountStatusProviderBox.providers.isEmpty
         accountStatusProviderBox.lock.unlock()
         if hasProvider {
             return false
@@ -248,12 +265,52 @@ enum SlateCloudKitContainer {
         _ override: @escaping LoadPersistentStoresOverride,
         _ body: () throws -> T
     ) rethrows -> T {
+        try withLoadPersistentStoresOverride(matching: { _ in true }, override, body)
+    }
+
+    static func withLoadPersistentStoresOverride<T>(
+        matchingContainerIdentifier containerIdentifier: String,
+        _ override: @escaping LoadPersistentStoresOverride,
+        _ body: () throws -> T
+    ) rethrows -> T {
+        try withLoadPersistentStoresOverride(
+            matching: { container in
+                self.containerIdentifier(for: container) == containerIdentifier
+            },
+            override,
+            body
+        )
+    }
+
+    static func withLoadPersistentStoresOverride<T>(
+        matchingContainerIdentifierPrefix prefix: String,
+        _ override: @escaping LoadPersistentStoresOverride,
+        _ body: () throws -> T
+    ) rethrows -> T {
+        try withLoadPersistentStoresOverride(
+            matching: { container in
+                self.containerIdentifier(for: container)?.hasPrefix(prefix) == true
+            },
+            override,
+            body
+        )
+    }
+
+    private static func withLoadPersistentStoresOverride<T>(
+        matching matches: @escaping @Sendable (NSPersistentCloudKitContainer) -> Bool,
+        _ override: @escaping LoadPersistentStoresOverride,
+        _ body: () throws -> T
+    ) rethrows -> T {
+        let id = UUID()
         loadOverrideBox.lock.lock()
-        loadOverrideBox.override = override
+        loadOverrideBox.overrides[id] = ScopedLoadPersistentStoresOverride(
+            matches: matches,
+            override: override
+        )
         loadOverrideBox.lock.unlock()
         defer {
             loadOverrideBox.lock.lock()
-            loadOverrideBox.override = nil
+            loadOverrideBox.overrides.removeValue(forKey: id)
             loadOverrideBox.lock.unlock()
         }
         return try body()
@@ -263,12 +320,36 @@ enum SlateCloudKitContainer {
         _ provider: @escaping AccountStatusProvider,
         _ body: () throws -> T
     ) rethrows -> T {
+        try withAccountStatusProviderOverride(matching: { _ in true }, provider, body)
+    }
+
+    static func withAccountStatusProviderOverride<T>(
+        matchingContainerIdentifierPrefix prefix: String,
+        _ provider: @escaping AccountStatusProvider,
+        _ body: () throws -> T
+    ) rethrows -> T {
+        try withAccountStatusProviderOverride(
+            matching: { $0.hasPrefix(prefix) },
+            provider,
+            body
+        )
+    }
+
+    private static func withAccountStatusProviderOverride<T>(
+        matching matches: @escaping @Sendable (String) -> Bool,
+        _ provider: @escaping AccountStatusProvider,
+        _ body: () throws -> T
+    ) rethrows -> T {
+        let id = UUID()
         accountStatusProviderBox.lock.lock()
-        accountStatusProviderBox.provider = provider
+        accountStatusProviderBox.providers[id] = ScopedAccountStatusProvider(
+            matches: matches,
+            provider: provider
+        )
         accountStatusProviderBox.lock.unlock()
         defer {
             accountStatusProviderBox.lock.lock()
-            accountStatusProviderBox.provider = nil
+            accountStatusProviderBox.providers.removeValue(forKey: id)
             accountStatusProviderBox.lock.unlock()
         }
         return try body()
@@ -278,15 +359,45 @@ enum SlateCloudKitContainer {
         _ installer: @escaping EventObserverInstaller,
         _ body: () throws -> T
     ) rethrows -> T {
+        try withEventObserverInstallerOverride(matching: { _ in true }, installer, body)
+    }
+
+    static func withEventObserverInstallerOverride<T>(
+        matchingContainerIdentifierPrefix prefix: String,
+        _ installer: @escaping EventObserverInstaller,
+        _ body: () throws -> T
+    ) rethrows -> T {
+        try withEventObserverInstallerOverride(
+            matching: { container in
+                self.containerIdentifier(for: container)?.hasPrefix(prefix) == true
+            },
+            installer,
+            body
+        )
+    }
+
+    private static func withEventObserverInstallerOverride<T>(
+        matching matches: @escaping @Sendable (NSPersistentCloudKitContainer) -> Bool,
+        _ installer: @escaping EventObserverInstaller,
+        _ body: () throws -> T
+    ) rethrows -> T {
+        let id = UUID()
         eventObserverInstallerBox.lock.lock()
-        eventObserverInstallerBox.installer = installer
+        eventObserverInstallerBox.installers[id] = ScopedEventObserverInstaller(
+            matches: matches,
+            installer: installer
+        )
         eventObserverInstallerBox.lock.unlock()
         defer {
             eventObserverInstallerBox.lock.lock()
-            eventObserverInstallerBox.installer = nil
+            eventObserverInstallerBox.installers.removeValue(forKey: id)
             eventObserverInstallerBox.lock.unlock()
         }
         return try body()
+    }
+
+    private static func containerIdentifier(for container: NSPersistentCloudKitContainer) -> String? {
+        container.persistentStoreDescriptions.first?.cloudKitContainerOptions?.containerIdentifier
     }
 
 }
