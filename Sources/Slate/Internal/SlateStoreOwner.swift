@@ -41,6 +41,7 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     private let accountStatusLock = NSLock()
     private var accountStatusSinks: [UUID: AccountStatusSink] = [:]
     private var accountStatusObserver: NSObjectProtocol?
+    private var accountStatusRefreshGeneration = 0
 
     init(
         id: UUID = UUID(),
@@ -299,6 +300,8 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
 
         accountStatusLock.lock()
         let hasSinks = !accountStatusSinks.isEmpty
+        accountStatusRefreshGeneration += 1
+        let generation = accountStatusRefreshGeneration
         accountStatusLock.unlock()
         guard hasSinks else {
             return
@@ -314,12 +317,16 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
             } else {
                 status = .couldNotDetermine
             }
-            self?.notifyAccountStatusSinks(status)
+            self?.notifyAccountStatusSinks(status, generation: generation)
         }
     }
 
-    private func notifyAccountStatusSinks(_ status: SlateAccountStatus) {
+    private func notifyAccountStatusSinks(_ status: SlateAccountStatus, generation: Int) {
         accountStatusLock.lock()
+        guard generation == accountStatusRefreshGeneration else {
+            accountStatusLock.unlock()
+            return
+        }
         let sinks = Array(accountStatusSinks.values)
         accountStatusLock.unlock()
 

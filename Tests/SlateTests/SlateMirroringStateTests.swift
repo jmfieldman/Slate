@@ -63,6 +63,22 @@ struct SlateMirroringStateTests {
     }
 
     @Test
+    func cloudKitAccountStatusErrorPublishesCouldNotDetermine() async throws {
+        let slate = try makeCloudKitSlate(prefix: "SlateMirroringAccountStatusError")
+        let provider = AccountStatusProviderProbe(results: [
+            SlateCloudKitContainer.AccountStatusResult(status: nil, error: AccountStatusProbeError()),
+        ])
+
+        try SlateCloudKitContainer.withAccountStatusProviderOverride(provider.provider) {
+            try configureWithSuccessfulCloudKitLoad(slate)
+        }
+        try await waitForAccountStatus(.couldNotDetermine, on: slate)
+
+        #expect(provider.callCount == 1)
+        await slate.close()
+    }
+
+    @Test
     func accountChangeNotificationRequeriesAndPublishesNewStatus() async throws {
         let slate = try makeCloudKitSlate(prefix: "SlateMirroringAccountChange")
         let provider = AccountStatusProviderProbe(statuses: [.available, .restricted])
@@ -75,6 +91,50 @@ struct SlateMirroringStateTests {
 
         #expect(provider.callCount == 2)
         await slate.close()
+    }
+
+    @Test
+    func olderAccountStatusCompletionDoesNotOverwriteNewerRefresh() async throws {
+        let slate = try makeCloudKitSlate(prefix: "SlateMirroringAccountStatusOrdering")
+        let provider = DeferredAccountStatusProviderProbe()
+
+        try SlateCloudKitContainer.withAccountStatusProviderOverride(provider.provider) {
+            try configureWithSuccessfulCloudKitLoad(slate)
+            NotificationCenter.default.post(name: Notification.Name.CKAccountChanged, object: nil)
+        }
+        try await waitForPendingAccountStatusRequests(2, provider: provider)
+
+        provider.completeRequest(
+            at: 1,
+            with: SlateCloudKitContainer.AccountStatusResult(status: .restricted, error: nil)
+        )
+        try await waitForAccountStatus(.restricted, on: slate)
+
+        provider.completeRequest(
+            at: 0,
+            with: SlateCloudKitContainer.AccountStatusResult(status: .available, error: nil)
+        )
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(slate.accountStatus == .restricted)
+        #expect(provider.callCount == 2)
+        await slate.close()
+    }
+
+    @Test
+    func releasingCloudKitSlateUnregistersAccountStatusSink() throws {
+        var slate: Slate<TestCloudKitRuntimeSchema>? = try makeCloudKitSlate(prefix: "SlateMirroringAccountStatusDeinit")
+        let provider = AccountStatusProviderProbe(statuses: [.available, .restricted])
+
+        try SlateCloudKitContainer.withAccountStatusProviderOverride(provider.provider) {
+            try configureWithSuccessfulCloudKitLoad(try #require(slate))
+            #expect(provider.callCount == 1)
+
+            slate = nil
+            NotificationCenter.default.post(name: Notification.Name.CKAccountChanged, object: nil)
+        }
+
+        #expect(provider.callCount == 1)
     }
 
     @Test
@@ -129,13 +189,36 @@ private func waitForAccountStatus<Schema: SlateSchema>(
     Issue.record("Timed out waiting for account status \(expectedStatus); current value \(slate.accountStatus)")
 }
 
+private func waitForPendingAccountStatusRequests(
+    _ expectedCount: Int,
+    provider: DeferredAccountStatusProviderProbe
+) async throws {
+    for _ in 0..<40 {
+        if provider.pendingRequestCount >= expectedCount {
+            return
+        }
+        try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    Issue.record(
+        "Timed out waiting for \(expectedCount) pending account-status requests; current count \(provider.pendingRequestCount)"
+    )
+}
+
+private struct AccountStatusProbeError: Error {}
+
 private final class AccountStatusProviderProbe: @unchecked Sendable {
     private let lock = NSLock()
-    private var statuses: [CKAccountStatus]
+    private var results: [SlateCloudKitContainer.AccountStatusResult]
     private var storedCallCount = 0
 
     init(statuses: [CKAccountStatus]) {
-        self.statuses = statuses
+        self.results = statuses.map {
+            SlateCloudKitContainer.AccountStatusResult(status: $0, error: nil)
+        }
+    }
+
+    init(results: [SlateCloudKitContainer.AccountStatusResult]) {
+        self.results = results
     }
 
     var callCount: Int {
@@ -149,16 +232,52 @@ private final class AccountStatusProviderProbe: @unchecked Sendable {
         completion: @escaping @Sendable (SlateCloudKitContainer.AccountStatusResult) -> Void
     ) {
         _ = containerIdentifier
-        let status: CKAccountStatus
+        let result: SlateCloudKitContainer.AccountStatusResult
         lock.lock()
         storedCallCount += 1
-        if statuses.isEmpty {
-            status = .couldNotDetermine
+        if results.isEmpty {
+            result = SlateCloudKitContainer.AccountStatusResult(status: .couldNotDetermine, error: nil)
         } else {
-            status = statuses.removeFirst()
+            result = results.removeFirst()
         }
         lock.unlock()
 
-        completion(SlateCloudKitContainer.AccountStatusResult(status: status, error: nil))
+        completion(result)
+    }
+}
+
+private final class DeferredAccountStatusProviderProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var completions: [@Sendable (SlateCloudKitContainer.AccountStatusResult) -> Void] = []
+
+    var callCount: Int {
+        pendingRequestCount
+    }
+
+    var pendingRequestCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return completions.count
+    }
+
+    func provider(
+        containerIdentifier: String,
+        completion: @escaping @Sendable (SlateCloudKitContainer.AccountStatusResult) -> Void
+    ) {
+        _ = containerIdentifier
+        lock.lock()
+        completions.append(completion)
+        lock.unlock()
+    }
+
+    func completeRequest(
+        at index: Int,
+        with result: SlateCloudKitContainer.AccountStatusResult
+    ) {
+        lock.lock()
+        let completion = completions[index]
+        lock.unlock()
+
+        completion(result)
     }
 }

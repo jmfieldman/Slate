@@ -114,6 +114,13 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         }
     }
 
+    deinit {
+        let closedState = markClosed()
+        if let sinkID = closedState.accountStatusSinkID {
+            closedState.owner?.unregisterAccountStatusSink(sinkID)
+        }
+    }
+
     private func checkOpen() throws {
         if isClosed() { throw SlateError.closed }
     }
