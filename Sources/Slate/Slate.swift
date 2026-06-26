@@ -2,6 +2,14 @@
 import Foundation
 import SlateSchema
 
+private struct UncheckedRelationshipKeyPaths<Root>: @unchecked Sendable {
+    let value: [PartialKeyPath<Root>]
+
+    init(_ value: [PartialKeyPath<Root>]) {
+        self.value = value
+    }
+}
+
 public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
     private let persistentStoreDescription: NSPersistentStoreDescription
     private let storeKind: SlateStoreKind
@@ -451,15 +459,20 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
     ) -> SlateStream<Value> where
         Value: SlateObject & SlateKeypathAttributeProviding & SlateKeypathRelationshipProviding
     {
-        let core = makeStreamCore(
-            type: type,
-            predicate: predicate,
-            sort: sort,
-            limit: limit,
-            offset: offset,
-            relationships: relationships
+        let relationshipKeyPaths = UncheckedRelationshipKeyPaths<Value>(relationships)
+        return SlateStream(
+            loading: { self.isOwnerLoadingForStreams() },
+            coreBuilder: {
+                try self.makeStreamCore(
+                    type: type,
+                    predicate: predicate,
+                    sort: sort,
+                    limit: limit,
+                    offset: offset,
+                    relationships: relationshipKeyPaths.value
+                )
+            }
         )
-        return SlateStream(core: core)
     }
 
     /// Ascending-only key-path overload of `stream(...)`.
@@ -494,15 +507,20 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
     ) -> SlateBackgroundStream<Value> where
         Value: SlateObject & SlateKeypathAttributeProviding & SlateKeypathRelationshipProviding
     {
-        let core = makeStreamCore(
-            type: type,
-            predicate: predicate,
-            sort: sort,
-            limit: limit,
-            offset: offset,
-            relationships: relationships
+        let relationshipKeyPaths = UncheckedRelationshipKeyPaths<Value>(relationships)
+        return SlateBackgroundStream(
+            loading: { self.isOwnerLoadingForStreams() },
+            coreBuilder: {
+                try self.makeStreamCore(
+                    type: type,
+                    predicate: predicate,
+                    sort: sort,
+                    limit: limit,
+                    offset: offset,
+                    relationships: relationshipKeyPaths.value
+                )
+            }
         )
-        return SlateBackgroundStream(core: core)
     }
 
     /// Ascending-only key-path overload of `streamBackground(...)`.
@@ -533,14 +551,22 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         limit: Int?,
         offset: Int?,
         relationships: [PartialKeyPath<Value>]
-    ) -> SlateStreamCore<Value> where
+    ) throws -> SlateStreamCore<Value> where
         Value: SlateObject & SlateKeypathAttributeProviding & SlateKeypathRelationshipProviding
     {
-        guard let owner else {
-            preconditionFailure("Slate.stream(...) requires configure() to have completed before stream creation.")
+        let owner = try ownerForStreamCore()
+        recordOwnerLoadState(owner.loadState, for: owner)
+        switch owner.loadState {
+        case .loaded:
+            break
+        case .failed(let error):
+            throw error.slateError
+        case .loading:
+            throw SlateError.coreData("Stream core requested before persistent stores finished loading")
         }
+
         guard let table = owner.registry.table(for: type) else {
-            preconditionFailure("Slate.stream(...): no table registered for \(type).")
+            throw SlateError.missingTable(String(describing: type))
         }
 
         let relationshipNames = Set(relationships.map { Value.keypathToRelationship($0) })
@@ -616,6 +642,36 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
                 try await Task.sleep(nanoseconds: 50_000_000)
             }
         }
+    }
+
+    private func isOwnerLoadingForStreams() -> Bool {
+        stateLock.lock()
+        let isClosed = closed
+        let currentOwner = owner
+        stateLock.unlock()
+
+        guard !isClosed, let currentOwner else {
+            return false
+        }
+
+        let loadState = currentOwner.loadState
+        recordOwnerLoadState(loadState, for: currentOwner)
+        switch loadState {
+        case .loading:
+            return true
+        case .loaded, .failed:
+            return false
+        }
+    }
+
+    private func ownerForStreamCore() throws -> SlateStoreOwner<Schema> {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        if closed { throw SlateError.closed }
+        guard let owner else {
+            throw SlateError.notConfigured
+        }
+        return owner
     }
 
     private func storeIdentity() throws -> SlateStoreIdentity {
