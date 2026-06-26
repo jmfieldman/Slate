@@ -279,6 +279,19 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         return owner
     }
 
+    func makeSharingFacade() throws -> SlateSharing {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        if closed { throw SlateError.closed }
+        guard case .cloudKitShared = storageMode else {
+            throw SlateError.sharingUnavailable(mode: storageMode)
+        }
+        guard let owner else {
+            throw SlateError.notConfigured
+        }
+        return SlateSharing(owner: owner)
+    }
+
     @discardableResult
     public func query<Output: Sendable>(
         _ block: @Sendable @escaping (SlateQueryContext<Schema>) throws -> Output
@@ -820,14 +833,12 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
                 storeKind: storeKind,
                 registry: registry
             )
-        case .cloudKitMirrored:
-            return try openCloudKitMirroredOwner(
+        case .cloudKitMirrored, .cloudKitShared:
+            return try openCloudKitOwner(
                 description: description,
                 storageMode: storageMode,
                 registry: registry
             )
-        case .cloudKitShared:
-            throw SlateError.sharingUnavailable(mode: storageMode)
         }
     }
 
@@ -867,7 +878,7 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         )
     }
 
-    private static func openCloudKitMirroredOwner(
+    private static func openCloudKitOwner(
         description: NSPersistentStoreDescription,
         storageMode: SlateStorageMode,
         registry: SlateTableRegistry
@@ -895,11 +906,12 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
             storageMode: storageMode,
             loadState: .loading
         )
-        if let storeURL = buildResult.storeDescription.url {
+        let storeURLs = buildResult.storeDescriptions.compactMap(\.url)
+        if !storeURLs.isEmpty {
             owner.installRemoteChangeIngestor(
                 SlateRemoteChangeIngestor<Schema>(
                     owner: owner,
-                    tokenStore: SlateHistoryTokenStore(storeURL: storeURL)
+                    storeURLs: storeURLs
                 )
             )
         }

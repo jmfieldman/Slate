@@ -727,8 +727,8 @@ struct SlateRuntimeTests {
     }
 
     @Test
-    func configureRejectsFreshCloudKitSharedMode() throws {
-        let directory = try temporaryDirectory(prefix: "SlateCloudKitSharedUnavailable")
+    func configureAllowsFreshCloudKitSharedMode() throws {
+        let directory = try temporaryDirectory(prefix: "SlateCloudKitSharedOwner")
         defer {
             try? FileManager.default.removeItem(at: directory)
         }
@@ -740,9 +740,13 @@ struct SlateRuntimeTests {
             storageMode: mode
         )
 
-        #expect(throws: SlateError.sharingUnavailable(mode: mode)) {
-            try slate.configure()
-        }
+        try configureWithSuccessfulCloudKitLoad(slate)
+
+        let owner = try slateStoreOwner(for: slate)
+        let container = try #require(owner.cloudKitContainer)
+        #expect(owner.storageMode == mode)
+        #expect(owner.coordinator === container.persistentStoreCoordinator)
+        #expect(container.persistentStoreDescriptions.count == 2)
     }
 
     @Test
@@ -793,7 +797,6 @@ struct SlateRuntimeTests {
         inMemoryDescription.type = NSInMemoryStoreType
 
         let mirroredMode = SlateStorageMode.cloudKitMirrored(containerIdentifier: "iCloud.com.example")
-        let sharedMode = SlateStorageMode.cloudKitShared(containerIdentifier: "iCloud.com.example")
         let model = try TestCloudKitRuntimeSchema.makeManagedObjectModel()
 
         #expect(throws: SlateError.cloudKitUnavailable(mode: mirroredMode)) {
@@ -802,14 +805,6 @@ struct SlateRuntimeTests {
                 model: model,
                 sourceDescription: inMemoryDescription,
                 mode: mirroredMode
-            )
-        }
-        #expect(throws: SlateError.sharingUnavailable(mode: sharedMode)) {
-            try SlateCloudKitContainer.build(
-                name: TestCloudKitRuntimeSchema.schemaIdentifier,
-                model: model,
-                sourceDescription: sqliteDescription,
-                mode: sharedMode
             )
         }
         #expect(throws: SlateError.cloudKitUnavailable(mode: .local)) {
@@ -1997,8 +1992,10 @@ private func configureWithSuccessfulCloudKitLoad<Schema: SlateSchema>(_ slate: S
     let containerIdentifier = try cloudKitContainerIdentifier(for: slate)
     try SlateCloudKitContainer.withLoadPersistentStoresOverride(
         matchingContainerIdentifier: containerIdentifier,
-        { _, completion in
-            completion(nil)
+        { container, completion in
+            for _ in container.persistentStoreDescriptions {
+                completion(nil)
+            }
         }
     ) {
         try slate.configure()
@@ -2024,8 +2021,13 @@ private func configureWithPausedCloudKitLoad<Schema: SlateSchema>(
 private func cloudKitContainerIdentifier<Schema: SlateSchema>(for slate: Slate<Schema>) throws -> String {
     let mirror = Mirror(reflecting: slate)
     for child in mirror.children where child.label == "storageMode" {
-        if case .cloudKitMirrored(let containerIdentifier) = child.value as? SlateStorageMode {
+        switch child.value as? SlateStorageMode {
+        case .cloudKitMirrored(let containerIdentifier), .cloudKitShared(let containerIdentifier):
             return containerIdentifier
+        case .local:
+            break
+        case nil:
+            break
         }
     }
     throw NSError(domain: "SlateRuntimeTests", code: -2)

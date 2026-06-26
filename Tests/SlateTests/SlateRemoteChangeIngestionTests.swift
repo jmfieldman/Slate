@@ -89,6 +89,25 @@ struct SlateRemoteChangeIngestionTests {
     }
 
     @Test
+    func privateAndSharedStoresDeriveDistinctTokenSidecarURLs() throws {
+        let directory = try SlateRemoteChangeIngestionTestSupport.temporaryDirectory(
+            prefix: "SlateSharedHistoryTokenURLs"
+        )
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let privateURL = directory.appendingPathComponent("Private.sqlite")
+        let sharedURL = SlateCloudKitContainer.sharedStoreURL(forPrivateStoreURL: privateURL)
+
+        let privateStore = SlateHistoryTokenStore(storeURL: privateURL)
+        let sharedStore = SlateHistoryTokenStore(storeURL: sharedURL)
+
+        #expect(privateStore.storeURL != sharedStore.storeURL)
+        #expect(privateStore.tokenURL != sharedStore.tokenURL)
+    }
+
+    @Test
     func localOwnersHaveNoRemoteChangeIngestor() throws {
         let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
 
@@ -110,6 +129,29 @@ struct SlateRemoteChangeIngestionTests {
 
         let ingestor = try #require(try fixture.owner().remoteChangeIngestor)
         #expect(ingestor.isObservingForTesting)
+    }
+
+    @Test
+    func cloudKitSharedOwnerInstallsOneDispatcherWithPrivateAndSharedSlotsAfterLoad() async throws {
+        let privateURLFixturePrefix = "SlateSharedRemoteChangeIngestorRetained"
+        let fixture = try SlateRemoteChangeIngestionTestSupport.makeCloudKitSlate(
+            prefix: privateURLFixturePrefix,
+            storageMode: .cloudKitShared(containerIdentifier: "iCloud.com.example.\(privateURLFixturePrefix)")
+        )
+        defer {
+            fixture.remove()
+        }
+
+        try fixture.configureWithSuccessfulCloudKitLoad()
+
+        let owner = try fixture.owner()
+        let ingestor = try #require(owner.remoteChangeIngestor)
+        let privateURL = fixture.storeURL.standardizedFileURL
+        let sharedURL = SlateCloudKitContainer.sharedStoreURL(forPrivateStoreURL: privateURL)
+
+        #expect(ingestor.isObservingForTesting)
+        #expect(ingestor.slotStoreURLsForTesting == [privateURL, sharedURL])
+        #expect(try await ingestor.resolvedSlotStoreURLsForTesting() == [privateURL, sharedURL])
     }
 
     @Test
@@ -377,6 +419,61 @@ struct SlateRemoteChangeIngestionTests {
     }
 
     @Test
+    func coordinatorRemoteChangeNotificationFansOutToPrivateAndSharedStoreSlots() async throws {
+        let fixture = try SlateRemoteChangeIngestionTestSupport.makeDualStoreHistoryFixture(
+            prefix: "SlateRemoteMergeSharedNotificationFanout"
+        )
+        defer {
+            fixture.remove()
+        }
+
+        _ = try fixture.insertRecordFromSecondContext(title: "Private", storeKind: .privateStore)
+        _ = try fixture.insertRecordFromSecondContext(title: "Shared", storeKind: .sharedStore)
+        let ingestions = LockedCounter()
+        fixture.ingestor.setIngestionHookForTesting {
+            ingestions.increment()
+        }
+
+        NotificationCenter.default.post(
+            name: .NSPersistentStoreRemoteChange,
+            object: fixture.owner.coordinator
+        )
+        try await ingestions.waitForValue(1)
+
+        let privateToken = try #require(try fixture.privateTokenStore.load())
+        let sharedToken = try #require(try fixture.sharedTokenStore.load())
+        #expect(try fixture.historyTransactionCount(after: privateToken, storeKind: .privateStore) == 0)
+        #expect(try fixture.historyTransactionCount(after: sharedToken, storeKind: .sharedStore) == 0)
+    }
+
+    @Test
+    func sharedStoreIngestionAdvancesOnlySlotWhoseWindowWasMerged() async throws {
+        let fixture = try SlateRemoteChangeIngestionTestSupport.makeDualStoreHistoryFixture(
+            prefix: "SlateRemoteMergeSharedTokenIsolation"
+        )
+        defer {
+            fixture.remove()
+        }
+
+        _ = try fixture.insertRecordFromSecondContext(title: "Private", storeKind: .privateStore)
+
+        try await fixture.ingestor.ingestRemoteChangeForTesting()
+
+        let privateToken = try #require(try fixture.privateTokenStore.load())
+        #expect(try fixture.sharedTokenStore.load() == nil)
+        #expect(try fixture.historyTransactionCount(after: privateToken, storeKind: .privateStore) == 0)
+        let privateTokenData = try Data(contentsOf: fixture.privateTokenStore.tokenURL)
+
+        _ = try fixture.insertRecordFromSecondContext(title: "Shared", storeKind: .sharedStore)
+
+        try await fixture.ingestor.ingestRemoteChangeForTesting()
+
+        #expect(try Data(contentsOf: fixture.privateTokenStore.tokenURL) == privateTokenData)
+        let sharedToken = try #require(try fixture.sharedTokenStore.load())
+        #expect(try fixture.historyTransactionCount(after: sharedToken, storeKind: .sharedStore) == 0)
+    }
+
+    @Test
     func ingestionAfterTokenResetReplaysAvailableHistoryAndAdvancesAgain() async throws {
         let fixture = try SlateRemoteChangeIngestionTestSupport.makeHistoryFixture(
             prefix: "SlateRemoteMergeTokenReset"
@@ -534,17 +631,45 @@ enum SlateRemoteChangeIngestionTestSupport {
         }
     }
 
-    static func makeCloudKitSlate(prefix: String) throws -> CloudKitSlateFixture {
+    static func makeDualStoreHistoryFixture(prefix: String) throws -> DualStoreHistoryFixture {
+        let directory = try temporaryDirectory(prefix: prefix)
+        let privateURL = directory.appendingPathComponent("Private.sqlite")
+        let sharedURL = SlateCloudKitContainer.sharedStoreURL(forPrivateStoreURL: privateURL)
+        do {
+            return try DualStoreHistoryFixture(
+                directory: directory,
+                privateStoreURL: privateURL,
+                sharedStoreURL: sharedURL
+            )
+        } catch {
+            try? FileManager.default.removeItem(at: directory)
+            throw error
+        }
+    }
+
+    static func makeCloudKitSlate(
+        prefix: String,
+        storageMode: SlateStorageMode? = nil
+    ) throws -> CloudKitSlateFixture {
         let directory = try temporaryDirectory(prefix: prefix)
         let storeURL = directory.appendingPathComponent("Test.sqlite")
-        let containerIdentifier = "iCloud.com.example.remote.\(prefix)"
+        let defaultContainerIdentifier = "iCloud.com.example.remote.\(prefix)"
+        let resolvedStorageMode = storageMode ?? .cloudKitMirrored(containerIdentifier: defaultContainerIdentifier)
+        let containerIdentifier: String
+        switch resolvedStorageMode {
+        case .cloudKitMirrored(let identifier), .cloudKitShared(let identifier):
+            containerIdentifier = identifier
+        case .local:
+            containerIdentifier = defaultContainerIdentifier
+        }
         let slate = Slate<TestCloudKitSchema>(
             storeURL: storeURL,
             storeType: NSSQLiteStoreType,
-            storageMode: .cloudKitMirrored(containerIdentifier: containerIdentifier)
+            storageMode: resolvedStorageMode
         )
         return CloudKitSlateFixture(
             directory: directory,
+            storeURL: storeURL,
             containerIdentifier: containerIdentifier,
             slate: slate
         )
@@ -780,13 +905,165 @@ enum SlateRemoteChangeIngestionTestSupport {
         }
     }
 
+    enum DualStoreKind: Sendable {
+        case privateStore
+        case sharedStore
+    }
+
+    final class DualStoreHistoryFixture: @unchecked Sendable {
+        let directory: URL
+        let privateStoreURL: URL
+        let sharedStoreURL: URL
+        let privateTokenStore: SlateHistoryTokenStore
+        let sharedTokenStore: SlateHistoryTokenStore
+        let owner: SlateStoreOwner<TestCloudKitRuntimeSchema>
+        let ingestor: SlateRemoteChangeIngestor<TestCloudKitRuntimeSchema>
+
+        private let coordinator: NSPersistentStoreCoordinator
+        private let writerContext: NSManagedObjectContext
+        private let secondContext: NSManagedObjectContext
+        private let privateStore: NSPersistentStore
+        private let sharedStore: NSPersistentStore
+
+        init(directory: URL, privateStoreURL: URL, sharedStoreURL: URL) throws {
+            self.directory = directory
+            self.privateStoreURL = privateStoreURL.standardizedFileURL
+            self.sharedStoreURL = sharedStoreURL.standardizedFileURL
+            self.privateTokenStore = SlateHistoryTokenStore(storeURL: privateStoreURL)
+            self.sharedTokenStore = SlateHistoryTokenStore(storeURL: sharedStoreURL)
+
+            let model = try TestCloudKitRuntimeSchema.makeManagedObjectModel()
+            model.setEntities(model.entities, forConfigurationName: SlateCloudKitContainer.privateStoreConfigurationName)
+            model.setEntities(model.entities, forConfigurationName: SlateCloudKitContainer.sharedStoreConfigurationName)
+            coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
+
+            privateStore = try Self.addStore(
+                to: coordinator,
+                url: privateStoreURL,
+                configuration: SlateCloudKitContainer.privateStoreConfigurationName
+            )
+            sharedStore = try Self.addStore(
+                to: coordinator,
+                url: sharedStoreURL,
+                configuration: SlateCloudKitContainer.sharedStoreConfigurationName
+            )
+
+            writerContext = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+            writerContext.persistentStoreCoordinator = coordinator
+            writerContext.undoManager = nil
+            writerContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
+
+            secondContext = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+            secondContext.persistentStoreCoordinator = coordinator
+            secondContext.undoManager = nil
+            secondContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
+
+            var registry = SlateTableRegistry()
+            TestCloudKitRuntimeSchema.registerTables(&registry)
+            owner = SlateStoreOwner<TestCloudKitRuntimeSchema>(
+                registry: registry,
+                coordinator: coordinator,
+                writerContext: writerContext,
+                storageMode: .cloudKitShared(containerIdentifier: "iCloud.com.example"),
+                loadState: .loaded
+            )
+            ingestor = SlateRemoteChangeIngestor(
+                owner: owner,
+                storeURLs: [self.privateStoreURL, self.sharedStoreURL]
+            )
+            owner.installRemoteChangeIngestor(ingestor)
+        }
+
+        func remove() {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        func insertRecordFromSecondContext(
+            title: String,
+            storeKind: DualStoreKind
+        ) throws -> NSManagedObjectID {
+            let targetStore = UncheckedPersistentStore(persistentStore(for: storeKind))
+            return try secondContext.performAndWaitReturning {
+                let record = DatabaseTestCloudKitRuntimeRecord.create(in: secondContext)
+                secondContext.assign(record, to: targetStore.value)
+                record.title = title
+                try secondContext.save()
+                return record.objectID
+            }
+        }
+
+        func historyTransactionCount(
+            after token: NSPersistentHistoryToken?,
+            storeKind: DualStoreKind
+        ) throws -> Int {
+            let tokenBox = UncheckedPersistentHistoryToken(token)
+            let targetStore = UncheckedPersistentStore(persistentStore(for: storeKind))
+            return try writerContext.performAndWaitReturning {
+                let request = NSPersistentHistoryChangeRequest.fetchHistory(after: tokenBox.value)
+                request.resultType = .transactionsOnly
+                request.affectedStores = [targetStore.value]
+                let result = try #require(
+                    try writerContext.execute(request) as? NSPersistentHistoryResult
+                )
+                let transactions = (result.result as? [NSPersistentHistoryTransaction]) ?? []
+                return transactions.count
+            }
+        }
+
+        private func persistentStore(for storeKind: DualStoreKind) -> NSPersistentStore {
+            switch storeKind {
+            case .privateStore:
+                return privateStore
+            case .sharedStore:
+                return sharedStore
+            }
+        }
+
+        private static func addStore(
+            to coordinator: NSPersistentStoreCoordinator,
+            url: URL,
+            configuration: String
+        ) throws -> NSPersistentStore {
+            let description = NSPersistentStoreDescription(url: url)
+            description.type = NSSQLiteStoreType
+            description.configuration = configuration
+            description.shouldMigrateStoreAutomatically = true
+            description.shouldInferMappingModelAutomatically = true
+            description.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
+
+            var capturedError: Error?
+            let semaphore = DispatchSemaphore(value: 0)
+            coordinator.addPersistentStore(with: description) { _, error in
+                capturedError = error
+                semaphore.signal()
+            }
+            semaphore.wait()
+
+            if let capturedError {
+                throw capturedError
+            }
+            return try #require(
+                coordinator.persistentStores.first { store in
+                    store.url?.standardizedFileURL == url.standardizedFileURL
+                }
+            )
+        }
+    }
+
     final class CloudKitSlateFixture: @unchecked Sendable {
         let directory: URL
+        let storeURL: URL
         let containerIdentifier: String
         let slate: Slate<TestCloudKitSchema>
 
-        init(directory: URL, containerIdentifier: String, slate: Slate<TestCloudKitSchema>) {
+        init(
+            directory: URL,
+            storeURL: URL,
+            containerIdentifier: String,
+            slate: Slate<TestCloudKitSchema>
+        ) {
             self.directory = directory
+            self.storeURL = storeURL
             self.containerIdentifier = containerIdentifier
             self.slate = slate
         }
@@ -797,7 +1074,9 @@ enum SlateRemoteChangeIngestionTestSupport {
                 { container, completion in
                     do {
                         try Self.installDeterministicStore(in: container)
-                        completion(nil)
+                        for _ in container.persistentStoreDescriptions {
+                            completion(nil)
+                        }
                     } catch {
                         completion(error)
                     }
@@ -831,10 +1110,22 @@ enum SlateRemoteChangeIngestionTestSupport {
             guard container.persistentStoreCoordinator.persistentStores.isEmpty else {
                 return
             }
-            let sourceDescription = try #require(container.persistentStoreDescriptions.first)
+            for sourceDescription in container.persistentStoreDescriptions {
+                try installDeterministicStore(
+                    cloning: sourceDescription,
+                    in: container.persistentStoreCoordinator
+                )
+            }
+        }
+
+        private static func installDeterministicStore(
+            cloning sourceDescription: NSPersistentStoreDescription,
+            in coordinator: NSPersistentStoreCoordinator
+        ) throws {
             let description = NSPersistentStoreDescription()
             description.type = sourceDescription.type
             description.url = sourceDescription.url
+            description.configuration = sourceDescription.configuration
             description.shouldMigrateStoreAutomatically = sourceDescription.shouldMigrateStoreAutomatically
             description.shouldInferMappingModelAutomatically = sourceDescription.shouldInferMappingModelAutomatically
             description.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
@@ -845,7 +1136,7 @@ enum SlateRemoteChangeIngestionTestSupport {
 
             var capturedError: Error?
             let semaphore = DispatchSemaphore(value: 0)
-            container.persistentStoreCoordinator.addPersistentStore(with: description) { _, error in
+            coordinator.addPersistentStore(with: description) { _, error in
                 capturedError = error
                 semaphore.signal()
             }
@@ -1029,6 +1320,14 @@ private struct UncheckedPersistentHistoryToken: @unchecked Sendable {
     let value: NSPersistentHistoryToken?
 
     init(_ value: NSPersistentHistoryToken?) {
+        self.value = value
+    }
+}
+
+private struct UncheckedPersistentStore: @unchecked Sendable {
+    let value: NSPersistentStore
+
+    init(_ value: NSPersistentStore) {
         self.value = value
     }
 }
