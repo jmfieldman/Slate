@@ -893,11 +893,12 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
             storageMode: storageMode,
             loadState: .loading
         )
-        if let storeURL = buildResult.storeDescription.url {
+        let storeURLs = buildResult.storeDescriptions.compactMap(\.url)
+        if !storeURLs.isEmpty {
             owner.installRemoteChangeIngestor(
                 SlateRemoteChangeIngestor<Schema>(
                     owner: owner,
-                    tokenStore: SlateHistoryTokenStore(storeURL: storeURL)
+                    storeURLs: storeURLs
                 )
             )
         }

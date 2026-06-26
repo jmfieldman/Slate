@@ -1,7 +1,7 @@
 @preconcurrency import CoreData
 import Foundation
 
-struct SlateHistoryTokenStore {
+struct SlateHistoryTokenStore: @unchecked Sendable {
     let storeURL: URL
     let tokenURL: URL
 

@@ -13,9 +13,25 @@ struct SlateRemoteChangeHistoryWindow {
     }
 }
 
+struct SlateRemoteChangeIngestionSlot: Sendable {
+    let storeURL: URL
+    let tokenStore: SlateHistoryTokenStore
+
+    init(storeURL: URL) {
+        self.storeURL = storeURL.standardizedFileURL
+        self.tokenStore = SlateHistoryTokenStore(storeURL: storeURL)
+    }
+}
+
+private struct SlateResolvedRemoteChangeIngestionSlot {
+    let storeURL: URL
+    let store: NSPersistentStore
+    let tokenStore: SlateHistoryTokenStore
+}
+
 final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable {
     private weak var owner: SlateStoreOwner<Schema>?
-    private let tokenStore: SlateHistoryTokenStore
+    private let configuredSlots: [SlateRemoteChangeIngestionSlot]
     private let notificationCenter: NotificationCenter
     private let lock = NSLock()
     private var observer: NSObjectProtocol?
@@ -24,12 +40,24 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
 
     init(
         owner: SlateStoreOwner<Schema>,
-        tokenStore: SlateHistoryTokenStore,
+        storeURLs: [URL],
         notificationCenter: NotificationCenter = .default
     ) {
         self.owner = owner
-        self.tokenStore = tokenStore
+        self.configuredSlots = storeURLs.map(SlateRemoteChangeIngestionSlot.init(storeURL:))
         self.notificationCenter = notificationCenter
+    }
+
+    convenience init(
+        owner: SlateStoreOwner<Schema>,
+        tokenStore: SlateHistoryTokenStore,
+        notificationCenter: NotificationCenter = .default
+    ) {
+        self.init(
+            owner: owner,
+            storeURLs: [tokenStore.storeURL],
+            notificationCenter: notificationCenter
+        )
     }
 
     deinit {
@@ -73,7 +101,11 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
     }
 
     func fetchPersistentHistoryForTesting() async throws -> SlateRemoteChangeHistoryWindow {
-        try await fetchPersistentHistory()
+        try await fetchPersistentHistory(storeURL: nil)
+    }
+
+    func fetchPersistentHistoryForTesting(storeURL: URL) async throws -> SlateRemoteChangeHistoryWindow {
+        try await fetchPersistentHistory(storeURL: storeURL)
     }
 
     func setIngestionHookForTesting(_ hook: (@Sendable () -> Void)?) {
@@ -94,6 +126,15 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
         return observer != nil
     }
 
+    var slotStoreURLsForTesting: [URL] {
+        configuredSlots.map(\.storeURL)
+    }
+
+    func resolvedSlotStoreURLsForTesting() async throws -> [URL] {
+        let owner = try await requireLoadedOwner()
+        return try resolvedSlots(in: owner).map(\.storeURL)
+    }
+
     private func ingestRemoteChangeFromNotification() {
         Task { [weak self] in
             try? await self?.ingestRemoteChange()
@@ -102,24 +143,29 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
 
     private func ingestRemoteChange() async throws {
         let owner = try await requireLoadedOwner()
+        let slots = try resolvedSlots(in: owner)
 
         try await owner.accessGate.write {
-            owner.setIsMerging(true)
-            defer {
-                owner.setIsMerging(false)
-            }
-
             do {
-                let window = try await fetchPersistentHistory(for: owner)
-                guard !window.isEmpty else {
-                    return
-                }
+                for slot in slots {
+                    let window = try await fetchPersistentHistory(for: owner, slot: slot)
+                    guard !window.isEmpty else {
+                        continue
+                    }
 
-                try await applyMerge(window, to: owner)
-                owner.cache.remove(window.changedObjectIDs)
-                owner.notifyStreamsRefresh()
-                if let nextToken = window.nextToken {
-                    try tokenStore.save(nextToken)
+                    do {
+                        owner.setIsMerging(true)
+                        defer {
+                            owner.setIsMerging(false)
+                        }
+
+                        try await applyMerge(window, to: owner)
+                        owner.cache.remove(window.changedObjectIDs)
+                        owner.notifyStreamsRefresh()
+                        if let nextToken = window.nextToken {
+                            try slot.tokenStore.save(nextToken)
+                        }
+                    }
                 }
             } catch {
                 try? await owner.writerContext.slatePerform {
@@ -132,17 +178,33 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
         currentIngestionHookForTesting()?()
     }
 
-    private func fetchPersistentHistory() async throws -> SlateRemoteChangeHistoryWindow {
+    private func fetchPersistentHistory(storeURL: URL?) async throws -> SlateRemoteChangeHistoryWindow {
         let owner = try await requireLoadedOwner()
-        return try await fetchPersistentHistory(for: owner)
+        let slots = try resolvedSlots(in: owner)
+        let selectedSlot: SlateResolvedRemoteChangeIngestionSlot
+        if let storeURL {
+            let standardizedURL = storeURL.standardizedFileURL
+            guard let slot = slots.first(where: { $0.storeURL == standardizedURL }) else {
+                throw SlateError.coreData(
+                    "No remote-change ingestion slot matches store URL \(standardizedURL.path)"
+                )
+            }
+            selectedSlot = slot
+        } else {
+            guard let slot = slots.first else {
+                throw SlateError.coreData("No remote-change ingestion slots are configured")
+            }
+            selectedSlot = slot
+        }
+        return try await fetchPersistentHistory(for: owner, slot: selectedSlot)
     }
 
     private func fetchPersistentHistory(
-        for owner: SlateStoreOwner<Schema>
+        for owner: SlateStoreOwner<Schema>,
+        slot: SlateResolvedRemoteChangeIngestionSlot
     ) async throws -> SlateRemoteChangeHistoryWindow {
-        let token = SlateUncheckedPersistentHistoryToken(try tokenStore.load())
-        let targetStore = try targetStore(in: owner)
-        let targetStoreBox = SlateUncheckedPersistentStore(targetStore)
+        let token = SlateUncheckedPersistentHistoryToken(try slot.tokenStore.load())
+        let targetStoreBox = SlateUncheckedPersistentStore(slot.store)
 
         return try await owner.writerContext.slatePerform {
             let request = NSPersistentHistoryChangeRequest.fetchHistory(after: token.value)
@@ -195,17 +257,24 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
         }
     }
 
-    private func targetStore(in owner: SlateStoreOwner<Schema>) throws -> NSPersistentStore {
-        let matchingStore = owner.coordinator.persistentStores.first { store in
-            store.url?.standardizedFileURL == tokenStore.storeURL
+    private func resolvedSlots(
+        in owner: SlateStoreOwner<Schema>
+    ) throws -> [SlateResolvedRemoteChangeIngestionSlot] {
+        try configuredSlots.map { slot in
+            let matchingStore = owner.coordinator.persistentStores.first { store in
+                store.url?.standardizedFileURL == slot.storeURL
+            }
+            guard let matchingStore else {
+                throw SlateError.coreData(
+                    "No loaded persistent store matches history token URL \(slot.storeURL.path)"
+                )
+            }
+            return SlateResolvedRemoteChangeIngestionSlot(
+                storeURL: slot.storeURL,
+                store: matchingStore,
+                tokenStore: slot.tokenStore
+            )
         }
-        if let matchingStore {
-            return matchingStore
-        }
-
-        throw SlateError.coreData(
-            "No loaded persistent store matches history token URL \(tokenStore.storeURL.path)"
-        )
     }
 
     private static func changedObjectIDs(
