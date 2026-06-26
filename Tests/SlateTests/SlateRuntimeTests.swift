@@ -663,6 +663,17 @@ struct SlateRuntimeTests {
     }
 
     @Test
+    func localOwnerUsesBareCoordinatorAndStoreTrumpWriterPolicy() throws {
+        let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
+        try slate.configure()
+
+        let owner = try slateStoreOwner(for: slate)
+        #expect(owner.cloudKitContainer == nil)
+        let writerMergePolicy = try #require(owner.writerContext.mergePolicy as? NSMergePolicy)
+        #expect(writerMergePolicy.mergeType == .mergeByPropertyStoreTrumpMergePolicyType)
+    }
+
+    @Test
     func configureRejectsLocalModeForCloudKitSchema() {
         let slate = Slate<TestCloudKitSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
 
@@ -687,6 +698,49 @@ struct SlateRuntimeTests {
             mode: mode,
             schemaCloudKitEnabled: false
         )) {
+            try slate.configure()
+        }
+    }
+
+    @Test
+    func cloudKitMirroredOwnerRetainsContainerCoordinatorAndObjectTrumpWriterPolicy() throws {
+        let directory = try temporaryDirectory(prefix: "SlateCloudKitMirroredOwner")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let mode = SlateStorageMode.cloudKitMirrored(containerIdentifier: "iCloud.com.example")
+        let slate = Slate<TestCloudKitRuntimeSchema>(
+            storeURL: directory.appendingPathComponent("Test.sqlite"),
+            storeType: NSSQLiteStoreType,
+            storageMode: mode
+        )
+
+        try slate.configure()
+
+        let owner = try slateStoreOwner(for: slate)
+        let container = try #require(owner.cloudKitContainer)
+        #expect(owner.storageMode == mode)
+        #expect(owner.coordinator === container.persistentStoreCoordinator)
+        let writerMergePolicy = try #require(owner.writerContext.mergePolicy as? NSMergePolicy)
+        #expect(writerMergePolicy.mergeType == .mergeByPropertyObjectTrumpMergePolicyType)
+    }
+
+    @Test
+    func configureRejectsFreshCloudKitSharedMode() throws {
+        let directory = try temporaryDirectory(prefix: "SlateCloudKitSharedUnavailable")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let mode = SlateStorageMode.cloudKitShared(containerIdentifier: "iCloud.com.example")
+        let slate = Slate<TestCloudKitRuntimeSchema>(
+            storeURL: directory.appendingPathComponent("Test.sqlite"),
+            storeType: NSSQLiteStoreType,
+            storageMode: mode
+        )
+
+        #expect(throws: SlateError.sharingUnavailable(mode: mode)) {
             try slate.configure()
         }
     }
@@ -850,14 +904,14 @@ struct SlateRuntimeTests {
         }
 
         let storeURL = directory.appendingPathComponent("Test.sqlite")
-        let mirrored = Slate<TestCloudKitSchema>(
+        let mirrored = Slate<TestCloudKitRuntimeSchema>(
             storeURL: storeURL,
             storeType: NSSQLiteStoreType,
             storageMode: .cloudKitMirrored(containerIdentifier: "iCloud.com.example")
         )
         try mirrored.configure()
 
-        let shared = Slate<TestCloudKitSchema>(
+        let shared = Slate<TestCloudKitRuntimeSchema>(
             storeURL: storeURL,
             storeType: NSSQLiteStoreType,
             storageMode: .cloudKitShared(containerIdentifier: "iCloud.com.example")

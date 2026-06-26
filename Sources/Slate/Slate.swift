@@ -592,14 +592,36 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         storageMode: SlateStorageMode,
         registry: SlateTableRegistry
     ) throws -> SlateStoreOwner<Schema> {
+        switch storageMode {
+        case .local:
+            return try openLocalOwner(
+                description: description,
+                storeKind: storeKind,
+                registry: registry
+            )
+        case .cloudKitMirrored:
+            return try openCloudKitMirroredOwner(
+                description: description,
+                storageMode: storageMode,
+                registry: registry
+            )
+        case .cloudKitShared:
+            throw SlateError.sharingUnavailable(mode: storageMode)
+        }
+    }
+
+    private static func openLocalOwner(
+        description: NSPersistentStoreDescription,
+        storeKind: SlateStoreKind,
+        registry: SlateTableRegistry
+    ) throws -> SlateStoreOwner<Schema> {
         let model = try Schema.makeManagedObjectModel()
         let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
 
         do {
             try addStore(description: description, coordinator: coordinator)
         } catch {
-            guard storageMode == .local,
-                  storeKind == .cacheStore,
+            guard storeKind == .cacheStore,
                   description.type == NSSQLiteStoreType,
                   let url = description.url,
                   isLikelyIncompatibleStore(error)
@@ -619,6 +641,33 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         return SlateStoreOwner(
             registry: registry,
             coordinator: coordinator,
+            writerContext: writerContext,
+            storageMode: .local
+        )
+    }
+
+    private static func openCloudKitMirroredOwner(
+        description: NSPersistentStoreDescription,
+        storageMode: SlateStorageMode,
+        registry: SlateTableRegistry
+    ) throws -> SlateStoreOwner<Schema> {
+        let buildResult = try SlateCloudKitContainer.build(
+            name: Schema.schemaIdentifier,
+            model: Schema.makeManagedObjectModel(),
+            sourceDescription: description,
+            mode: storageMode
+        )
+        let coordinator = buildResult.container.persistentStoreCoordinator
+
+        let writerContext = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+        writerContext.persistentStoreCoordinator = coordinator
+        writerContext.undoManager = nil
+        writerContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
+
+        return SlateStoreOwner(
+            registry: registry,
+            coordinator: coordinator,
+            cloudKitContainer: buildResult.container,
             writerContext: writerContext,
             storageMode: storageMode
         )

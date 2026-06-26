@@ -8,11 +8,20 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     let id: UUID
     let registry: SlateTableRegistry
     let coordinator: NSPersistentStoreCoordinator
+    let cloudKitContainer: NSPersistentCloudKitContainer?
     let writerContext: NSManagedObjectContext
     let accessGate: SlateAccessGate
     let cache: SlateObjectCache
     let storageMode: SlateStorageMode
 
+    private enum StoreLoadState {
+        case loading
+        case loaded
+        case failed(Error)
+    }
+
+    private let loadStateLock = NSLock()
+    private var loadState: StoreLoadState
     private let sinkLock = NSLock()
     private var batchDeleteSinks: [UUID: BatchDeleteHandler] = [:]
 
@@ -20,6 +29,7 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         id: UUID = UUID(),
         registry: SlateTableRegistry,
         coordinator: NSPersistentStoreCoordinator,
+        cloudKitContainer: NSPersistentCloudKitContainer? = nil,
         writerContext: NSManagedObjectContext,
         accessGate: SlateAccessGate = SlateAccessGate(),
         cache: SlateObjectCache = SlateObjectCache(),
@@ -28,10 +38,12 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         self.id = id
         self.registry = registry
         self.coordinator = coordinator
+        self.cloudKitContainer = cloudKitContainer
         self.writerContext = writerContext
         self.accessGate = accessGate
         self.cache = cache
         self.storageMode = storageMode
+        self.loadState = .loaded
     }
 
     func makeReaderContext() -> NSManagedObjectContext {
