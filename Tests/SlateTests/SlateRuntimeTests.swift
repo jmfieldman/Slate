@@ -93,6 +93,80 @@ enum TestCloudKitSchema: SlateSchema {
     }
 }
 
+@SlateEntity
+public struct TestCloudKitRuntimeRecord {
+    public let title: String?
+}
+
+final class DatabaseTestCloudKitRuntimeRecord: NSManagedObject, TestCloudKitRuntimeRecord.ManagedPropertyProviding, SlateMutableObject {
+    typealias ImmutableObject = TestCloudKitRuntimeRecord
+
+    static let slateEntityName = "TestCloudKitRuntimeRecord"
+
+    @NSManaged var title: String?
+
+    @nonobjc class func fetchRequest() -> NSFetchRequest<DatabaseTestCloudKitRuntimeRecord> {
+        NSFetchRequest<DatabaseTestCloudKitRuntimeRecord>(entityName: slateEntityName)
+    }
+
+    static func create(in context: NSManagedObjectContext) -> DatabaseTestCloudKitRuntimeRecord {
+        DatabaseTestCloudKitRuntimeRecord(
+            entity: NSEntityDescription.entity(forEntityName: slateEntityName, in: context)!,
+            insertInto: context
+        )
+    }
+
+    var slateObject: TestCloudKitRuntimeRecord {
+        TestCloudKitRuntimeRecord(managedObject: self)
+    }
+}
+
+enum TestCloudKitRuntimeSchema: SlateSchema {
+    static let schemaIdentifier = "TestCloudKitRuntimeSchema"
+    static let schemaFingerprint = "test-cloudkit-runtime"
+    static let cloudKitEnabled = true
+    static let entities: [SlateEntityMetadata] = [
+        SlateEntityMetadata(
+            immutableTypeName: "TestCloudKitRuntimeRecord",
+            mutableTypeName: "DatabaseTestCloudKitRuntimeRecord",
+            entityName: "TestCloudKitRuntimeRecord",
+            attributes: [
+                SlateAttributeMetadata(
+                    swiftName: "title",
+                    storageName: "title",
+                    swiftType: "String?",
+                    storageType: "string",
+                    optional: true
+                ),
+            ]
+        ),
+    ]
+
+    static func makeManagedObjectModel() throws -> NSManagedObjectModel {
+        let title = NSAttributeDescription()
+        title.name = "title"
+        title.attributeType = .stringAttributeType
+        title.isOptional = true
+
+        let entity = NSEntityDescription()
+        entity.name = "TestCloudKitRuntimeRecord"
+        entity.managedObjectClassName = NSStringFromClass(DatabaseTestCloudKitRuntimeRecord.self)
+        entity.properties = [title]
+
+        let model = NSManagedObjectModel()
+        model.entities = [entity]
+        return model
+    }
+
+    static func registerTables(_ registry: inout SlateTableRegistry) {
+        registry.register(
+            immutable: TestCloudKitRuntimeRecord.self,
+            mutable: DatabaseTestCloudKitRuntimeRecord.self,
+            entityName: "TestCloudKitRuntimeRecord"
+        )
+    }
+}
+
 // Schema variant whose `name` attribute is NOT declared as a uniqueness
 // constraint. Used to verify that `upsert(...)` rejects keys outside the
 // declared uniqueness set.
@@ -631,8 +705,8 @@ struct SlateRuntimeTests {
         sourceDescription.shouldInferMappingModelAutomatically = true
 
         let result = try SlateCloudKitContainer.build(
-            name: TestCloudKitSchema.schemaIdentifier,
-            model: TestCloudKitSchema.makeManagedObjectModel(),
+            name: TestCloudKitRuntimeSchema.schemaIdentifier,
+            model: TestCloudKitRuntimeSchema.makeManagedObjectModel(),
             sourceDescription: sourceDescription,
             mode: .cloudKitMirrored(containerIdentifier: "iCloud.com.example")
         )
@@ -666,11 +740,11 @@ struct SlateRuntimeTests {
 
         let mirroredMode = SlateStorageMode.cloudKitMirrored(containerIdentifier: "iCloud.com.example")
         let sharedMode = SlateStorageMode.cloudKitShared(containerIdentifier: "iCloud.com.example")
-        let model = try TestCloudKitSchema.makeManagedObjectModel()
+        let model = try TestCloudKitRuntimeSchema.makeManagedObjectModel()
 
         #expect(throws: SlateError.cloudKitUnavailable(mode: mirroredMode)) {
             try SlateCloudKitContainer.build(
-                name: TestCloudKitSchema.schemaIdentifier,
+                name: TestCloudKitRuntimeSchema.schemaIdentifier,
                 model: model,
                 sourceDescription: inMemoryDescription,
                 mode: mirroredMode
@@ -678,7 +752,7 @@ struct SlateRuntimeTests {
         }
         #expect(throws: SlateError.sharingUnavailable(mode: sharedMode)) {
             try SlateCloudKitContainer.build(
-                name: TestCloudKitSchema.schemaIdentifier,
+                name: TestCloudKitRuntimeSchema.schemaIdentifier,
                 model: model,
                 sourceDescription: sqliteDescription,
                 mode: sharedMode
@@ -686,7 +760,7 @@ struct SlateRuntimeTests {
         }
         #expect(throws: SlateError.cloudKitUnavailable(mode: .local)) {
             try SlateCloudKitContainer.build(
-                name: TestCloudKitSchema.schemaIdentifier,
+                name: TestCloudKitRuntimeSchema.schemaIdentifier,
                 model: model,
                 sourceDescription: sqliteDescription,
                 mode: .local
