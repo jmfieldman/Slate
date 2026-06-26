@@ -1,5 +1,6 @@
 @preconcurrency import CoreData
 import Foundation
+import SlateSchema
 
 public enum SlateError: Error, Sendable, Equatable {
     case notConfigured
@@ -13,6 +14,9 @@ public enum SlateError: Error, Sendable, Equatable {
     case storageModeStoreKindMismatch(mode: SlateStorageMode, storeKind: SlateStoreKind)
     case cloudKitUnavailable(mode: SlateStorageMode)
     case sharingUnavailable(mode: SlateStorageMode)
+    case sharingObjectUnavailable(entity: String, id: SlateID)
+    case sharingObjectWrongStore(entity: String, id: SlateID)
+    case sharingStoreUnavailable(scope: SlateSharingStoreScope)
     case wipeFailed(URL, String)
     case invalidStoredValue(entity: String, property: String, valueDescription: String)
     case invalidKeyPath(String)
@@ -24,6 +28,11 @@ public enum SlateError: Error, Sendable, Equatable {
     case upsertKeyNotUnique(entity: String, attribute: String)
     case coreData(String)
     case underlying(String)
+}
+
+public enum SlateSharingStoreScope: Sendable, Equatable {
+    case privateStore
+    case sharedStore
 }
 
 public enum SlateStoreKind: Sendable, Equatable {

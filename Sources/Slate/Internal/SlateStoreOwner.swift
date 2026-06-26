@@ -14,6 +14,22 @@ enum SlateStreamRefreshEvent {
     case remoteMerge
 }
 
+enum SlateOwnerReadiness {
+    static let pollingIntervalNanoseconds: UInt64 = 50_000_000
+
+    static func isLoadedOrWait(_ loadState: SlateStoreLoadState) async throws -> Bool {
+        switch loadState {
+        case .loaded:
+            return true
+        case .failed(let error):
+            throw error.slateError
+        case .loading:
+            try await Task.sleep(nanoseconds: pollingIntervalNanoseconds)
+            return false
+        }
+    }
+}
+
 final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     typealias BatchDeleteHandler = @Sendable (SlateStreamRefreshEvent) -> Void
     typealias AccountStatusSink = @MainActor @Sendable (SlateAccountStatus) -> Void

@@ -54,6 +54,58 @@ struct SlateSharingTests {
     }
 
     @Test
+    func participantLookupResultConstructsAndComparesByValue() throws {
+        let participant = SlateParticipant(
+            displayName: "Lookup Match",
+            role: .privateUser,
+            permission: .readOnly,
+            acceptanceStatus: .accepted
+        )
+        let emailEntry = SlateParticipantLookupEntry(
+            input: "reader@example.com",
+            outcome: .found(participant)
+        )
+        let phoneEntry = SlateParticipantLookupEntry(
+            input: "+15555550100",
+            outcome: .failed(.notFound)
+        )
+        let result = SlateParticipantLookupResult(
+            emailAddressResults: [emailEntry],
+            phoneNumberResults: [phoneEntry]
+        )
+
+        #expect(emailEntry == SlateParticipantLookupEntry(
+            input: "reader@example.com",
+            outcome: .found(participant)
+        ))
+        #expect(phoneEntry == SlateParticipantLookupEntry(
+            input: "+15555550100",
+            outcome: .failed(.notFound)
+        ))
+        #expect(result == SlateParticipantLookupResult(
+            emailAddressResults: [emailEntry],
+            phoneNumberResults: [phoneEntry]
+        ))
+        #expect(result != SlateParticipantLookupResult(
+            emailAddressResults: [phoneEntry],
+            phoneNumberResults: [emailEntry]
+        ))
+    }
+
+    @Test
+    func participantLookupFailureCasesAreStable() {
+        let failures: [SlateParticipantLookupFailure] = [
+            .notFound,
+            .invalidInput,
+            .serviceUnavailable,
+            .unknown,
+        ]
+
+        #expect(failures.count == 4)
+        #expect(Set(failures.map(String.init(describing:))).count == failures.count)
+    }
+
+    @Test
     func sharingEnumsExposeApprovedCases() {
         let permissions: [SlateSharePermission] = [.unknown, .none, .readOnly, .readWrite]
         let roles: [SlateShareRole] = [.unknown, .owner, .privateUser, .publicUser, .administrator]
@@ -199,7 +251,35 @@ struct SlateSharingTests {
     }
 
     @Test
-    func sprintSevenDoesNotExposeSchemaInitializationOrShareLifecycleAPI() throws {
+    func sharingOwnerBoxExecutesSchemaSpecificOwnerOperations() async throws {
+        let directory = try temporaryDirectory(prefix: "SlateSharingOwnerBox")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let fixture = try SharingOwnerBoxFixture(directory: directory)
+        let ownerBox = SlateSharingOwnerBox(owner: fixture.owner)
+
+        try await ownerBox.waitUntilOwnerReady()
+        let privateSlot = try await ownerBox.storeSlot(scope: .privateStore)
+        let sharedSlot = try await ownerBox.storeSlot(scope: .sharedStore)
+        #expect(privateSlot.scope == .privateStore)
+        #expect(sharedSlot.scope == .sharedStore)
+        let privateURL = try #require(privateSlot.store.url?.standardizedFileURL)
+        let sharedURL = try #require(sharedSlot.store.url?.standardizedFileURL)
+        #expect(sharedURL == SlateCloudKitContainer.sharedStoreURL(forPrivateStoreURL: privateURL))
+
+        let schemaIdentifier = try await ownerBox.withOwnerWriteGate {
+            TestCloudKitRuntimeSchema.schemaIdentifier
+        }
+        #expect(schemaIdentifier == TestCloudKitRuntimeSchema.schemaIdentifier)
+
+        try await ownerBox.runRemoteChangeIngestion(scope: .privateStore)
+        try await ownerBox.runRemoteChangeIngestion(scope: .sharedStore)
+    }
+
+    @Test
+    func sprintEightStepOneSourceSurfaceIsScoped() throws {
         let sourceText = try slateSourceText()
         let forbiddenTokens = [
             "initializeCloudKitSchema",
@@ -207,16 +287,21 @@ struct SlateSharingTests {
             "func share<",
             "func share (",
             "func prepareShare",
-            "func persist",
+            "func persist(",
+            "func persist<",
             "func stopSharing",
             "func acceptShare",
-            "func lookupParticipants",
             "CKShare(",
         ]
 
         for token in forbiddenTokens {
             #expect(!sourceText.contains(token), "Unexpected Sprint 08 sharing surface found: \(token)")
         }
+
+        #expect(!sourceText.contains("struct SlateSharing<"))
+        #expect(sourceText.contains("public struct SlateSharing: Sendable"))
+        #expect(sourceText.contains("func lookupParticipants("))
+        #expect(sourceText.contains(") async throws -> SlateParticipantLookupResult"))
     }
 
     @Test
@@ -594,6 +679,77 @@ private func slateStoreOwner<Schema: SlateSchema>(for slate: Slate<Schema>) thro
         }
     }
     throw NSError(domain: "SlateSharingTests", code: -2)
+}
+
+private final class SharingOwnerBoxFixture: @unchecked Sendable {
+    let owner: SlateStoreOwner<TestCloudKitRuntimeSchema>
+
+    init(directory: URL) throws {
+        let privateURL = directory.appendingPathComponent("Private.sqlite")
+        let sharedURL = SlateCloudKitContainer.sharedStoreURL(forPrivateStoreURL: privateURL)
+
+        let model = try TestCloudKitRuntimeSchema.makeManagedObjectModel()
+        model.setEntities(model.entities, forConfigurationName: SlateCloudKitContainer.privateStoreConfigurationName)
+        model.setEntities(model.entities, forConfigurationName: SlateCloudKitContainer.sharedStoreConfigurationName)
+        let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
+
+        try Self.addStore(
+            to: coordinator,
+            url: privateURL,
+            configuration: SlateCloudKitContainer.privateStoreConfigurationName
+        )
+        try Self.addStore(
+            to: coordinator,
+            url: sharedURL,
+            configuration: SlateCloudKitContainer.sharedStoreConfigurationName
+        )
+
+        let writerContext = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+        writerContext.persistentStoreCoordinator = coordinator
+        writerContext.undoManager = nil
+        writerContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
+
+        var registry = SlateTableRegistry()
+        TestCloudKitRuntimeSchema.registerTables(&registry)
+        owner = SlateStoreOwner<TestCloudKitRuntimeSchema>(
+            registry: registry,
+            coordinator: coordinator,
+            writerContext: writerContext,
+            storageMode: .cloudKitShared(containerIdentifier: "iCloud.com.example.owner-box"),
+            loadState: .loaded
+        )
+        owner.installRemoteChangeIngestor(
+            SlateRemoteChangeIngestor(
+                owner: owner,
+                storeURLs: [privateURL, sharedURL]
+            )
+        )
+    }
+
+    private static func addStore(
+        to coordinator: NSPersistentStoreCoordinator,
+        url: URL,
+        configuration: String
+    ) throws {
+        let description = NSPersistentStoreDescription(url: url)
+        description.type = NSSQLiteStoreType
+        description.configuration = configuration
+        description.shouldMigrateStoreAutomatically = true
+        description.shouldInferMappingModelAutomatically = true
+        description.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
+
+        var capturedError: Error?
+        let semaphore = DispatchSemaphore(value: 0)
+        coordinator.addPersistentStore(with: description) { _, error in
+            capturedError = error
+            semaphore.signal()
+        }
+        semaphore.wait()
+
+        if let capturedError {
+            throw capturedError
+        }
+    }
 }
 
 private func expectLoading<Schema: SlateSchema>(
