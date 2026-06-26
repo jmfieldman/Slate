@@ -1,3 +1,4 @@
+@preconcurrency import CloudKit
 @preconcurrency import CoreData
 import Foundation
 import SlateSchema
@@ -15,11 +16,14 @@ enum SlateStreamRefreshEvent {
 
 final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     typealias BatchDeleteHandler = @Sendable (SlateStreamRefreshEvent) -> Void
+    typealias AccountStatusSink = @MainActor @Sendable (SlateAccountStatus) -> Void
 
     let id: UUID
     let registry: SlateTableRegistry
     let coordinator: NSPersistentStoreCoordinator
     let cloudKitContainer: NSPersistentCloudKitContainer?
+    let cloudKitAccountContainer: CKContainer?
+    let cloudKitAccountContainerIdentifier: String?
     let writerContext: NSManagedObjectContext
     let accessGate: SlateAccessGate
     let cache: SlateObjectCache
@@ -34,12 +38,17 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     private var storedRemoteChangeIngestor: SlateRemoteChangeIngestor<Schema>?
     private let mergeStateLock = NSLock()
     private var storedIsMerging = false
+    private let accountStatusLock = NSLock()
+    private var accountStatusSinks: [UUID: AccountStatusSink] = [:]
+    private var accountStatusObserver: NSObjectProtocol?
 
     init(
         id: UUID = UUID(),
         registry: SlateTableRegistry,
         coordinator: NSPersistentStoreCoordinator,
         cloudKitContainer: NSPersistentCloudKitContainer? = nil,
+        cloudKitAccountContainer: CKContainer? = nil,
+        cloudKitAccountContainerIdentifier: String? = nil,
         writerContext: NSManagedObjectContext,
         accessGate: SlateAccessGate = SlateAccessGate(),
         cache: SlateObjectCache = SlateObjectCache(),
@@ -50,6 +59,8 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         self.registry = registry
         self.coordinator = coordinator
         self.cloudKitContainer = cloudKitContainer
+        self.cloudKitAccountContainer = cloudKitAccountContainer
+        self.cloudKitAccountContainerIdentifier = cloudKitAccountContainerIdentifier
         self.writerContext = writerContext
         self.accessGate = accessGate
         self.cache = cache
@@ -68,6 +79,7 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         storedLoadState = .loaded
         loadStateLock.unlock()
         startRemoteChangeIngestorIfNeeded()
+        refreshAccountStatusIfNeeded()
     }
 
     func markFailed(_ error: Error) {
@@ -204,12 +216,121 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         notifyStreamSinks(.remoteMerge)
     }
 
+    @discardableResult
+    func registerAccountStatusSink(_ sink: @escaping AccountStatusSink) -> UUID? {
+        guard cloudKitAccountContainerIdentifier != nil else {
+            return nil
+        }
+
+        let id = UUID()
+        accountStatusLock.lock()
+        accountStatusSinks[id] = sink
+        let shouldStartObserving = accountStatusObserver == nil
+        accountStatusLock.unlock()
+
+        if shouldStartObserving {
+            startAccountStatusObservationIfNeeded()
+        }
+        if isLoaded {
+            refreshAccountStatusIfNeeded()
+        }
+
+        return id
+    }
+
+    func unregisterAccountStatusSink(_ id: UUID) {
+        var observerToRemove: NSObjectProtocol?
+        accountStatusLock.lock()
+        accountStatusSinks.removeValue(forKey: id)
+        if accountStatusSinks.isEmpty {
+            observerToRemove = accountStatusObserver
+            accountStatusObserver = nil
+        }
+        accountStatusLock.unlock()
+
+        if let observerToRemove {
+            NotificationCenter.default.removeObserver(observerToRemove)
+        }
+    }
+
     private func notifyStreamSinks(_ event: SlateStreamRefreshEvent) {
         sinkLock.lock()
         let handlers = Array(batchDeleteSinks.values)
         sinkLock.unlock()
         for handler in handlers {
             handler(event)
+        }
+    }
+
+    private var isLoaded: Bool {
+        loadStateLock.lock()
+        defer { loadStateLock.unlock() }
+        if case .loaded = storedLoadState {
+            return true
+        }
+        return false
+    }
+
+    private func startAccountStatusObservationIfNeeded() {
+        guard cloudKitAccountContainerIdentifier != nil else {
+            return
+        }
+
+        accountStatusLock.lock()
+        guard accountStatusObserver == nil else {
+            accountStatusLock.unlock()
+            return
+        }
+        let observer = NotificationCenter.default.addObserver(
+            forName: Notification.Name.CKAccountChanged,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.refreshAccountStatusIfNeeded()
+        }
+        accountStatusObserver = observer
+        accountStatusLock.unlock()
+    }
+
+    private func refreshAccountStatusIfNeeded() {
+        guard let cloudKitAccountContainerIdentifier else {
+            return
+        }
+
+        accountStatusLock.lock()
+        let hasSinks = !accountStatusSinks.isEmpty
+        accountStatusLock.unlock()
+        guard hasSinks else {
+            return
+        }
+
+        SlateCloudKitContainer.accountStatus(
+            for: cloudKitAccountContainer,
+            forContainerIdentifier: cloudKitAccountContainerIdentifier
+        ) { [weak self] result in
+            let status: SlateAccountStatus
+            if let cloudKitStatus = result.status {
+                status = SlateAccountStatus(cloudKitStatus: cloudKitStatus)
+            } else {
+                status = .couldNotDetermine
+            }
+            self?.notifyAccountStatusSinks(status)
+        }
+    }
+
+    private func notifyAccountStatusSinks(_ status: SlateAccountStatus) {
+        accountStatusLock.lock()
+        let sinks = Array(accountStatusSinks.values)
+        accountStatusLock.unlock()
+
+        guard !sinks.isEmpty else {
+            return
+        }
+
+        Task { @MainActor in
+            for sink in sinks {
+                sink(status)
+            }
         }
     }
 
@@ -224,6 +345,9 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
 
     deinit {
         stopRemoteChangeIngestor()
+        if let accountStatusObserver {
+            NotificationCenter.default.removeObserver(accountStatusObserver)
+        }
     }
 }
 

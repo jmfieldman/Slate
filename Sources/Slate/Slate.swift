@@ -17,6 +17,7 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
     let mirroringState = SlateMirroringState()
     private let stateLock = NSLock()
     private var owner: SlateStoreOwner<Schema>?
+    private var accountStatusSinkID: UUID?
     private var loadingOwner = false
     private var ownerLoadError: Error?
     private var closed = false
@@ -99,12 +100,16 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         if !installOwner(newOwner) {
             throw SlateError.closed
         }
+        installAccountStatusSink(for: newOwner)
         startCloudKitStoreLoadIfNeeded(for: newOwner)
     }
 
     public func close() async {
-        let activeOwner = markClosed()
-        if let activeOwner {
+        let closedState = markClosed()
+        if let sinkID = closedState.accountStatusSinkID {
+            closedState.owner?.unregisterAccountStatusSink(sinkID)
+        }
+        if let activeOwner = closedState.owner {
             try? await activeOwner.accessGate.write { /* drain in-flight */ }
         }
     }
@@ -135,12 +140,33 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
         return true
     }
 
-    private func markClosed() -> SlateStoreOwner<Schema>? {
+    private func markClosed() -> (owner: SlateStoreOwner<Schema>?, accountStatusSinkID: UUID?) {
         stateLock.lock()
         defer { stateLock.unlock() }
         let active = owner
+        let sinkID = accountStatusSinkID
+        accountStatusSinkID = nil
         closed = true
-        return active
+        return (active, sinkID)
+    }
+
+    private func installAccountStatusSink(for owner: SlateStoreOwner<Schema>) {
+        guard let sinkID = owner.registerAccountStatusSink({ [mirroringState] status in
+            mirroringState.updateAccountStatus(status)
+        }) else {
+            return
+        }
+
+        stateLock.lock()
+        let shouldKeepSink = !closed && self.owner === owner
+        if shouldKeepSink {
+            accountStatusSinkID = sinkID
+        }
+        stateLock.unlock()
+
+        if !shouldKeepSink {
+            owner.unregisterAccountStatusSink(sinkID)
+        }
     }
 
     private func startCloudKitStoreLoadIfNeeded(for owner: SlateStoreOwner<Schema>) {
@@ -793,6 +819,8 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
             registry: registry,
             coordinator: coordinator,
             cloudKitContainer: buildResult.container,
+            cloudKitAccountContainer: buildResult.accountContainer,
+            cloudKitAccountContainerIdentifier: buildResult.accountContainerIdentifier,
             writerContext: writerContext,
             storageMode: storageMode,
             loadState: .loading

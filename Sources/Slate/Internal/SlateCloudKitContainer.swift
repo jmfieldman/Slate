@@ -1,3 +1,4 @@
+@preconcurrency import CloudKit
 @preconcurrency import CoreData
 
 enum SlateCloudKitContainer {
@@ -5,16 +6,33 @@ enum SlateCloudKitContainer {
         NSPersistentCloudKitContainer,
         @escaping (Error?) -> Void
     ) -> Void
+    typealias AccountStatusProvider = (
+        String,
+        @escaping @Sendable (AccountStatusResult) -> Void
+    ) -> Void
 
     private final class LoadOverrideBox: @unchecked Sendable {
         let lock = NSLock()
         var override: LoadPersistentStoresOverride?
     }
 
+    private final class AccountStatusProviderBox: @unchecked Sendable {
+        let lock = NSLock()
+        var provider: AccountStatusProvider?
+    }
+
     private static let loadOverrideBox = LoadOverrideBox()
+    private static let accountStatusProviderBox = AccountStatusProviderBox()
+
+    struct AccountStatusResult: Sendable {
+        let status: CKAccountStatus?
+        let error: (any Error)?
+    }
 
     struct BuildResult {
         let container: NSPersistentCloudKitContainer
+        let accountContainer: CKContainer?
+        let accountContainerIdentifier: String
         let storeDescription: NSPersistentStoreDescription
     }
 
@@ -54,8 +72,14 @@ enum SlateCloudKitContainer {
 
         let container = NSPersistentCloudKitContainer(name: name, managedObjectModel: model)
         container.persistentStoreDescriptions = [description]
+        let accountContainer = shouldUseLiveAccountContainer ? CKContainer(identifier: containerIdentifier) : nil
 
-        return BuildResult(container: container, storeDescription: description)
+        return BuildResult(
+            container: container,
+            accountContainer: accountContainer,
+            accountContainerIdentifier: containerIdentifier,
+            storeDescription: description
+        )
     }
 
     static func loadPersistentStores(
@@ -76,6 +100,55 @@ enum SlateCloudKitContainer {
         }
     }
 
+    static func accountStatus(
+        for accountContainer: CKContainer?,
+        forContainerIdentifier containerIdentifier: String,
+        completion: @escaping @Sendable (AccountStatusResult) -> Void
+    ) {
+        accountStatusProviderBox.lock.lock()
+        let provider = accountStatusProviderBox.provider
+        accountStatusProviderBox.lock.unlock()
+
+        if let provider {
+            provider(containerIdentifier, completion)
+            return
+        }
+
+        guard shouldUseLiveAccountContainer, let container = accountContainer else {
+            completion(AccountStatusResult(status: .couldNotDetermine, error: nil))
+            return
+        }
+
+        container.accountStatus { status, error in
+            completion(AccountStatusResult(status: status, error: error))
+        }
+    }
+
+    private static var shouldUseLiveAccountContainer: Bool {
+        accountStatusProviderBox.lock.lock()
+        let hasProvider = accountStatusProviderBox.provider != nil
+        accountStatusProviderBox.lock.unlock()
+        if hasProvider {
+            return false
+        }
+
+        let processInfo = ProcessInfo.processInfo
+        if processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            return false
+        }
+        if processInfo.processName.contains("xctest")
+            || processInfo.processName.contains("swiftpm-testing-helper")
+        {
+            return false
+        }
+        if processInfo.arguments.contains(where: {
+            $0.contains(".xctest") || $0.contains("swiftpm-testing-helper")
+        }) {
+            return false
+        }
+        return true
+    }
+
     static func withLoadPersistentStoresOverride<T>(
         _ override: @escaping LoadPersistentStoresOverride,
         _ body: () throws -> T
@@ -90,4 +163,20 @@ enum SlateCloudKitContainer {
         }
         return try body()
     }
+
+    static func withAccountStatusProviderOverride<T>(
+        _ provider: @escaping AccountStatusProvider,
+        _ body: () throws -> T
+    ) rethrows -> T {
+        accountStatusProviderBox.lock.lock()
+        accountStatusProviderBox.provider = provider
+        accountStatusProviderBox.lock.unlock()
+        defer {
+            accountStatusProviderBox.lock.lock()
+            accountStatusProviderBox.provider = nil
+            accountStatusProviderBox.lock.unlock()
+        }
+        return try body()
+    }
+
 }
