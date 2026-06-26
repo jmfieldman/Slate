@@ -1994,9 +1994,13 @@ private func temporaryDirectory(prefix: String) throws -> URL {
 }
 
 private func configureWithSuccessfulCloudKitLoad<Schema: SlateSchema>(_ slate: Slate<Schema>) throws {
-    try SlateCloudKitContainer.withLoadPersistentStoresOverride({ _, completion in
-        completion(nil)
-    }) {
+    let containerIdentifier = try cloudKitContainerIdentifier(for: slate)
+    try SlateCloudKitContainer.withLoadPersistentStoresOverride(
+        matchingContainerIdentifier: containerIdentifier,
+        { _, completion in
+            completion(nil)
+        }
+    ) {
         try slate.configure()
     }
 }
@@ -2005,12 +2009,26 @@ private func configureWithPausedCloudKitLoad<Schema: SlateSchema>(
     _ slate: Slate<Schema>,
     load: PausedCloudKitLoad
 ) throws {
-    try SlateCloudKitContainer.withLoadPersistentStoresOverride({ container, completion in
-        load.capture(container: container, completion: completion)
-    }) {
+    let containerIdentifier = try cloudKitContainerIdentifier(for: slate)
+    try SlateCloudKitContainer.withLoadPersistentStoresOverride(
+        matchingContainerIdentifier: containerIdentifier,
+        { container, completion in
+            load.capture(container: container, completion: completion)
+        }
+    ) {
         try slate.configure()
     }
     try load.requireCaptured()
+}
+
+private func cloudKitContainerIdentifier<Schema: SlateSchema>(for slate: Slate<Schema>) throws -> String {
+    let mirror = Mirror(reflecting: slate)
+    for child in mirror.children where child.label == "storageMode" {
+        if case .cloudKitMirrored(let containerIdentifier) = child.value as? SlateStorageMode {
+            return containerIdentifier
+        }
+    }
+    throw NSError(domain: "SlateRuntimeTests", code: -2)
 }
 
 private func slateStoreOwner<Schema: SlateSchema>(for slate: Slate<Schema>) throws -> SlateStoreOwner<Schema> {

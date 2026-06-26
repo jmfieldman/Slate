@@ -537,12 +537,17 @@ enum SlateRemoteChangeIngestionTestSupport {
     static func makeCloudKitSlate(prefix: String) throws -> CloudKitSlateFixture {
         let directory = try temporaryDirectory(prefix: prefix)
         let storeURL = directory.appendingPathComponent("Test.sqlite")
+        let containerIdentifier = "iCloud.com.example.remote.\(prefix)"
         let slate = Slate<TestCloudKitSchema>(
             storeURL: storeURL,
             storeType: NSSQLiteStoreType,
-            storageMode: .cloudKitMirrored(containerIdentifier: "iCloud.com.example")
+            storageMode: .cloudKitMirrored(containerIdentifier: containerIdentifier)
         )
-        return CloudKitSlateFixture(directory: directory, slate: slate)
+        return CloudKitSlateFixture(
+            directory: directory,
+            containerIdentifier: containerIdentifier,
+            slate: slate
+        )
     }
 
     final class HistoryFixture: @unchecked Sendable {
@@ -777,30 +782,38 @@ enum SlateRemoteChangeIngestionTestSupport {
 
     final class CloudKitSlateFixture: @unchecked Sendable {
         let directory: URL
+        let containerIdentifier: String
         let slate: Slate<TestCloudKitSchema>
 
-        init(directory: URL, slate: Slate<TestCloudKitSchema>) {
+        init(directory: URL, containerIdentifier: String, slate: Slate<TestCloudKitSchema>) {
             self.directory = directory
+            self.containerIdentifier = containerIdentifier
             self.slate = slate
         }
 
         func configureWithSuccessfulCloudKitLoad() throws {
-            try SlateCloudKitContainer.withLoadPersistentStoresOverride({ container, completion in
-                do {
-                    try Self.installDeterministicStore(in: container)
-                    completion(nil)
-                } catch {
-                    completion(error)
+            try SlateCloudKitContainer.withLoadPersistentStoresOverride(
+                matchingContainerIdentifier: containerIdentifier,
+                { container, completion in
+                    do {
+                        try Self.installDeterministicStore(in: container)
+                        completion(nil)
+                    } catch {
+                        completion(error)
+                    }
                 }
-            }) {
+            ) {
                 try slate.configure()
             }
         }
 
         fileprivate func configureWithPausedCloudKitLoad(_ load: PausedCloudKitLoad) throws {
-            try SlateCloudKitContainer.withLoadPersistentStoresOverride({ container, completion in
-                load.capture(container: container, completion: completion)
-            }) {
+            try SlateCloudKitContainer.withLoadPersistentStoresOverride(
+                matchingContainerIdentifier: containerIdentifier,
+                { container, completion in
+                    load.capture(container: container, completion: completion)
+                }
+            ) {
                 try slate.configure()
             }
             try load.requireCaptured()

@@ -1,3 +1,4 @@
+@preconcurrency import CloudKit
 @preconcurrency import CoreData
 import Foundation
 import SlateSchema
@@ -15,11 +16,16 @@ enum SlateStreamRefreshEvent {
 
 final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     typealias BatchDeleteHandler = @Sendable (SlateStreamRefreshEvent) -> Void
+    typealias AccountStatusSink = @MainActor @Sendable (SlateAccountStatus) -> Void
+    typealias ImportEventSink = @MainActor @Sendable (Bool, (any Error)?) -> Void
+    typealias MergeStateSink = @MainActor @Sendable (Bool) -> Void
 
     let id: UUID
     let registry: SlateTableRegistry
     let coordinator: NSPersistentStoreCoordinator
     let cloudKitContainer: NSPersistentCloudKitContainer?
+    let cloudKitAccountContainer: CKContainer?
+    let cloudKitAccountContainerIdentifier: String?
     let writerContext: NSManagedObjectContext
     let accessGate: SlateAccessGate
     let cache: SlateObjectCache
@@ -34,12 +40,26 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     private var storedRemoteChangeIngestor: SlateRemoteChangeIngestor<Schema>?
     private let mergeStateLock = NSLock()
     private var storedIsMerging = false
+    private var mergeStateSinks: [UUID: MergeStateSink] = [:]
+    private var mergeStateRevision = 0
+    private let accountStatusLock = NSLock()
+    private var accountStatusSinks: [UUID: AccountStatusSink] = [:]
+    private var accountStatusObserver: NSObjectProtocol?
+    private var accountStatusRefreshGeneration = 0
+    private let importEventLock = NSLock()
+    private var importEventSinks: [UUID: ImportEventSink] = [:]
+    private var importEventObserver: SlateCloudKitContainer.EventObserverToken?
+    private var activeImportEventIDs = Set<UUID>()
+    private var lastImportEventError: Error?
+    private var importEventRevision = 0
 
     init(
         id: UUID = UUID(),
         registry: SlateTableRegistry,
         coordinator: NSPersistentStoreCoordinator,
         cloudKitContainer: NSPersistentCloudKitContainer? = nil,
+        cloudKitAccountContainer: CKContainer? = nil,
+        cloudKitAccountContainerIdentifier: String? = nil,
         writerContext: NSManagedObjectContext,
         accessGate: SlateAccessGate = SlateAccessGate(),
         cache: SlateObjectCache = SlateObjectCache(),
@@ -50,6 +70,8 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         self.registry = registry
         self.coordinator = coordinator
         self.cloudKitContainer = cloudKitContainer
+        self.cloudKitAccountContainer = cloudKitAccountContainer
+        self.cloudKitAccountContainerIdentifier = cloudKitAccountContainerIdentifier
         self.writerContext = writerContext
         self.accessGate = accessGate
         self.cache = cache
@@ -68,6 +90,7 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         storedLoadState = .loaded
         loadStateLock.unlock()
         startRemoteChangeIngestorIfNeeded()
+        refreshAccountStatusIfNeeded()
     }
 
     func markFailed(_ error: Error) {
@@ -131,7 +154,23 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     func setIsMerging(_ isMerging: Bool) {
         mergeStateLock.lock()
         storedIsMerging = isMerging
+        mergeStateRevision += 1
+        let revision = mergeStateRevision
+        let sinkIDs = Set(mergeStateSinks.keys)
         mergeStateLock.unlock()
+
+        guard !sinkIDs.isEmpty else {
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            guard let sinks = self?.mergeStateSinks(for: revision, sinkIDs: sinkIDs) else {
+                return
+            }
+            for sink in sinks {
+                sink(isMerging)
+            }
+        }
     }
 
     func installRemoteChangeIngestor(_ ingestor: SlateRemoteChangeIngestor<Schema>) {
@@ -204,6 +243,111 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         notifyStreamSinks(.remoteMerge)
     }
 
+    @discardableResult
+    func registerAccountStatusSink(_ sink: @escaping AccountStatusSink) -> UUID? {
+        guard cloudKitAccountContainerIdentifier != nil else {
+            return nil
+        }
+
+        let id = UUID()
+        accountStatusLock.lock()
+        accountStatusSinks[id] = sink
+        let shouldStartObserving = accountStatusObserver == nil
+        accountStatusLock.unlock()
+
+        if shouldStartObserving {
+            startAccountStatusObservationIfNeeded()
+        }
+        if isLoaded {
+            refreshAccountStatusIfNeeded()
+        }
+
+        return id
+    }
+
+    func unregisterAccountStatusSink(_ id: UUID) {
+        var observerToRemove: NSObjectProtocol?
+        accountStatusLock.lock()
+        accountStatusSinks.removeValue(forKey: id)
+        if accountStatusSinks.isEmpty {
+            observerToRemove = accountStatusObserver
+            accountStatusObserver = nil
+        }
+        accountStatusLock.unlock()
+
+        if let observerToRemove {
+            NotificationCenter.default.removeObserver(observerToRemove)
+        }
+    }
+
+    @discardableResult
+    func registerImportEventSink(_ sink: @escaping ImportEventSink) -> UUID? {
+        guard cloudKitContainer != nil else {
+            return nil
+        }
+
+        let id = UUID()
+        importEventLock.lock()
+        importEventSinks[id] = sink
+        let shouldStartObserving = importEventObserver == nil
+        importEventLock.unlock()
+
+        if shouldStartObserving {
+            startImportEventObservationIfNeeded()
+        }
+
+        return id
+    }
+
+    func unregisterImportEventSink(_ id: UUID) {
+        let observerToInvalidate: SlateCloudKitContainer.EventObserverToken?
+        importEventLock.lock()
+        importEventSinks.removeValue(forKey: id)
+        if importEventSinks.isEmpty {
+            observerToInvalidate = importEventObserver
+            importEventObserver = nil
+            activeImportEventIDs.removeAll()
+        } else {
+            observerToInvalidate = nil
+        }
+        importEventLock.unlock()
+
+        observerToInvalidate?.invalidate()
+    }
+
+    @discardableResult
+    func registerMergeStateSink(_ sink: @escaping MergeStateSink) -> UUID? {
+        guard remoteChangeIngestor != nil else {
+            return nil
+        }
+
+        let id = UUID()
+        let currentValue: Bool
+        let revision: Int
+        mergeStateLock.lock()
+        mergeStateSinks[id] = sink
+        currentValue = storedIsMerging
+        revision = mergeStateRevision
+        mergeStateLock.unlock()
+
+        Task { @MainActor [weak self] in
+            guard let sinks = self?.mergeStateSinks(for: revision, sinkIDs: [id]) else {
+                return
+            }
+            for sink in sinks {
+                sink(currentValue)
+            }
+        }
+
+        return id
+    }
+
+    func unregisterMergeStateSink(_ id: UUID) {
+        mergeStateLock.lock()
+        mergeStateSinks.removeValue(forKey: id)
+        mergeStateLock.unlock()
+    }
+
     private func notifyStreamSinks(_ event: SlateStreamRefreshEvent) {
         sinkLock.lock()
         let handlers = Array(batchDeleteSinks.values)
@@ -211,6 +355,166 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         for handler in handlers {
             handler(event)
         }
+    }
+
+    private var isLoaded: Bool {
+        loadStateLock.lock()
+        defer { loadStateLock.unlock() }
+        if case .loaded = storedLoadState {
+            return true
+        }
+        return false
+    }
+
+    private func startAccountStatusObservationIfNeeded() {
+        guard cloudKitAccountContainerIdentifier != nil else {
+            return
+        }
+
+        accountStatusLock.lock()
+        guard accountStatusObserver == nil else {
+            accountStatusLock.unlock()
+            return
+        }
+        let observer = NotificationCenter.default.addObserver(
+            forName: Notification.Name.CKAccountChanged,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.refreshAccountStatusIfNeeded()
+        }
+        accountStatusObserver = observer
+        accountStatusLock.unlock()
+    }
+
+    private func startImportEventObservationIfNeeded() {
+        guard let cloudKitContainer else {
+            return
+        }
+
+        importEventLock.lock()
+        guard importEventObserver == nil else {
+            importEventLock.unlock()
+            return
+        }
+        let observer = SlateCloudKitContainer.observeEvents(for: cloudKitContainer) { [weak self] event in
+            self?.recordCloudKitEvent(event)
+        }
+        importEventObserver = observer
+        importEventLock.unlock()
+    }
+
+    func recordCloudKitEvent(_ event: SlateCloudKitContainer.EventSnapshot) {
+        guard event.type == .import else {
+            return
+        }
+
+        importEventLock.lock()
+        if event.endDate == nil, event.error == nil {
+            activeImportEventIDs.insert(event.identifier)
+        } else {
+            activeImportEventIDs.remove(event.identifier)
+        }
+        if let error = event.error {
+            lastImportEventError = error
+        }
+        let isImporting = !activeImportEventIDs.isEmpty
+        importEventRevision += 1
+        let revision = importEventRevision
+        let sinkIDs = Set(importEventSinks.keys)
+        let error = lastImportEventError
+        importEventLock.unlock()
+
+        guard !sinkIDs.isEmpty else {
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            guard let sinks = self?.importEventSinks(for: revision, sinkIDs: sinkIDs) else {
+                return
+            }
+            for sink in sinks {
+                sink(isImporting, error)
+            }
+        }
+    }
+
+    private func refreshAccountStatusIfNeeded() {
+        guard let cloudKitAccountContainerIdentifier else {
+            return
+        }
+
+        accountStatusLock.lock()
+        let hasSinks = !accountStatusSinks.isEmpty
+        accountStatusRefreshGeneration += 1
+        let generation = accountStatusRefreshGeneration
+        accountStatusLock.unlock()
+        guard hasSinks else {
+            return
+        }
+
+        SlateCloudKitContainer.accountStatus(
+            for: cloudKitAccountContainer,
+            forContainerIdentifier: cloudKitAccountContainerIdentifier
+        ) { [weak self] result in
+            let status: SlateAccountStatus
+            if let cloudKitStatus = result.status {
+                status = SlateAccountStatus(cloudKitStatus: cloudKitStatus)
+            } else {
+                status = .couldNotDetermine
+            }
+            self?.notifyAccountStatusSinks(status, generation: generation)
+        }
+    }
+
+    private func notifyAccountStatusSinks(_ status: SlateAccountStatus, generation: Int) {
+        accountStatusLock.lock()
+        guard generation == accountStatusRefreshGeneration else {
+            accountStatusLock.unlock()
+            return
+        }
+        let sinkIDs = Set(accountStatusSinks.keys)
+        accountStatusLock.unlock()
+
+        guard !sinkIDs.isEmpty else {
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            guard let sinks = self?.accountStatusSinks(for: generation, sinkIDs: sinkIDs) else {
+                return
+            }
+            for sink in sinks {
+                sink(status)
+            }
+        }
+    }
+
+    private func mergeStateSinks(for revision: Int, sinkIDs: Set<UUID>) -> [MergeStateSink]? {
+        mergeStateLock.lock()
+        defer { mergeStateLock.unlock() }
+        guard revision == mergeStateRevision else {
+            return nil
+        }
+        return sinkIDs.compactMap { mergeStateSinks[$0] }
+    }
+
+    private func importEventSinks(for revision: Int, sinkIDs: Set<UUID>) -> [ImportEventSink]? {
+        importEventLock.lock()
+        defer { importEventLock.unlock() }
+        guard revision == importEventRevision else {
+            return nil
+        }
+        return sinkIDs.compactMap { importEventSinks[$0] }
+    }
+
+    private func accountStatusSinks(for generation: Int, sinkIDs: Set<UUID>) -> [AccountStatusSink]? {
+        accountStatusLock.lock()
+        defer { accountStatusLock.unlock() }
+        guard generation == accountStatusRefreshGeneration else {
+            return nil
+        }
+        return sinkIDs.compactMap { accountStatusSinks[$0] }
     }
 
     func setLoadStateForTesting(_ loadState: SlateStoreLoadState) {
@@ -224,6 +528,10 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
 
     deinit {
         stopRemoteChangeIngestor()
+        if let accountStatusObserver {
+            NotificationCenter.default.removeObserver(accountStatusObserver)
+        }
+        importEventObserver?.invalidate()
     }
 }
 
