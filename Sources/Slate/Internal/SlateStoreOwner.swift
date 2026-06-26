@@ -2,6 +2,12 @@
 import Foundation
 import SlateSchema
 
+enum SlateStoreLoadState {
+    case loading
+    case loaded
+    case failed(Error)
+}
+
 final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     typealias BatchDeleteHandler = @Sendable ([NSManagedObjectID]) -> Void
 
@@ -14,14 +20,9 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     let cache: SlateObjectCache
     let storageMode: SlateStorageMode
 
-    private enum StoreLoadState {
-        case loading
-        case loaded
-        case failed(Error)
-    }
-
     private let loadStateLock = NSLock()
-    private var loadState: StoreLoadState
+    private var storedLoadState: SlateStoreLoadState
+    private var loadStarted = false
     private let sinkLock = NSLock()
     private var batchDeleteSinks: [UUID: BatchDeleteHandler] = [:]
 
@@ -33,7 +34,8 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         writerContext: NSManagedObjectContext,
         accessGate: SlateAccessGate = SlateAccessGate(),
         cache: SlateObjectCache = SlateObjectCache(),
-        storageMode: SlateStorageMode = .local
+        storageMode: SlateStorageMode = .local,
+        loadState: SlateStoreLoadState = .loaded
     ) {
         self.id = id
         self.registry = registry
@@ -43,7 +45,60 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         self.accessGate = accessGate
         self.cache = cache
         self.storageMode = storageMode
-        self.loadState = .loaded
+        self.storedLoadState = loadState
+    }
+
+    var loadState: SlateStoreLoadState {
+        loadStateLock.lock()
+        defer { loadStateLock.unlock() }
+        return storedLoadState
+    }
+
+    func markLoaded() {
+        loadStateLock.lock()
+        storedLoadState = .loaded
+        loadStateLock.unlock()
+    }
+
+    func markFailed(_ error: Error) {
+        loadStateLock.lock()
+        storedLoadState = .failed(error)
+        loadStateLock.unlock()
+    }
+
+    @discardableResult
+    func loadCloudKitStoresIfNeeded(
+        completion: @escaping (SlateStoreLoadState) -> Void
+    ) -> Bool {
+        guard let cloudKitContainer else {
+            return false
+        }
+
+        loadStateLock.lock()
+        guard !loadStarted else {
+            loadStateLock.unlock()
+            return false
+        }
+        loadStarted = true
+        storedLoadState = .loading
+        loadStateLock.unlock()
+
+        SlateCloudKitContainer.loadPersistentStores(for: cloudKitContainer) { [weak self] error in
+            let newState: SlateStoreLoadState
+            if let error {
+                newState = .failed(error)
+            } else {
+                newState = .loaded
+            }
+
+            self?.loadStateLock.lock()
+            self?.storedLoadState = newState
+            self?.loadStateLock.unlock()
+
+            completion(newState)
+        }
+
+        return true
     }
 
     func makeReaderContext() -> NSManagedObjectContext {
@@ -89,6 +144,12 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         for handler in handlers {
             handler(deletedIDs)
         }
+    }
+
+    func setLoadStateForTesting(_ loadState: SlateStoreLoadState) {
+        loadStateLock.lock()
+        storedLoadState = loadState
+        loadStateLock.unlock()
     }
 }
 

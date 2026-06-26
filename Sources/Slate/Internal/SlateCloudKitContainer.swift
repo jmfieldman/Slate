@@ -1,6 +1,18 @@
 @preconcurrency import CoreData
 
 enum SlateCloudKitContainer {
+    typealias LoadPersistentStoresOverride = (
+        NSPersistentCloudKitContainer,
+        @escaping (Error?) -> Void
+    ) -> Void
+
+    private final class LoadOverrideBox: @unchecked Sendable {
+        let lock = NSLock()
+        var override: LoadPersistentStoresOverride?
+    }
+
+    private static let loadOverrideBox = LoadOverrideBox()
+
     struct BuildResult {
         let container: NSPersistentCloudKitContainer
         let storeDescription: NSPersistentStoreDescription
@@ -44,5 +56,38 @@ enum SlateCloudKitContainer {
         container.persistentStoreDescriptions = [description]
 
         return BuildResult(container: container, storeDescription: description)
+    }
+
+    static func loadPersistentStores(
+        for container: NSPersistentCloudKitContainer,
+        completion: @escaping (Error?) -> Void
+    ) {
+        loadOverrideBox.lock.lock()
+        let override = loadOverrideBox.override
+        loadOverrideBox.lock.unlock()
+
+        if let override {
+            override(container, completion)
+            return
+        }
+
+        container.loadPersistentStores { _, error in
+            completion(error)
+        }
+    }
+
+    static func withLoadPersistentStoresOverride<T>(
+        _ override: @escaping LoadPersistentStoresOverride,
+        _ body: () throws -> T
+    ) rethrows -> T {
+        loadOverrideBox.lock.lock()
+        loadOverrideBox.override = override
+        loadOverrideBox.lock.unlock()
+        defer {
+            loadOverrideBox.lock.lock()
+            loadOverrideBox.override = nil
+            loadOverrideBox.lock.unlock()
+        }
+        return try body()
     }
 }

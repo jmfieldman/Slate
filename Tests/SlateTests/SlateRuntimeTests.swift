@@ -607,7 +607,7 @@ enum TestInvalidSchema: SlateSchema {
     }
 }
 
-@Suite
+@Suite(.serialized)
 struct SlateRuntimeTests {
     @Test
     func handWrittenSchemasInheritCloudKitEnabledDefault() {
@@ -716,7 +716,7 @@ struct SlateRuntimeTests {
             storageMode: mode
         )
 
-        try slate.configure()
+        try configureWithSuccessfulCloudKitLoad(slate)
 
         let owner = try slateStoreOwner(for: slate)
         let container = try #require(owner.cloudKitContainer)
@@ -873,7 +873,7 @@ struct SlateRuntimeTests {
             storageMode: .cloudKitMirrored(containerIdentifier: "")
         )
 
-        try slate.configure()
+        try configureWithSuccessfulCloudKitLoad(slate)
         #expect(try slateStoreOwner(for: slate).storageMode == .cloudKitMirrored(containerIdentifier: ""))
     }
 
@@ -891,7 +891,7 @@ struct SlateRuntimeTests {
             storageMode: mode
         )
 
-        try slate.configure()
+        try configureWithSuccessfulCloudKitLoad(slate)
 
         #expect(try slateStoreOwner(for: slate).storageMode == mode)
     }
@@ -909,7 +909,7 @@ struct SlateRuntimeTests {
             storeType: NSSQLiteStoreType,
             storageMode: .cloudKitMirrored(containerIdentifier: "iCloud.com.example")
         )
-        try mirrored.configure()
+        try configureWithSuccessfulCloudKitLoad(mirrored)
 
         let shared = Slate<TestCloudKitRuntimeSchema>(
             storeURL: storeURL,
@@ -920,6 +920,139 @@ struct SlateRuntimeTests {
         #expect(throws: SlateError.incompatibleStore(storeURL.standardizedFileURL)) {
             try shared.configure()
         }
+    }
+
+    @Test
+    func queryWaitsForSharedOwnerLoadReadiness() async throws {
+        let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
+        try slate.configure()
+        let owner = try slateStoreOwner(for: slate)
+        owner.setLoadStateForTesting(.loading)
+
+        let enteredQuery = LockedFlag()
+        let queryTask = Task {
+            try await slate.query { _ in
+                enteredQuery.set()
+                return 42
+            }
+        }
+
+        try await Task.sleep(nanoseconds: 20_000_000)
+        #expect(enteredQuery.value == false)
+
+        owner.setLoadStateForTesting(.loaded)
+        #expect(try await queryTask.value == 42)
+        #expect(enteredQuery.value == true)
+    }
+
+    @Test
+    func mutateAndBatchDeleteWaitForSharedOwnerLoadReadiness() async throws {
+        let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
+        try slate.configure()
+        let owner = try slateStoreOwner(for: slate)
+        owner.setLoadStateForTesting(.loading)
+
+        let enteredMutation = LockedFlag()
+        let mutationTask = Task {
+            try await slate.mutate { context in
+                enteredMutation.set()
+                let author = context.create(DatabaseTestAuthor.self)
+                author.name = "Ada"
+            }
+        }
+
+        try await Task.sleep(nanoseconds: 20_000_000)
+        #expect(enteredMutation.value == false)
+
+        owner.setLoadStateForTesting(.loaded)
+        try await mutationTask.value
+        #expect(enteredMutation.value == true)
+
+        owner.setLoadStateForTesting(.loading)
+        let completedDelete = LockedFlag()
+        let deleteTask = Task {
+            let count = try await slate.batchDelete(TestAuthor.self)
+            completedDelete.set()
+            return count
+        }
+
+        try await Task.sleep(nanoseconds: 20_000_000)
+        #expect(completedDelete.value == false)
+
+        owner.setLoadStateForTesting(.loaded)
+        #expect(try await deleteTask.value == 1)
+        #expect(completedDelete.value == true)
+    }
+
+    @Test
+    func querySurfacesCapturedOwnerLoadFailure() async throws {
+        let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
+        try slate.configure()
+        let owner = try slateStoreOwner(for: slate)
+        owner.setLoadStateForTesting(.failed(SlateError.coreData("load failed")))
+
+        await #expect(throws: SlateError.coreData("load failed")) {
+            try await slate.query { _ in }
+        }
+    }
+
+    @Test
+    func closeDuringOwnerLoadCausesWaitingQueryToThrowClosed() async throws {
+        let slate = Slate<TestSchema>(storeURL: nil, storeType: NSInMemoryStoreType)
+        try slate.configure()
+        let owner = try slateStoreOwner(for: slate)
+        owner.setLoadStateForTesting(.loading)
+
+        let queryTask = Task {
+            try await slate.query { _ in
+                1
+            }
+        }
+
+        try await Task.sleep(nanoseconds: 20_000_000)
+        await slate.close()
+
+        do {
+            _ = try await queryTask.value
+            Issue.record("Expected query to throw SlateError.closed")
+        } catch let error as SlateError {
+            #expect(error == .closed)
+        }
+    }
+
+    @Test
+    func reusedSlateWrapperObservesOwnerLevelLoadReadiness() async throws {
+        let directory = try temporaryDirectory(prefix: "SlateOwnerReadinessReuse")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let storeURL = directory.appendingPathComponent("Test.sqlite")
+        let first = Slate<TestSchema>(storeURL: storeURL, storeType: NSSQLiteStoreType)
+        try first.configure()
+
+        let second = Slate<TestSchema>(storeURL: storeURL, storeType: NSSQLiteStoreType)
+        try second.configure()
+
+        let firstOwner = try slateStoreOwner(for: first)
+        let secondOwner = try slateStoreOwner(for: second)
+        #expect(firstOwner === secondOwner)
+
+        firstOwner.setLoadStateForTesting(.loading)
+        let enteredQuery = LockedFlag()
+        let queryTask = Task {
+            try await second.query { _ in
+                enteredQuery.set()
+                return 7
+            }
+        }
+
+        try await Task.sleep(nanoseconds: 20_000_000)
+        #expect(enteredQuery.value == false)
+
+        firstOwner.setLoadStateForTesting(.loaded)
+        #expect(try await queryTask.value == 7)
+        #expect(enteredQuery.value == true)
     }
 
     @Test
@@ -1806,6 +1939,14 @@ private func temporaryDirectory(prefix: String) throws -> URL {
     return directory
 }
 
+private func configureWithSuccessfulCloudKitLoad<Schema: SlateSchema>(_ slate: Slate<Schema>) throws {
+    try SlateCloudKitContainer.withLoadPersistentStoresOverride({ _, completion in
+        completion(nil)
+    }) {
+        try slate.configure()
+    }
+}
+
 private func slateStoreOwner<Schema: SlateSchema>(for slate: Slate<Schema>) throws -> SlateStoreOwner<Schema> {
     let mirror = Mirror(reflecting: slate)
     for child in mirror.children where child.label == "owner" {
@@ -1814,6 +1955,23 @@ private func slateStoreOwner<Schema: SlateSchema>(for slate: Slate<Schema>) thro
         }
     }
     throw NSError(domain: "SlateRuntimeTests", code: -1)
+}
+
+private final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedValue = false
+
+    var value: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedValue
+    }
+
+    func set() {
+        lock.lock()
+        storedValue = true
+        lock.unlock()
+    }
 }
 
 /// Test helpers for the in-tree fixture targets. Hidden behind a namespace
