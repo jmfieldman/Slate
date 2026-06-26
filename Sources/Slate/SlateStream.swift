@@ -266,7 +266,7 @@ private struct UncheckedNotification: @unchecked Sendable {
 }
 
 final class SlateStreamCore<Value: SlateObject>: NSObject, NSFetchedResultsControllerDelegate, @unchecked Sendable {
-    typealias BatchDeleteHandler = @Sendable ([NSManagedObjectID]) -> Void
+    typealias BatchDeleteHandler = @Sendable (SlateStreamRefreshEvent) -> Void
 
     private let context: NSManagedObjectContext
     private let frc: NSFetchedResultsController<NSFetchRequestResult>
@@ -354,23 +354,23 @@ final class SlateStreamCore<Value: SlateObject>: NSObject, NSFetchedResultsContr
     private func attachBatchDeleteSink(
         register: @Sendable (@escaping BatchDeleteHandler) -> UUID
     ) {
-        let id = register { [weak self] deletedIDs in
+        let id = register { [weak self] event in
             guard let self else { return }
             self.context.perform { [weak self] in
                 guard let self else { return }
-                let changes: [AnyHashable: Any] = [NSDeletedObjectsKey: deletedIDs]
-                NSManagedObjectContext.mergeChanges(
-                    fromRemoteContextSave: changes,
-                    into: [self.context]
-                )
-                if self.useDiffPath { return }
-                do {
-                    try self.frc.performFetch()
-                    let objects = (self.frc.fetchedObjects as? [NSManagedObject]) ?? []
-                    let values = try objects.map(self.convert)
-                    self.publishValues(values)
-                } catch {
-                    self.publishError(error)
+
+                switch event {
+                case .batchDelete(let deletedIDs):
+                    let changes: [AnyHashable: Any] = [NSDeletedObjectsKey: deletedIDs]
+                    NSManagedObjectContext.mergeChanges(
+                        fromRemoteContextSave: changes,
+                        into: [self.context]
+                    )
+                    if self.useDiffPath { return }
+                    self.refetchAndPublish()
+                case .remoteMerge:
+                    self.context.refreshAllObjects()
+                    self.refetchAndPublish()
                 }
             }
         }
@@ -391,14 +391,7 @@ final class SlateStreamCore<Value: SlateObject>: NSObject, NSFetchedResultsContr
                 guard let self else { return }
                 self.context.mergeChanges(fromContextDidSave: box.value)
                 if self.useDiffPath { return }
-                do {
-                    try self.frc.performFetch()
-                    let objects = (self.frc.fetchedObjects as? [NSManagedObject]) ?? []
-                    let values = try objects.map(self.convert)
-                    self.publishValues(values)
-                } catch {
-                    self.publishError(error)
-                }
+                self.refetchAndPublish()
             }
         }
         stateLock.lock()
@@ -427,6 +420,17 @@ final class SlateStreamCore<Value: SlateObject>: NSObject, NSFetchedResultsContr
         }
         context.perform { [frc] in
             frc.delegate = nil
+        }
+    }
+
+    private func refetchAndPublish() {
+        do {
+            try frc.performFetch()
+            let objects = (frc.fetchedObjects as? [NSManagedObject]) ?? []
+            let values = try objects.map(convert)
+            publishValues(values)
+        } catch {
+            publishError(error)
         }
     }
 

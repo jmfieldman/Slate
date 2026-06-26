@@ -8,8 +8,13 @@ enum SlateStoreLoadState {
     case failed(Error)
 }
 
+enum SlateStreamRefreshEvent {
+    case batchDelete(deletedIDs: [NSManagedObjectID])
+    case remoteMerge
+}
+
 final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
-    typealias BatchDeleteHandler = @Sendable ([NSManagedObjectID]) -> Void
+    typealias BatchDeleteHandler = @Sendable (SlateStreamRefreshEvent) -> Void
 
     let id: UUID
     let registry: SlateTableRegistry
@@ -25,6 +30,10 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     private var loadStarted = false
     private let sinkLock = NSLock()
     private var batchDeleteSinks: [UUID: BatchDeleteHandler] = [:]
+    private let ingestorLock = NSLock()
+    private var storedRemoteChangeIngestor: SlateRemoteChangeIngestor<Schema>?
+    private let mergeStateLock = NSLock()
+    private var storedIsMerging = false
 
     init(
         id: UUID = UUID(),
@@ -58,6 +67,7 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         loadStateLock.lock()
         storedLoadState = .loaded
         loadStateLock.unlock()
+        startRemoteChangeIngestorIfNeeded()
     }
 
     func markFailed(_ error: Error) {
@@ -91,14 +101,65 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
                 newState = .loaded
             }
 
-            self?.loadStateLock.lock()
-            self?.storedLoadState = newState
-            self?.loadStateLock.unlock()
+            switch newState {
+            case .loaded:
+                self?.markLoaded()
+            case .failed(let error):
+                self?.markFailed(error)
+            case .loading:
+                break
+            }
 
             completion(newState)
         }
 
         return true
+    }
+
+    var remoteChangeIngestor: SlateRemoteChangeIngestor<Schema>? {
+        ingestorLock.lock()
+        defer { ingestorLock.unlock() }
+        return storedRemoteChangeIngestor
+    }
+
+    var isMerging: Bool {
+        mergeStateLock.lock()
+        defer { mergeStateLock.unlock() }
+        return storedIsMerging
+    }
+
+    func setIsMerging(_ isMerging: Bool) {
+        mergeStateLock.lock()
+        storedIsMerging = isMerging
+        mergeStateLock.unlock()
+    }
+
+    func installRemoteChangeIngestor(_ ingestor: SlateRemoteChangeIngestor<Schema>) {
+        ingestorLock.lock()
+        storedRemoteChangeIngestor = ingestor
+        let shouldStart = {
+            loadStateLock.lock()
+            defer { loadStateLock.unlock() }
+            if case .loaded = storedLoadState {
+                return true
+            }
+            return false
+        }()
+        ingestorLock.unlock()
+
+        if shouldStart {
+            ingestor.start()
+        }
+    }
+
+    func startRemoteChangeIngestorIfNeeded() {
+        let ingestor = remoteChangeIngestor
+        ingestor?.start()
+    }
+
+    func stopRemoteChangeIngestor() {
+        let ingestor = remoteChangeIngestor
+        ingestor?.stop()
     }
 
     func makeReaderContext() -> NSManagedObjectContext {
@@ -117,11 +178,9 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         return context
     }
 
-    /// Register a sink that wants to receive batch-delete object IDs after a
-    /// `Slate.batchDelete(...)` call commits to the persistent store. Stream
-    /// cores use this because `NSBatchDeleteRequest` bypasses
-    /// `NSManagedObjectContextDidSave`, so the writer-context save observer
-    /// they normally rely on never fires.
+    /// Register a sink that wants to receive batch-delete or remote-merge
+    /// refresh events after store-level changes that bypass the writer
+    /// context's normal save notification.
     @discardableResult
     func registerBatchDeleteSink(_ handler: @escaping BatchDeleteHandler) -> UUID {
         let id = UUID()
@@ -138,11 +197,19 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
     }
 
     func notifyBatchDelete(deletedIDs: [NSManagedObjectID]) {
+        notifyStreamSinks(.batchDelete(deletedIDs: deletedIDs))
+    }
+
+    func notifyStreamsRefresh() {
+        notifyStreamSinks(.remoteMerge)
+    }
+
+    private func notifyStreamSinks(_ event: SlateStreamRefreshEvent) {
         sinkLock.lock()
         let handlers = Array(batchDeleteSinks.values)
         sinkLock.unlock()
         for handler in handlers {
-            handler(deletedIDs)
+            handler(event)
         }
     }
 
@@ -150,6 +217,13 @@ final class SlateStoreOwner<Schema: SlateSchema>: @unchecked Sendable {
         loadStateLock.lock()
         storedLoadState = loadState
         loadStateLock.unlock()
+        if case .loaded = loadState {
+            startRemoteChangeIngestorIfNeeded()
+        }
+    }
+
+    deinit {
+        stopRemoteChangeIngestor()
     }
 }
 
