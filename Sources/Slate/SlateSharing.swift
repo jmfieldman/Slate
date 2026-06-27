@@ -35,6 +35,12 @@ public struct SlateSharing: Sendable {
         return state.snapshot(for: share)
     }
 
+    public func stopSharing<V: SlateObject>(
+        _ object: V
+    ) async throws {
+        try await state.stopSharing(object)
+    }
+
     @MainActor
     public func prepareShare<V: SlateObject>(
         for object: V,
@@ -127,8 +133,40 @@ final class SlateSharingState: @unchecked Sendable {
         }
     }
 
+    func stopSharing<V: SlateObject>(
+        _ object: V
+    ) async throws {
+        guard let target = try await stopTarget(for: object) else {
+            return
+        }
+
+        do {
+            let rootRecord = try await sharingAdapter.fetchRootRecord(
+                target.rootObjectID,
+                target.share,
+                ownerBox
+            )
+            try await sharingAdapter.stopSharing(rootRecord, target.share, ownerBox)
+        } catch {
+            throw error.slateError
+        }
+
+        try await ownerBox.runRemoteChangeIngestion(scope: .privateStore)
+    }
+
     func snapshot(for share: CKShare) -> SlateShare {
         SlateShare(cloudKitShare: share)
+    }
+
+    private func stopTarget<V: SlateObject>(
+        for object: V
+    ) async throws -> SlateSharingStopTarget? {
+        try await ownerBox.withResolvedObject(object) { [sharingAdapter, ownerBox] resolved in
+            guard let share = try await sharingAdapter.fetchShare(resolved, ownerBox) else {
+                return nil
+            }
+            return SlateSharingStopTarget(rootObjectID: resolved.id, share: share)
+        }
     }
 
     private func apply(title: String?, to share: CKShare) {
@@ -171,9 +209,16 @@ struct SlateSharingPreparedShare: @unchecked Sendable {
     let container: CKContainer?
 }
 
+struct SlateSharingStopTarget: @unchecked Sendable {
+    let rootObjectID: SlateID
+    let share: CKShare
+}
+
 struct SlateSharingCloudKitAdapter: Sendable {
     let fetchShare: @Sendable (SlateSharingResolvedObject, SlateSharingOwnerBox) async throws -> CKShare?
     let createShare: @Sendable (SlateSharingResolvedObject, SlateSharingOwnerBox) async throws -> SlateSharingPreparedShare
+    let fetchRootRecord: @Sendable (SlateID, CKShare, SlateSharingOwnerBox) async throws -> CKRecord
+    let stopSharing: @Sendable (CKRecord, CKShare, SlateSharingOwnerBox) async throws -> Void
     let accountContainer: @Sendable (SlateSharingOwnerBox) throws -> CKContainer
 
     static let live = SlateSharingCloudKitAdapter(
@@ -198,6 +243,43 @@ struct SlateSharingCloudKitAdapter: Sendable {
                         container: cloudKitContainer
                     )))
                 }
+            }
+        },
+        fetchRootRecord: { rootObjectID, _, ownerBox in
+            let container = try ownerBox.persistentCloudKitContainer().value
+            if let rootRecord = container.record(for: rootObjectID) {
+                return rootRecord
+            }
+
+            guard let rootRecordID = container.recordID(for: rootObjectID) else {
+                throw SlateError.coreData("Sharing operation could not resolve the root CloudKit record")
+            }
+
+            let database = try ownerBox.accountCloudKitContainer().value.privateCloudDatabase
+            return try await SlateSharingAsyncCompletion.value(
+                missingResultMessage: "Sharing operation completed without a root CloudKit record"
+            ) { completion in
+                database.fetch(withRecordID: rootRecordID, completionHandler: completion)
+            }
+        },
+        stopSharing: { rootRecord, share, ownerBox in
+            let database = try ownerBox.accountCloudKitContainer().value.privateCloudDatabase
+            try await SlateSharingAsyncCompletion.void { completion in
+                let operation = CKModifyRecordsOperation(
+                    recordsToSave: [rootRecord],
+                    recordIDsToDelete: [share.recordID]
+                )
+                operation.savePolicy = .ifServerRecordUnchanged
+                operation.isAtomic = true
+                operation.modifyRecordsResultBlock = { result in
+                    switch result {
+                    case .success:
+                        completion(nil)
+                    case let .failure(error):
+                        completion(error)
+                    }
+                }
+                database.add(operation)
             }
         },
         accountContainer: { ownerBox in
