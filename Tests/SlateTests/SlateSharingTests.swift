@@ -274,6 +274,14 @@ struct SlateSharingTests {
         }
         #expect(schemaIdentifier == TestCloudKitRuntimeSchema.schemaIdentifier)
 
+        let object = try await fixture.insertRecord(title: "Resolved object")
+        let resolvedEntity = try await ownerBox.withResolvedObject(object) { resolved in
+            #expect(resolved.id == object.slateID)
+            #expect(resolved.managedObject.objectID == object.slateID)
+            return resolved.entity
+        }
+        #expect(resolvedEntity == DatabaseTestCloudKitRuntimeRecord.slateEntityName)
+
         try await ownerBox.runRemoteChangeIngestion(scope: .privateStore)
         try await ownerBox.runRemoteChangeIngestion(scope: .sharedStore)
     }
@@ -302,6 +310,8 @@ struct SlateSharingTests {
         #expect(sourceText.contains("public struct SlateSharing: Sendable"))
         #expect(sourceText.contains("func lookupParticipants("))
         #expect(sourceText.contains(") async throws -> SlateParticipantLookupResult"))
+        #expect(sourceText.contains("withCheckedThrowingContinuation"))
+        #expect(sourceText.contains("withResolvedObject"))
     }
 
     @Test
@@ -724,6 +734,17 @@ private final class SharingOwnerBoxFixture: @unchecked Sendable {
                 storeURLs: [privateURL, sharedURL]
             )
         )
+    }
+
+    func insertRecord(title: String) async throws -> TestCloudKitRuntimeRecord {
+        let writerContext = owner.writerContext
+        return try await writerContext.slatePerform {
+            let record = DatabaseTestCloudKitRuntimeRecord.create(in: writerContext)
+            record.title = title
+            try writerContext.obtainPermanentIDs(for: [record])
+            try writerContext.save()
+            return record.slateObject
+        }
     }
 
     private static func addStore(

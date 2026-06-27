@@ -54,7 +54,11 @@ private struct SlateSharingAnySendable: @unchecked Sendable {
 
 final class SlateSharingOwnerBox: @unchecked Sendable {
     private let waitForOwnerReady: @Sendable () async throws -> Void
-    private let resolveObjectInWriterContext: @Sendable (NSManagedObjectID, String) async throws -> SlateSharingResolvedObject
+    private let runResolvedObjectPhase: @Sendable (
+        NSManagedObjectID,
+        String,
+        @escaping @Sendable (SlateSharingResolvedObject) async throws -> SlateSharingAnySendable
+    ) async throws -> SlateSharingAnySendable
     private let resolveStoreSlot: @Sendable (SlateSharingStoreScope) async throws -> SlateSharingStoreSlot
     private let runWriteGate: @Sendable (
         @escaping @Sendable () async throws -> SlateSharingAnySendable
@@ -67,11 +71,12 @@ final class SlateSharingOwnerBox: @unchecked Sendable {
         waitForOwnerReady = {
             try await SlateSharingOwnerBox.waitUntilLoaded(owner)
         }
-        resolveObjectInWriterContext = { objectID, entity in
-            try await SlateSharingOwnerBox.resolveObject(
+        runResolvedObjectPhase = { objectID, entity, operation in
+            try await SlateSharingOwnerBox.withResolvedObjectPhase(
                 objectID: objectID,
                 entity: entity,
-                owner: owner
+                owner: owner,
+                operation
             )
         }
         resolveStoreSlot = { scope in
@@ -110,8 +115,17 @@ final class SlateSharingOwnerBox: @unchecked Sendable {
         try await waitForOwnerReady()
     }
 
-    func resolveObject<V: SlateObject>(_ object: V) async throws -> SlateSharingResolvedObject {
-        try await resolveObjectInWriterContext(object.slateID, String(describing: V.self))
+    func withResolvedObject<V: SlateObject, T: Sendable>(
+        _ object: V,
+        _ operation: @Sendable @escaping (SlateSharingResolvedObject) async throws -> T
+    ) async throws -> T {
+        let boxed = try await runResolvedObjectPhase(object.slateID, String(describing: V.self)) { resolved in
+            SlateSharingAnySendable(value: try await operation(resolved))
+        }
+        guard let value = boxed.value as? T else {
+            throw SlateError.coreData("Sharing resolved-object phase returned unexpected result")
+        }
+        return value
     }
 
     func storeSlot(scope: SlateSharingStoreScope) async throws -> SlateSharingStoreSlot {
@@ -152,14 +166,15 @@ final class SlateSharingOwnerBox: @unchecked Sendable {
         }
     }
 
-    private static func resolveObject<Schema: SlateSchema>(
+    private static func withResolvedObjectPhase<Schema: SlateSchema>(
         objectID: NSManagedObjectID,
         entity: String,
-        owner: SlateStoreOwner<Schema>
-    ) async throws -> SlateSharingResolvedObject {
+        owner: SlateStoreOwner<Schema>,
+        _ operation: @escaping @Sendable (SlateSharingResolvedObject) async throws -> SlateSharingAnySendable
+    ) async throws -> SlateSharingAnySendable {
         try await waitUntilLoaded(owner)
         return try await owner.accessGate.write {
-            try await owner.writerContext.slatePerform {
+            let resolved = try await owner.writerContext.slatePerform {
                 do {
                     let managedObject = try owner.writerContext.existingObject(with: objectID)
                     guard !managedObject.isDeleted else {
@@ -176,6 +191,7 @@ final class SlateSharingOwnerBox: @unchecked Sendable {
                     throw SlateError.sharingObjectUnavailable(entity: entity, id: objectID)
                 }
             }
+            return try await operation(resolved)
         }
     }
 
@@ -228,6 +244,51 @@ final class SlateSharingOwnerBox: @unchecked Sendable {
                     }
                     return SlateCloudKitContainer.sharedStoreURL(forPrivateStoreURL: privateURL) == candidateURL
                 }
+            }
+        }
+    }
+}
+
+enum SlateSharingAsyncCompletion {
+    static func result<T: Sendable>(
+        _ start: (@escaping (Result<T, Error>) -> Void) -> Void
+    ) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            start { result in
+                continuation.resume(with: result)
+            }
+        }
+    }
+
+    static func value<T: Sendable>(
+        missingResultMessage: String = "Sharing operation completed without a result",
+        _ start: (@escaping (T?, Error?) -> Void) -> Void
+    ) async throws -> T {
+        try await result { completion in
+            start { value, error in
+                if let error {
+                    completion(.failure(error))
+                    return
+                }
+                guard let value else {
+                    completion(.failure(SlateError.coreData(missingResultMessage)))
+                    return
+                }
+                completion(.success(value))
+            }
+        }
+    }
+
+    static func void(
+        _ start: (@escaping (Error?) -> Void) -> Void
+    ) async throws {
+        let _: Void = try await result { completion in
+            start { error in
+                if let error {
+                    completion(.failure(error))
+                    return
+                }
+                completion(.success(()))
             }
         }
     }
