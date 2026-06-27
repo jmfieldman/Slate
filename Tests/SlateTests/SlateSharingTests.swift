@@ -410,19 +410,138 @@ struct SlateSharingTests {
     }
 
     @Test
-    func sprintEightStepOneSourceSurfaceIsScoped() throws {
+    func shareForReturnsExistingSnapshotThroughFacade() async throws {
+        let directory = try temporaryDirectory(prefix: "SlateSharingShareFor")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let fixture = try SharingOwnerBoxFixture(directory: directory)
+        let object = try await fixture.insertRecord(title: "Existing root")
+        let existingShare = sharingTestShare(title: "Existing share")
+        let probe = SharingAdapterProbe(
+            fetchedShares: [existingShare],
+            createdResults: []
+        )
+        let sharing = SlateSharing(state: SlateSharingState(
+            owner: fixture.owner,
+            sharingAdapter: probe.adapter()
+        ))
+
+        let snapshot = try await sharing.share(for: object)
+
+        #expect(snapshot?.title == "Existing share")
+        #expect(probe.events == [.fetch(object.slateID)])
+        #expect(probe.adapterCallsInsideSlatePerform == [false])
+    }
+
+    @Test
+    func shareCreatesWhenNoExistingShareIsPresent() async throws {
+        let directory = try temporaryDirectory(prefix: "SlateSharingCreate")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let fixture = try SharingOwnerBoxFixture(directory: directory)
+        let object = try await fixture.insertRecord(title: "Created root")
+        let createdShare = sharingTestShare()
+        let probe = SharingAdapterProbe(
+            fetchedShares: [nil],
+            createdResults: [.success(SlateSharingPreparedShare(
+                share: createdShare,
+                container: nil
+            ))]
+        )
+        let sharing = SlateSharing(state: SlateSharingState(
+            owner: fixture.owner,
+            sharingAdapter: probe.adapter()
+        ))
+
+        let snapshot = try await sharing.share(object, title: "Created share")
+
+        #expect(snapshot.title == "Created share")
+        #expect(createdShare[CKShare.SystemFieldKey.title] as? String == "Created share")
+        #expect(probe.events == [.fetch(object.slateID), .create(object.slateID)])
+        #expect(probe.adapterCallsInsideSlatePerform == [false, false])
+    }
+
+    @Test
+    func shareRefetchesExistingShareAfterAlreadySharedCreateRace() async throws {
+        let directory = try temporaryDirectory(prefix: "SlateSharingDuplicateRace")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let fixture = try SharingOwnerBoxFixture(directory: directory)
+        let object = try await fixture.insertRecord(title: "Race root")
+        let racedShare = sharingTestShare(title: "Race winner")
+        let probe = SharingAdapterProbe(
+            fetchedShares: [nil, racedShare],
+            createdResults: [.failure(alreadySharedError())]
+        )
+        let sharing = SlateSharing(state: SlateSharingState(
+            owner: fixture.owner,
+            sharingAdapter: probe.adapter()
+        ))
+
+        let snapshot = try await sharing.share(object)
+
+        #expect(snapshot.title == "Race winner")
+        #expect(probe.events == [
+            .fetch(object.slateID),
+            .create(object.slateID),
+            .fetch(object.slateID),
+        ])
+        #expect(probe.adapterCallsInsideSlatePerform == [false, false, false])
+    }
+
+    @MainActor
+    @Test
+    func prepareShareReturnsLiveShareAndContainerWithoutPresentingUI() async throws {
+        let directory = try temporaryDirectory(prefix: "SlateSharingPrepare")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let fixture = try SharingOwnerBoxFixture(directory: directory)
+        let object = try await fixture.insertRecord(title: "Prepared root")
+        let createdShare = sharingTestShare()
+        let container = probeContainer()
+        let probe = SharingAdapterProbe(
+            fetchedShares: [nil],
+            createdResults: [.success(SlateSharingPreparedShare(
+                share: createdShare,
+                container: container
+            ))]
+        )
+        let sharing = SlateSharing(state: SlateSharingState(
+            owner: fixture.owner,
+            sharingAdapter: probe.adapter()
+        ))
+
+        let (share, returnedContainer) = try await sharing.prepareShare(for: object, title: "Prepared share")
+        let sourceText = try slateSourceText()
+
+        #expect(share === createdShare)
+        #expect(returnedContainer === container)
+        #expect(share[CKShare.SystemFieldKey.title] as? String == "Prepared share")
+        #expect(!sourceText.contains("UICloudSharingController"))
+        #expect(!sourceText.contains("ShareLink"))
+        #expect(probe.events == [.fetch(object.slateID), .create(object.slateID)])
+        #expect(probe.adapterCallsInsideSlatePerform == [false, false])
+    }
+
+    @Test
+    func sprintEightStepThreeSourceSurfaceIsScoped() throws {
         let sourceText = try slateSourceText()
         let forbiddenTokens = [
             "initializeCloudKitSchema",
-            "func share(",
-            "func share<",
-            "func share (",
-            "func prepareShare",
             "func persist(",
             "func persist<",
             "func stopSharing",
             "func acceptShare",
-            "CKShare(",
+            "UICloudSharingController",
+            "ShareLink",
         ]
 
         for token in forbiddenTokens {
@@ -431,10 +550,16 @@ struct SlateSharingTests {
 
         #expect(!sourceText.contains("struct SlateSharing<"))
         #expect(sourceText.contains("public struct SlateSharing: Sendable"))
+        #expect(sourceText.contains("public func share<V: SlateObject>("))
+        #expect(sourceText.contains("public func share<V: SlateObject>(\n        for object: V"))
+        #expect(sourceText.contains("public func prepareShare<V: SlateObject>("))
+        #expect(sourceText.contains("title: String? = nil"))
+        #expect(sourceText.contains(") async throws -> (CKShare, CKContainer)"))
         #expect(sourceText.contains("func lookupParticipants("))
         #expect(sourceText.contains(") async throws -> SlateParticipantLookupResult"))
         #expect(sourceText.contains("withCheckedThrowingContinuation"))
         #expect(sourceText.contains("withResolvedObject"))
+        #expect(sourceText.contains("container.share([resolved.managedObject], to: nil)"))
     }
 
     @Test
@@ -943,6 +1068,111 @@ private struct UncheckedSharingPersistentStore: @unchecked Sendable {
         self.value = value
     }
 }
+
+private enum SharingAdapterEvent: Equatable {
+    case fetch(SlateID)
+    case create(SlateID)
+}
+
+private final class SharingAdapterProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var fetchedShares: [CKShare?]
+    private var createdResults: [Result<SlateSharingPreparedShare, Error>]
+    private let containerProvider: @Sendable () -> CKContainer
+    private var recordedEvents: [SharingAdapterEvent] = []
+    private var recordedAdapterCallsInsideSlatePerform: [Bool] = []
+
+    init(
+        fetchedShares: [CKShare?],
+        createdResults: [Result<SlateSharingPreparedShare, Error>],
+        containerProvider: @escaping @Sendable () -> CKContainer = probeContainer
+    ) {
+        self.fetchedShares = fetchedShares
+        self.createdResults = createdResults
+        self.containerProvider = containerProvider
+    }
+
+    var events: [SharingAdapterEvent] {
+        lock.withLock {
+            recordedEvents
+        }
+    }
+
+    var adapterCallsInsideSlatePerform: [Bool] {
+        lock.withLock {
+            recordedAdapterCallsInsideSlatePerform
+        }
+    }
+
+    func adapter() -> SlateSharingCloudKitAdapter {
+        SlateSharingCloudKitAdapter(
+            fetchShare: { [self] resolved, _ in
+                try nextFetchedShare(for: resolved.id)
+            },
+            createShare: { [self] resolved, _ in
+                try nextCreatedShare(for: resolved.id)
+            },
+            accountContainer: { [self] _ in
+                containerProvider()
+            }
+        )
+    }
+
+    private func nextFetchedShare(for id: SlateID) throws -> CKShare? {
+        try lock.withLock {
+            recordedEvents.append(.fetch(id))
+            recordedAdapterCallsInsideSlatePerform.append(SlateCoreDataContextExecution.isInsideSlatePerform)
+            guard !fetchedShares.isEmpty else {
+                throw NSError(
+                    domain: "SlateSharingTests",
+                    code: -10,
+                    userInfo: [NSLocalizedDescriptionKey: "Unexpected fetchShare adapter call"]
+                )
+            }
+            return fetchedShares.removeFirst()
+        }
+    }
+
+    private func nextCreatedShare(for id: SlateID) throws -> SlateSharingPreparedShare {
+        try lock.withLock {
+            recordedEvents.append(.create(id))
+            recordedAdapterCallsInsideSlatePerform.append(SlateCoreDataContextExecution.isInsideSlatePerform)
+            guard !createdResults.isEmpty else {
+                throw NSError(
+                    domain: "SlateSharingTests",
+                    code: -11,
+                    userInfo: [NSLocalizedDescriptionKey: "Unexpected createShare adapter call"]
+                )
+            }
+            return try createdResults.removeFirst().get()
+        }
+    }
+}
+
+private func sharingTestShare(title: String? = nil) -> CKShare {
+    let rootRecord = CKRecord(recordType: "Root")
+    let share = CKShare(rootRecord: rootRecord)
+    if let title {
+        share[CKShare.SystemFieldKey.title] = title as CKRecordValue
+    }
+    return share
+}
+
+private func probeContainer() -> CKContainer {
+    // Constructing a real CKContainer requires iCloud entitlements. The fake adapter
+    // only passes this object through for identity checks and never calls CK APIs.
+    unsafeBitCast(ProbeContainerBox(), to: CKContainer.self)
+}
+
+private func alreadySharedError() -> NSError {
+    NSError(
+        domain: "CKErrorDomain",
+        code: 30,
+        userInfo: nil
+    )
+}
+
+private final class ProbeContainerBox: NSObject {}
 
 private func expectLoading<Schema: SlateSchema>(
     _ owner: SlateStoreOwner<Schema>,

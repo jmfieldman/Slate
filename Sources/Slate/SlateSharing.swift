@@ -10,6 +10,47 @@ public struct SlateSharing: Sendable {
         self.state = SlateSharingState(owner: owner)
     }
 
+    init(state: SlateSharingState) {
+        self.state = state
+    }
+
+    public func share<V: SlateObject>(
+        _ object: V,
+        title: String? = nil
+    ) async throws -> SlateShare {
+        let preparedShare = try await state.createOrFetchShare(
+            for: object,
+            title: title,
+            requiresContainer: false
+        )
+        return state.snapshot(for: preparedShare.share)
+    }
+
+    public func share<V: SlateObject>(
+        for object: V
+    ) async throws -> SlateShare? {
+        guard let share = try await state.fetchExistingShare(for: object) else {
+            return nil
+        }
+        return state.snapshot(for: share)
+    }
+
+    @MainActor
+    public func prepareShare<V: SlateObject>(
+        for object: V,
+        title: String? = nil
+    ) async throws -> (CKShare, CKContainer) {
+        let preparedShare = try await state.createOrFetchShare(
+            for: object,
+            title: title,
+            requiresContainer: true
+        )
+        guard let container = preparedShare.container else {
+            throw SlateError.coreData("Sharing operation completed without a CloudKit container")
+        }
+        return (preparedShare.share, container)
+    }
+
     public func lookupParticipants(
         emailAddresses: [String],
         phoneNumbers: [String]
@@ -23,9 +64,22 @@ public struct SlateSharing: Sendable {
 
 final class SlateSharingState: @unchecked Sendable {
     let ownerBox: SlateSharingOwnerBox
+    private let sharingAdapter: SlateSharingCloudKitAdapter
 
-    init<Schema: SlateSchema>(owner: SlateStoreOwner<Schema>) {
+    init<Schema: SlateSchema>(
+        owner: SlateStoreOwner<Schema>,
+        sharingAdapter: SlateSharingCloudKitAdapter = .live
+    ) {
         self.ownerBox = SlateSharingOwnerBox(owner: owner)
+        self.sharingAdapter = sharingAdapter
+    }
+
+    init(
+        ownerBox: SlateSharingOwnerBox,
+        sharingAdapter: SlateSharingCloudKitAdapter = .live
+    ) {
+        self.ownerBox = ownerBox
+        self.sharingAdapter = sharingAdapter
     }
 
     func resolveObject<V: SlateObject>(
@@ -39,14 +93,58 @@ final class SlateSharingState: @unchecked Sendable {
     func fetchExistingShare<V: SlateObject>(
         for object: V
     ) async throws -> CKShare? {
-        try await ownerBox.withResolvedObject(object) { [ownerBox] resolved in
-            let container = try ownerBox.persistentCloudKitContainer().value
-            return try container.fetchShares(matching: [resolved.id])[resolved.id]
+        try await ownerBox.withResolvedObject(object) { [sharingAdapter, ownerBox] resolved in
+            try await sharingAdapter.fetchShare(resolved, ownerBox)
+        }
+    }
+
+    func createOrFetchShare<V: SlateObject>(
+        for object: V,
+        title: String?,
+        requiresContainer: Bool
+    ) async throws -> SlateSharingPreparedShare {
+        if let share = try await fetchExistingShare(for: object) {
+            apply(title: title, to: share)
+            return SlateSharingPreparedShare(
+                share: share,
+                container: try containerIfNeeded(requiresContainer)
+            )
+        }
+
+        let resolved = try await resolveObject(object)
+        do {
+            let preparedShare = try await sharingAdapter.createShare(resolved, ownerBox)
+            apply(title: title, to: preparedShare.share)
+            return preparedShare
+        } catch {
+            guard SlateSharingCloudKitAdapter.isAlreadySharedError(error),
+                  let share = try await fetchExistingShare(for: object) else {
+                throw error
+            }
+            apply(title: title, to: share)
+            return SlateSharingPreparedShare(
+                share: share,
+                container: try containerIfNeeded(requiresContainer)
+            )
         }
     }
 
     func snapshot(for share: CKShare) -> SlateShare {
         SlateShare(cloudKitShare: share)
+    }
+
+    private func apply(title: String?, to share: CKShare) {
+        guard let title else {
+            return
+        }
+        share[CKShare.SystemFieldKey.title] = title as CKRecordValue
+    }
+
+    private func containerIfNeeded(_ requiresContainer: Bool) throws -> CKContainer? {
+        guard requiresContainer else {
+            return nil
+        }
+        return try sharingAdapter.accountContainer(ownerBox)
     }
 }
 
@@ -68,6 +166,63 @@ struct SlateUncheckedPersistentCloudKitContainer: @unchecked Sendable {
 
 struct SlateUncheckedCloudKitContainer: @unchecked Sendable {
     let value: CKContainer
+}
+
+struct SlateSharingPreparedShare: @unchecked Sendable {
+    let share: CKShare
+    let container: CKContainer?
+}
+
+struct SlateSharingCloudKitAdapter: Sendable {
+    let fetchShare: @Sendable (SlateSharingResolvedObject, SlateSharingOwnerBox) async throws -> CKShare?
+    let createShare: @Sendable (SlateSharingResolvedObject, SlateSharingOwnerBox) async throws -> SlateSharingPreparedShare
+    let accountContainer: @Sendable (SlateSharingOwnerBox) throws -> CKContainer
+
+    static let live = SlateSharingCloudKitAdapter(
+        fetchShare: { resolved, ownerBox in
+            let container = try ownerBox.persistentCloudKitContainer().value
+            return try container.fetchShares(matching: [resolved.id])[resolved.id]
+        },
+        createShare: { resolved, ownerBox in
+            let container = try ownerBox.persistentCloudKitContainer().value
+            return try await SlateSharingAsyncCompletion.result { completion in
+                container.share([resolved.managedObject], to: nil) { _, share, cloudKitContainer, error in
+                    if let error {
+                        completion(.failure(error))
+                        return
+                    }
+                    guard let share, let cloudKitContainer else {
+                        completion(.failure(SlateError.coreData("Sharing operation completed without a share")))
+                        return
+                    }
+                    completion(.success(SlateSharingPreparedShare(
+                        share: share,
+                        container: cloudKitContainer
+                    )))
+                }
+            }
+        },
+        accountContainer: { ownerBox in
+            try ownerBox.accountCloudKitContainer().value
+        }
+    )
+
+    static func isAlreadySharedError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        if nsError.domain == "CKErrorDomain", nsError.code == 30 {
+            return true
+        }
+
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? Error {
+            return isAlreadySharedError(underlying)
+        }
+
+        if let partialErrors = nsError.userInfo[CKPartialErrorsByItemIDKey] as? [AnyHashable: Error] {
+            return partialErrors.values.contains(where: isAlreadySharedError)
+        }
+
+        return false
+    }
 }
 
 private struct SlateSharingAnySendable: @unchecked Sendable {
@@ -330,7 +485,7 @@ private extension CKShare.Participant {
 
 enum SlateSharingAsyncCompletion {
     static func result<T: Sendable>(
-        _ start: (@escaping (Result<T, Error>) -> Void) -> Void
+        _ start: (@escaping @Sendable (Result<T, Error>) -> Void) -> Void
     ) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in
             start { result in
@@ -341,7 +496,7 @@ enum SlateSharingAsyncCompletion {
 
     static func value<T: Sendable>(
         missingResultMessage: String = "Sharing operation completed without a result",
-        _ start: (@escaping (T?, Error?) -> Void) -> Void
+        _ start: (@escaping @Sendable (T?, Error?) -> Void) -> Void
     ) async throws -> T {
         try await result { completion in
             start { value, error in
@@ -359,7 +514,7 @@ enum SlateSharingAsyncCompletion {
     }
 
     static func void(
-        _ start: (@escaping (Error?) -> Void) -> Void
+        _ start: (@escaping @Sendable (Error?) -> Void) -> Void
     ) async throws {
         let _: Void = try await result { completion in
             start { error in
