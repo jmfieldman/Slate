@@ -790,6 +790,70 @@ struct SlateSharingTests {
     }
 
     @Test
+    func acceptShareInvokesAdapterUnderOwnerWriteGate() async throws {
+        let directory = try temporaryDirectory(prefix: "SlateSharingAcceptWriteGate")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let fixture = try SharingOwnerBoxFixture(directory: directory)
+        let metadata = sharingTestMetadata()
+        let timeline = LockedTestValues<String>()
+        let competingWrite = LockedTestTask()
+        let adapter = SlateSharingCloudKitAdapter(
+            fetchShare: { _, _ in
+                throw sharingProbeError("Unexpected fetchShare adapter call")
+            },
+            createShare: { _, _ in
+                throw sharingProbeError("Unexpected createShare adapter call")
+            },
+            fetchRootRecord: { _, _, _ in
+                throw sharingProbeError("Unexpected fetchRootRecord adapter call")
+            },
+            stopSharing: { _, _, _ in
+                throw sharingProbeError("Unexpected stopSharing adapter call")
+            },
+            acceptShare: { _, sharedSlot, ownerBox in
+                #expect(sharedSlot.scope == .sharedStore)
+                #expect(SlateCoreDataContextExecution.isInsideSlatePerform == false)
+                timeline.append("accept-start")
+                let queuedWrite = Task {
+                    timeline.append("competing-attempt")
+                    try await ownerBox.withOwnerWriteGate {
+                        timeline.append("competing-write")
+                    }
+                }
+                await competingWrite.set(queuedWrite)
+
+                for _ in 0..<50 where !timeline.values.contains("competing-attempt") {
+                    try await Task.sleep(nanoseconds: 1_000_000)
+                }
+
+                #expect(timeline.values.contains("competing-attempt"))
+                #expect(!timeline.values.contains("competing-write"))
+                timeline.append("accept-end")
+            },
+            accountContainer: { _ in
+                probeContainer()
+            }
+        )
+        let sharing = SlateSharing(state: SlateSharingState(
+            owner: fixture.owner,
+            sharingAdapter: adapter
+        ))
+
+        try await sharing.acceptShare(metadata)
+        try await competingWrite.value()
+
+        #expect(timeline.values == [
+            "accept-start",
+            "competing-attempt",
+            "accept-end",
+            "competing-write",
+        ])
+    }
+
+    @Test
     func acceptShareWaitsForOwnerReadinessBeforeResolvingStores() async throws {
         let directory = try temporaryDirectory(prefix: "SlateSharingAcceptReadiness")
         defer {
@@ -1703,6 +1767,18 @@ private final class LockedTestValues<Value: Sendable>: @unchecked Sendable {
         lock.withLock {
             recordedValues.append(value)
         }
+    }
+}
+
+private actor LockedTestTask {
+    private var task: Task<Void, Error>?
+
+    func set(_ task: Task<Void, Error>) {
+        self.task = task
+    }
+
+    func value() async throws {
+        try await task?.value
     }
 }
 

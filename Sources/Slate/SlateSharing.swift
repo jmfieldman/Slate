@@ -163,7 +163,9 @@ final class SlateSharingState: @unchecked Sendable {
         let sharedSlot = try await ownerBox.storeSlot(scope: .sharedStore)
 
         do {
-            try await sharingAdapter.acceptShare(metadata, sharedSlot, ownerBox)
+            try await ownerBox.withOwnerWriteGate { [sharingAdapter, ownerBox] in
+                try await sharingAdapter.acceptShare(metadata, sharedSlot, ownerBox)
+            }
         } catch {
             throw error.slateError
         }
