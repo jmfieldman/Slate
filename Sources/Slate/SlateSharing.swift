@@ -41,6 +41,10 @@ public struct SlateSharing: Sendable {
         try await state.stopSharing(object)
     }
 
+    public func acceptShare(_ metadata: CKShare.Metadata) async throws {
+        try await state.acceptShare(metadata)
+    }
+
     @MainActor
     public func prepareShare<V: SlateObject>(
         for object: V,
@@ -154,6 +158,19 @@ final class SlateSharingState: @unchecked Sendable {
         try await ownerBox.runRemoteChangeIngestion(scope: .privateStore)
     }
 
+    func acceptShare(_ metadata: CKShare.Metadata) async throws {
+        try await ownerBox.waitUntilOwnerReady()
+        let sharedSlot = try await ownerBox.storeSlot(scope: .sharedStore)
+
+        do {
+            try await sharingAdapter.acceptShare(metadata, sharedSlot, ownerBox)
+        } catch {
+            throw error.slateError
+        }
+
+        try await ownerBox.runRemoteChangeIngestion(scope: .sharedStore)
+    }
+
     func snapshot(for share: CKShare) -> SlateShare {
         SlateShare(cloudKitShare: share)
     }
@@ -219,6 +236,7 @@ struct SlateSharingCloudKitAdapter: Sendable {
     let createShare: @Sendable (SlateSharingResolvedObject, SlateSharingOwnerBox) async throws -> SlateSharingPreparedShare
     let fetchRootRecord: @Sendable (SlateID, CKShare, SlateSharingOwnerBox) async throws -> CKRecord
     let stopSharing: @Sendable (CKRecord, CKShare, SlateSharingOwnerBox) async throws -> Void
+    let acceptShare: @Sendable (CKShare.Metadata, SlateSharingStoreSlot, SlateSharingOwnerBox) async throws -> Void
     let accountContainer: @Sendable (SlateSharingOwnerBox) throws -> CKContainer
 
     static let live = SlateSharingCloudKitAdapter(
@@ -280,6 +298,17 @@ struct SlateSharingCloudKitAdapter: Sendable {
                     }
                 }
                 database.add(operation)
+            }
+        },
+        acceptShare: { metadata, sharedSlot, ownerBox in
+            let container = try ownerBox.persistentCloudKitContainer().value
+            try await SlateSharingAsyncCompletion.void { completion in
+                container.acceptShareInvitations(
+                    from: [metadata],
+                    into: sharedSlot.store
+                ) { _, error in
+                    completion(error)
+                }
             }
         },
         accountContainer: { ownerBox in

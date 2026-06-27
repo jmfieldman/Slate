@@ -36,6 +36,7 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
     private let lock = NSLock()
     private var observer: NSObjectProtocol?
     private var ingestionHookForTesting: (@Sendable () -> Void)?
+    private var ingestionStoreURLHookForTesting: (@Sendable (URL?) -> Void)?
     private var mergeHookForTesting: (@Sendable () throws -> Void)?
 
     init(
@@ -118,6 +119,12 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
         lock.unlock()
     }
 
+    func setIngestionStoreURLHookForTesting(_ hook: (@Sendable (URL?) -> Void)?) {
+        lock.lock()
+        ingestionStoreURLHookForTesting = hook
+        lock.unlock()
+    }
+
     func setMergeHookForTesting(_ hook: (@Sendable () throws -> Void)?) {
         lock.lock()
         mergeHookForTesting = hook
@@ -191,7 +198,9 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
             }
         }
 
-        currentIngestionHookForTesting()?()
+        let hooks = currentIngestionHooksForTesting()
+        hooks.count?()
+        hooks.storeURL(storeURL?.standardizedFileURL)
     }
 
     private func fetchPersistentHistory(storeURL: URL?) async throws -> SlateRemoteChangeHistoryWindow {
@@ -316,11 +325,17 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
         return ids
     }
 
-    private func currentIngestionHookForTesting() -> (@Sendable () -> Void)? {
+    private func currentIngestionHooksForTesting() -> (
+        count: (@Sendable () -> Void)?,
+        storeURL: @Sendable (URL?) -> Void
+    ) {
         lock.lock()
         defer { lock.unlock() }
-        let hook = ingestionHookForTesting
-        return hook
+        let countHook = ingestionHookForTesting
+        let storeURLHook = ingestionStoreURLHookForTesting
+        return (countHook, { storeURL in
+            storeURLHook?(storeURL)
+        })
     }
 
     private func currentMergeHookForTesting() -> (@Sendable () throws -> Void)? {
