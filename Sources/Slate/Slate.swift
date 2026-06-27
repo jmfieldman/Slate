@@ -762,10 +762,10 @@ public final class Slate<Schema: SlateSchema>: @unchecked Sendable {
             switch loadState {
             case .loaded:
                 return currentOwner
-            case .failed(let error):
-                throw error.slateError
-            case .loading:
-                try await Task.sleep(nanoseconds: 50_000_000)
+            case .failed, .loading:
+                if try await SlateOwnerReadiness.isLoadedOrWait(loadState) {
+                    return currentOwner
+                }
             }
         }
     }

@@ -42,6 +42,41 @@ public struct SlateParticipant: Sendable, Equatable {
     }
 }
 
+public struct SlateParticipantLookupResult: Sendable, Equatable {
+    public let emailAddressResults: [SlateParticipantLookupEntry]
+    public let phoneNumberResults: [SlateParticipantLookupEntry]
+
+    public init(
+        emailAddressResults: [SlateParticipantLookupEntry],
+        phoneNumberResults: [SlateParticipantLookupEntry]
+    ) {
+        self.emailAddressResults = emailAddressResults
+        self.phoneNumberResults = phoneNumberResults
+    }
+}
+
+public struct SlateParticipantLookupEntry: Sendable, Equatable {
+    public let input: String
+    public let outcome: SlateParticipantLookupOutcome
+
+    public init(input: String, outcome: SlateParticipantLookupOutcome) {
+        self.input = input
+        self.outcome = outcome
+    }
+}
+
+public enum SlateParticipantLookupOutcome: Sendable, Equatable {
+    case found(SlateParticipant)
+    case failed(SlateParticipantLookupFailure)
+}
+
+public enum SlateParticipantLookupFailure: Sendable, Equatable {
+    case notFound
+    case invalidInput
+    case serviceUnavailable
+    case unknown
+}
+
 public enum SlateSharePermission: Sendable, Equatable {
     case unknown
     case none

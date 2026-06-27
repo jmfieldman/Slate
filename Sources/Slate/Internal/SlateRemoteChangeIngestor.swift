@@ -36,6 +36,7 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
     private let lock = NSLock()
     private var observer: NSObjectProtocol?
     private var ingestionHookForTesting: (@Sendable () -> Void)?
+    private var ingestionStoreURLHookForTesting: (@Sendable (URL?) -> Void)?
     private var mergeHookForTesting: (@Sendable () throws -> Void)?
 
     init(
@@ -97,7 +98,11 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
     }
 
     func ingestRemoteChangeForTesting() async throws {
-        try await ingestRemoteChange()
+        try await ingestRemoteChange(storeURL: nil)
+    }
+
+    func ingestRemoteChange(forStoreURL storeURL: URL) async throws {
+        try await ingestRemoteChange(storeURL: storeURL)
     }
 
     func fetchPersistentHistoryForTesting() async throws -> SlateRemoteChangeHistoryWindow {
@@ -111,6 +116,12 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
     func setIngestionHookForTesting(_ hook: (@Sendable () -> Void)?) {
         lock.lock()
         ingestionHookForTesting = hook
+        lock.unlock()
+    }
+
+    func setIngestionStoreURLHookForTesting(_ hook: (@Sendable (URL?) -> Void)?) {
+        lock.lock()
+        ingestionStoreURLHookForTesting = hook
         lock.unlock()
     }
 
@@ -137,17 +148,29 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
 
     private func ingestRemoteChangeFromNotification() {
         Task { [weak self] in
-            try? await self?.ingestRemoteChange()
+            try? await self?.ingestRemoteChange(storeURL: nil)
         }
     }
 
-    private func ingestRemoteChange() async throws {
+    private func ingestRemoteChange(storeURL: URL?) async throws {
         let owner = try await requireLoadedOwner()
         let slots = try resolvedSlots(in: owner)
+        let selectedSlots: [SlateResolvedRemoteChangeIngestionSlot]
+        if let storeURL {
+            let standardizedURL = storeURL.standardizedFileURL
+            guard let slot = slots.first(where: { $0.storeURL == standardizedURL }) else {
+                throw SlateError.coreData(
+                    "No remote-change ingestion slot matches store URL \(standardizedURL.path)"
+                )
+            }
+            selectedSlots = [slot]
+        } else {
+            selectedSlots = slots
+        }
 
         try await owner.accessGate.write {
             do {
-                for slot in slots {
+                for slot in selectedSlots {
                     let window = try await fetchPersistentHistory(for: owner, slot: slot)
                     guard !window.isEmpty else {
                         continue
@@ -175,7 +198,9 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
             }
         }
 
-        currentIngestionHookForTesting()?()
+        let hooks = currentIngestionHooksForTesting()
+        hooks.count?()
+        hooks.storeURL(storeURL?.standardizedFileURL)
     }
 
     private func fetchPersistentHistory(storeURL: URL?) async throws -> SlateRemoteChangeHistoryWindow {
@@ -300,11 +325,17 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
         return ids
     }
 
-    private func currentIngestionHookForTesting() -> (@Sendable () -> Void)? {
+    private func currentIngestionHooksForTesting() -> (
+        count: (@Sendable () -> Void)?,
+        storeURL: @Sendable (URL?) -> Void
+    ) {
         lock.lock()
         defer { lock.unlock() }
-        let hook = ingestionHookForTesting
-        return hook
+        let countHook = ingestionHookForTesting
+        let storeURLHook = ingestionStoreURLHookForTesting
+        return (countHook, { storeURL in
+            storeURLHook?(storeURL)
+        })
     }
 
     private func currentMergeHookForTesting() -> (@Sendable () throws -> Void)? {
@@ -320,13 +351,14 @@ final class SlateRemoteChangeIngestor<Schema: SlateSchema>: @unchecked Sendable 
                 throw SlateError.closed
             }
 
-            switch owner.loadState {
+            let loadState = owner.loadState
+            switch loadState {
             case .loaded:
                 return owner
-            case .failed(let error):
-                throw error.slateError
-            case .loading:
-                try await Task.sleep(nanoseconds: 50_000_000)
+            case .failed, .loading:
+                if try await SlateOwnerReadiness.isLoadedOrWait(loadState) {
+                    return owner
+                }
             }
         }
     }
