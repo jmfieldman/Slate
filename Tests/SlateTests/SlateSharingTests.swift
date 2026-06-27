@@ -287,6 +287,129 @@ struct SlateSharingTests {
     }
 
     @Test
+    func sharingStateResolvesObjectsOnlyFromPrivateStore() async throws {
+        let directory = try temporaryDirectory(prefix: "SlateSharingResolvePrivate")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let fixture = try SharingOwnerBoxFixture(directory: directory)
+        let state = SlateSharingState(owner: fixture.owner)
+        let object = try await fixture.insertRecord(title: "Private object")
+
+        let resolved = try await state.resolveObject(object)
+
+        #expect(resolved.id == object.slateID)
+        #expect(resolved.managedObject.objectID == object.slateID)
+        #expect(resolved.managedObject.objectID.persistentStore === resolved.privateStore)
+        #expect(resolved.entity == DatabaseTestCloudKitRuntimeRecord.slateEntityName)
+    }
+
+    @Test
+    func sharingStateThrowsUnavailableForTemporaryObjectID() async throws {
+        let directory = try temporaryDirectory(prefix: "SlateSharingResolveTemporary")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let fixture = try SharingOwnerBoxFixture(directory: directory)
+        let state = SlateSharingState(owner: fixture.owner)
+        let temporaryID = NSManagedObjectID()
+        let object = TestCloudKitRuntimeRecord(
+            slateID: temporaryID,
+            title: "Temporary"
+        )
+
+        do {
+            _ = try await state.resolveObject(object)
+            Issue.record("Expected temporary sharing object ID to throw")
+        } catch SlateError.sharingObjectUnavailable(let entity, let id) {
+            #expect(entity == "TestCloudKitRuntimeRecord")
+            if id !== temporaryID {
+                Issue.record("Expected thrown ID to be the same temporary object ID")
+            }
+        } catch {
+            Issue.record("Expected sharingObjectUnavailable, got \(error)")
+        }
+    }
+
+    @Test
+    func sharingStateThrowsUnavailableForDeletedObjectID() async throws {
+        let directory = try temporaryDirectory(prefix: "SlateSharingResolveDeleted")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let fixture = try SharingOwnerBoxFixture(directory: directory)
+        let state = SlateSharingState(owner: fixture.owner)
+        let object = try await fixture.insertRecord(title: "Deleted object")
+        try await fixture.deleteRecord(object)
+
+        await #expect(throws: SlateError.sharingObjectUnavailable(
+            entity: "TestCloudKitRuntimeRecord",
+            id: object.slateID
+        )) {
+            _ = try await state.resolveObject(object)
+        }
+    }
+
+    @Test
+    func sharingStateThrowsWrongStoreForSharedStoreObjectID() async throws {
+        let directory = try temporaryDirectory(prefix: "SlateSharingResolveWrongStore")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let fixture = try SharingOwnerBoxFixture(directory: directory)
+        let state = SlateSharingState(owner: fixture.owner)
+        let object = try await fixture.insertRecord(title: "Shared object", scope: .sharedStore)
+
+        await #expect(throws: SlateError.sharingObjectWrongStore(
+            entity: "TestCloudKitRuntimeRecord",
+            id: object.slateID
+        )) {
+            _ = try await state.resolveObject(object)
+        }
+    }
+
+    @Test
+    func sharingStateThrowsStoreUnavailableWhenPrivateSlotIsMissing() async throws {
+        let directory = try temporaryDirectory(prefix: "SlateSharingMissingPrivateSlot")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let fixture = try SharingOwnerBoxFixture(
+            directory: directory,
+            installedScopes: [.sharedStore]
+        )
+        let state = SlateSharingState(owner: fixture.owner)
+        let object = TestCloudKitRuntimeRecord(title: "Missing private store")
+
+        await #expect(throws: SlateError.sharingStoreUnavailable(scope: .privateStore)) {
+            _ = try await state.resolveObject(object)
+        }
+    }
+
+    @Test
+    func mapsConstructedCloudKitShareToSlateSnapshot() {
+        let rootRecord = CKRecord(recordType: "Root")
+        let share = CKShare(rootRecord: rootRecord)
+        share[CKShare.SystemFieldKey.title] = "Shared title" as CKRecordValue
+
+        let snapshot = SlateShare(cloudKitShare: share)
+
+        #expect(snapshot.url == share.url)
+        #expect(snapshot.title == "Shared title")
+        #expect(snapshot.owner == SlateParticipant(cloudKitParticipant: share.owner))
+        #expect(snapshot.participants == share.participants.map(SlateParticipant.init(cloudKitParticipant:)))
+        #expect(snapshot.currentUserPermission == .readWrite)
+        #expect(snapshot.owner.role == .owner)
+        #expect(snapshot.owner.permission == .readWrite)
+        #expect(snapshot.owner.acceptanceStatus == .accepted)
+    }
+
+    @Test
     func sprintEightStepOneSourceSurfaceIsScoped() throws {
         let sourceText = try slateSourceText()
         let forbiddenTokens = [
@@ -694,7 +817,10 @@ private func slateStoreOwner<Schema: SlateSchema>(for slate: Slate<Schema>) thro
 private final class SharingOwnerBoxFixture: @unchecked Sendable {
     let owner: SlateStoreOwner<TestCloudKitRuntimeSchema>
 
-    init(directory: URL) throws {
+    init(
+        directory: URL,
+        installedScopes: [SlateSharingStoreScope] = [.privateStore, .sharedStore]
+    ) throws {
         let privateURL = directory.appendingPathComponent("Private.sqlite")
         let sharedURL = SlateCloudKitContainer.sharedStoreURL(forPrivateStoreURL: privateURL)
 
@@ -703,16 +829,22 @@ private final class SharingOwnerBoxFixture: @unchecked Sendable {
         model.setEntities(model.entities, forConfigurationName: SlateCloudKitContainer.sharedStoreConfigurationName)
         let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
 
-        try Self.addStore(
-            to: coordinator,
-            url: privateURL,
-            configuration: SlateCloudKitContainer.privateStoreConfigurationName
-        )
-        try Self.addStore(
-            to: coordinator,
-            url: sharedURL,
-            configuration: SlateCloudKitContainer.sharedStoreConfigurationName
-        )
+        for scope in installedScopes {
+            switch scope {
+            case .privateStore:
+                try Self.addStore(
+                    to: coordinator,
+                    url: privateURL,
+                    configuration: SlateCloudKitContainer.privateStoreConfigurationName
+                )
+            case .sharedStore:
+                try Self.addStore(
+                    to: coordinator,
+                    url: sharedURL,
+                    configuration: SlateCloudKitContainer.sharedStoreConfigurationName
+                )
+            }
+        }
 
         let writerContext = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
         writerContext.persistentStoreCoordinator = coordinator
@@ -736,15 +868,46 @@ private final class SharingOwnerBoxFixture: @unchecked Sendable {
         )
     }
 
-    func insertRecord(title: String) async throws -> TestCloudKitRuntimeRecord {
+    func insertRecord(
+        title: String,
+        scope: SlateSharingStoreScope = .privateStore
+    ) async throws -> TestCloudKitRuntimeRecord {
         let writerContext = owner.writerContext
+        let store = UncheckedSharingPersistentStore(try persistentStore(for: scope))
         return try await writerContext.slatePerform {
             let record = DatabaseTestCloudKitRuntimeRecord.create(in: writerContext)
             record.title = title
+            writerContext.assign(record, to: store.value)
             try writerContext.obtainPermanentIDs(for: [record])
             try writerContext.save()
             return record.slateObject
         }
+    }
+
+    func deleteRecord(_ object: TestCloudKitRuntimeRecord) async throws {
+        let writerContext = owner.writerContext
+        try await writerContext.slatePerform {
+            let record = try writerContext.existingObject(with: object.slateID)
+            writerContext.delete(record)
+            try writerContext.save()
+        }
+    }
+
+    private func persistentStore(for scope: SlateSharingStoreScope) throws -> NSPersistentStore {
+        let configurationName: String
+        switch scope {
+        case .privateStore:
+            configurationName = SlateCloudKitContainer.privateStoreConfigurationName
+        case .sharedStore:
+            configurationName = SlateCloudKitContainer.sharedStoreConfigurationName
+        }
+
+        guard let store = owner.coordinator.persistentStores.first(where: {
+            $0.configurationName == configurationName
+        }) else {
+            throw SlateError.sharingStoreUnavailable(scope: scope)
+        }
+        return store
     }
 
     private static func addStore(
@@ -770,6 +933,14 @@ private final class SharingOwnerBoxFixture: @unchecked Sendable {
         if let capturedError {
             throw capturedError
         }
+    }
+}
+
+private struct UncheckedSharingPersistentStore: @unchecked Sendable {
+    let value: NSPersistentStore
+
+    init(_ value: NSPersistentStore) {
+        self.value = value
     }
 }
 

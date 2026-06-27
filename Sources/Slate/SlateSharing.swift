@@ -27,6 +27,27 @@ final class SlateSharingState: @unchecked Sendable {
     init<Schema: SlateSchema>(owner: SlateStoreOwner<Schema>) {
         self.ownerBox = SlateSharingOwnerBox(owner: owner)
     }
+
+    func resolveObject<V: SlateObject>(
+        _ object: V
+    ) async throws -> SlateSharingResolvedObject {
+        try await ownerBox.withResolvedObject(object) { resolved in
+            resolved
+        }
+    }
+
+    func fetchExistingShare<V: SlateObject>(
+        for object: V
+    ) async throws -> CKShare? {
+        try await ownerBox.withResolvedObject(object) { [ownerBox] resolved in
+            let container = try ownerBox.persistentCloudKitContainer().value
+            return try container.fetchShares(matching: [resolved.id])[resolved.id]
+        }
+    }
+
+    func snapshot(for share: CKShare) -> SlateShare {
+        SlateShare(cloudKitShare: share)
+    }
 }
 
 struct SlateSharingStoreSlot: @unchecked Sendable {
@@ -38,6 +59,7 @@ struct SlateSharingResolvedObject: @unchecked Sendable {
     let entity: String
     let id: SlateID
     let managedObject: NSManagedObject
+    let privateStore: NSPersistentStore
 }
 
 struct SlateUncheckedPersistentCloudKitContainer: @unchecked Sendable {
@@ -173,17 +195,32 @@ final class SlateSharingOwnerBox: @unchecked Sendable {
         _ operation: @escaping @Sendable (SlateSharingResolvedObject) async throws -> SlateSharingAnySendable
     ) async throws -> SlateSharingAnySendable {
         try await waitUntilLoaded(owner)
+        let privateSlot = try await storeSlot(scope: .privateStore, owner: owner)
         return try await owner.accessGate.write {
             let resolved = try await owner.writerContext.slatePerform {
+                guard !objectID.isMember(of: NSManagedObjectID.self) else {
+                    throw SlateError.sharingObjectUnavailable(entity: entity, id: objectID)
+                }
+                guard !objectID.isTemporaryID else {
+                    throw SlateError.sharingObjectUnavailable(entity: entity, id: objectID)
+                }
+
                 do {
                     let managedObject = try owner.writerContext.existingObject(with: objectID)
                     guard !managedObject.isDeleted else {
                         throw SlateError.sharingObjectUnavailable(entity: entity, id: objectID)
                     }
+                    guard !managedObject.objectID.isTemporaryID else {
+                        throw SlateError.sharingObjectUnavailable(entity: entity, id: objectID)
+                    }
+                    guard managedObject.objectID.persistentStore === privateSlot.store else {
+                        throw SlateError.sharingObjectWrongStore(entity: entity, id: objectID)
+                    }
                     return SlateSharingResolvedObject(
                         entity: managedObject.entity.name ?? entity,
                         id: objectID,
-                        managedObject: managedObject
+                        managedObject: managedObject,
+                        privateStore: privateSlot.store
                     )
                 } catch let error as SlateError {
                     throw error
@@ -246,6 +283,48 @@ final class SlateSharingOwnerBox: @unchecked Sendable {
                 }
             }
         }
+    }
+}
+
+extension SlateShare {
+    init(cloudKitShare share: CKShare) {
+        let currentUserPermission = SlateSharePermission(
+            cloudKitPermission: share.currentUserParticipant?.permission ?? share.owner.permission
+        )
+        self.init(
+            url: share.url,
+            title: share[CKShare.SystemFieldKey.title] as? String,
+            owner: SlateParticipant(cloudKitParticipant: share.owner),
+            participants: share.participants.map(SlateParticipant.init(cloudKitParticipant:)),
+            currentUserPermission: currentUserPermission
+        )
+    }
+}
+
+extension SlateParticipant {
+    init(cloudKitParticipant participant: CKShare.Participant) {
+        self.init(
+            displayName: participant.slateDisplayName,
+            role: SlateShareRole(cloudKitRole: participant.role),
+            permission: SlateSharePermission(cloudKitPermission: participant.permission),
+            acceptanceStatus: SlateShareAcceptance(
+                cloudKitAcceptanceStatus: participant.acceptanceStatus
+            )
+        )
+    }
+}
+
+private extension CKShare.Participant {
+    var slateDisplayName: String? {
+        guard let nameComponents = userIdentity.nameComponents else {
+            return nil
+        }
+
+        let displayName = PersonNameComponentsFormatter.localizedString(
+            from: nameComponents,
+            style: .default
+        )
+        return displayName.isEmpty ? nil : displayName
     }
 }
 
