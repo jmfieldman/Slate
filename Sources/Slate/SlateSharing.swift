@@ -104,7 +104,6 @@ final class SlateSharingState: @unchecked Sendable {
         requiresContainer: Bool
     ) async throws -> SlateSharingPreparedShare {
         if let share = try await fetchExistingShare(for: object) {
-            apply(title: title, to: share)
             return SlateSharingPreparedShare(
                 share: share,
                 container: try containerIfNeeded(requiresContainer)
@@ -121,7 +120,6 @@ final class SlateSharingState: @unchecked Sendable {
                   let share = try await fetchExistingShare(for: object) else {
                 throw error
             }
-            apply(title: title, to: share)
             return SlateSharingPreparedShare(
                 share: share,
                 container: try containerIfNeeded(requiresContainer)

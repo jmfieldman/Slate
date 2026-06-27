@@ -466,6 +466,33 @@ struct SlateSharingTests {
     }
 
     @Test
+    func shareLeavesExistingShareTitleUnchanged() async throws {
+        let directory = try temporaryDirectory(prefix: "SlateSharingExistingTitle")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let fixture = try SharingOwnerBoxFixture(directory: directory)
+        let object = try await fixture.insertRecord(title: "Existing title root")
+        let existingShare = sharingTestShare(title: "Original title")
+        let probe = SharingAdapterProbe(
+            fetchedShares: [existingShare],
+            createdResults: []
+        )
+        let sharing = SlateSharing(state: SlateSharingState(
+            owner: fixture.owner,
+            sharingAdapter: probe.adapter()
+        ))
+
+        let snapshot = try await sharing.share(object, title: "Replacement title")
+
+        #expect(snapshot.title == "Original title")
+        #expect(existingShare[CKShare.SystemFieldKey.title] as? String == "Original title")
+        #expect(probe.events == [.fetch(object.slateID)])
+        #expect(probe.adapterCallsInsideSlatePerform == [false])
+    }
+
+    @Test
     func shareRefetchesExistingShareAfterAlreadySharedCreateRace() async throws {
         let directory = try temporaryDirectory(prefix: "SlateSharingDuplicateRace")
         defer {
@@ -484,9 +511,10 @@ struct SlateSharingTests {
             sharingAdapter: probe.adapter()
         ))
 
-        let snapshot = try await sharing.share(object)
+        let snapshot = try await sharing.share(object, title: "Losing title")
 
         #expect(snapshot.title == "Race winner")
+        #expect(racedShare[CKShare.SystemFieldKey.title] as? String == "Race winner")
         #expect(probe.events == [
             .fetch(object.slateID),
             .create(object.slateID),
@@ -529,6 +557,37 @@ struct SlateSharingTests {
         #expect(!sourceText.contains("ShareLink"))
         #expect(probe.events == [.fetch(object.slateID), .create(object.slateID)])
         #expect(probe.adapterCallsInsideSlatePerform == [false, false])
+    }
+
+    @MainActor
+    @Test
+    func prepareShareLeavesExistingLiveShareTitleUnchanged() async throws {
+        let directory = try temporaryDirectory(prefix: "SlateSharingPrepareExisting")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let fixture = try SharingOwnerBoxFixture(directory: directory)
+        let object = try await fixture.insertRecord(title: "Prepared existing root")
+        let existingShare = sharingTestShare(title: "Existing prepared title")
+        let container = probeContainer()
+        let probe = SharingAdapterProbe(
+            fetchedShares: [existingShare],
+            createdResults: [],
+            containerProvider: { container }
+        )
+        let sharing = SlateSharing(state: SlateSharingState(
+            owner: fixture.owner,
+            sharingAdapter: probe.adapter()
+        ))
+
+        let (share, returnedContainer) = try await sharing.prepareShare(for: object, title: "Replacement prepared title")
+
+        #expect(share === existingShare)
+        #expect(returnedContainer === container)
+        #expect(share[CKShare.SystemFieldKey.title] as? String == "Existing prepared title")
+        #expect(probe.events == [.fetch(object.slateID)])
+        #expect(probe.adapterCallsInsideSlatePerform == [false])
     }
 
     @Test
