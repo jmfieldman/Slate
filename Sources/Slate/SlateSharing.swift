@@ -65,10 +65,10 @@ public struct SlateSharing: Sendable {
         emailAddresses: [String],
         phoneNumbers: [String]
     ) async throws -> SlateParticipantLookupResult {
-        _ = emailAddresses
-        _ = phoneNumbers
-        try await state.ownerBox.waitUntilOwnerReady()
-        throw SlateError.underlying("Participant lookup is not implemented")
+        try await state.lookupParticipants(
+            emailAddresses: emailAddresses,
+            phoneNumbers: phoneNumbers
+        )
     }
 }
 
@@ -173,6 +173,32 @@ final class SlateSharingState: @unchecked Sendable {
         try await ownerBox.runRemoteChangeIngestion(scope: .sharedStore)
     }
 
+    func lookupParticipants(
+        emailAddresses: [String],
+        phoneNumbers: [String]
+    ) async throws -> SlateParticipantLookupResult {
+        try await ownerBox.waitUntilOwnerReady()
+
+        let emailResults: SlateParticipantLookupResultsByInput
+        if emailAddresses.isEmpty {
+            emailResults = [:]
+        } else {
+            emailResults = try await sharingAdapter.lookupEmailParticipants(emailAddresses, ownerBox)
+        }
+
+        let phoneResults: SlateParticipantLookupResultsByInput
+        if phoneNumbers.isEmpty {
+            phoneResults = [:]
+        } else {
+            phoneResults = try await sharingAdapter.lookupPhoneParticipants(phoneNumbers, ownerBox)
+        }
+
+        return SlateParticipantLookupResult(
+            emailAddressResults: lookupEntries(inputs: emailAddresses, results: emailResults),
+            phoneNumberResults: lookupEntries(inputs: phoneNumbers, results: phoneResults)
+        )
+    }
+
     func snapshot(for share: CKShare) -> SlateShare {
         SlateShare(cloudKitShare: share)
     }
@@ -200,6 +226,24 @@ final class SlateSharingState: @unchecked Sendable {
             return nil
         }
         return try sharingAdapter.accountContainer(ownerBox)
+    }
+
+    private func lookupEntries(
+        inputs: [String],
+        results: SlateParticipantLookupResultsByInput
+    ) -> [SlateParticipantLookupEntry] {
+        inputs.map { input in
+            let outcome: SlateParticipantLookupOutcome
+            switch results[input] {
+            case let .success(participant):
+                outcome = .found(SlateParticipant(cloudKitParticipant: participant))
+            case let .failure(error):
+                outcome = .failed(SlateParticipantLookupFailure(cloudKitError: error))
+            case nil:
+                outcome = .failed(.unknown)
+            }
+            return SlateParticipantLookupEntry(input: input, outcome: outcome)
+        }
     }
 }
 
@@ -233,12 +277,16 @@ struct SlateSharingStopTarget: @unchecked Sendable {
     let share: CKShare
 }
 
+typealias SlateParticipantLookupResultsByInput = [String: Result<CKShare.Participant, Error>]
+
 struct SlateSharingCloudKitAdapter: Sendable {
     let fetchShare: @Sendable (SlateSharingResolvedObject, SlateSharingOwnerBox) async throws -> CKShare?
     let createShare: @Sendable (SlateSharingResolvedObject, SlateSharingOwnerBox) async throws -> SlateSharingPreparedShare
     let fetchRootRecord: @Sendable (SlateID, CKShare, SlateSharingOwnerBox) async throws -> CKRecord
     let stopSharing: @Sendable (CKRecord, CKShare, SlateSharingOwnerBox) async throws -> Void
     let acceptShare: @Sendable (CKShare.Metadata, SlateSharingStoreSlot, SlateSharingOwnerBox) async throws -> Void
+    let lookupEmailParticipants: @Sendable ([String], SlateSharingOwnerBox) async throws -> SlateParticipantLookupResultsByInput
+    let lookupPhoneParticipants: @Sendable ([String], SlateSharingOwnerBox) async throws -> SlateParticipantLookupResultsByInput
     let accountContainer: @Sendable (SlateSharingOwnerBox) throws -> CKContainer
 
     static let live = SlateSharingCloudKitAdapter(
@@ -313,6 +361,14 @@ struct SlateSharingCloudKitAdapter: Sendable {
                 }
             }
         },
+        lookupEmailParticipants: { emailAddresses, ownerBox in
+            let container = try ownerBox.accountCloudKitContainer().value
+            return try await container.shareParticipants(forEmailAddresses: emailAddresses)
+        },
+        lookupPhoneParticipants: { phoneNumbers, ownerBox in
+            let container = try ownerBox.accountCloudKitContainer().value
+            return try await container.shareParticipants(forPhoneNumbers: phoneNumbers)
+        },
         accountContainer: { ownerBox in
             try ownerBox.accountCloudKitContainer().value
         }
@@ -333,6 +389,34 @@ struct SlateSharingCloudKitAdapter: Sendable {
         }
 
         return false
+    }
+}
+
+extension SlateParticipantLookupFailure {
+    init(cloudKitError error: Error) {
+        let nsError = error as NSError
+        guard nsError.domain == "CKErrorDomain" else {
+            self = .unknown
+            return
+        }
+
+        switch CKError.Code(rawValue: nsError.code) {
+        case .unknownItem:
+            self = .notFound
+        case .invalidArguments:
+            self = .invalidInput
+        case .networkUnavailable,
+             .networkFailure,
+             .serviceUnavailable,
+             .requestRateLimited,
+             .notAuthenticated,
+             .quotaExceeded,
+             .zoneBusy,
+             .accountTemporarilyUnavailable:
+            self = .serviceUnavailable
+        default:
+            self = .unknown
+        }
     }
 }
 

@@ -833,6 +833,12 @@ struct SlateSharingTests {
                 #expect(!timeline.values.contains("competing-write"))
                 timeline.append("accept-end")
             },
+            lookupEmailParticipants: { _, _ in
+                throw sharingProbeError("Unexpected lookupEmailParticipants adapter call")
+            },
+            lookupPhoneParticipants: { _, _ in
+                throw sharingProbeError("Unexpected lookupPhoneParticipants adapter call")
+            },
             accountContainer: { _ in
                 probeContainer()
             }
@@ -998,6 +1004,199 @@ struct SlateSharingTests {
             try fixture.storeURL(for: .sharedStore),
             try fixture.storeURL(for: .privateStore),
         ])
+    }
+
+    @Test
+    func lookupParticipantsPreservesInputOrderAndDuplicates() async throws {
+        let directory = try temporaryDirectory(prefix: "SlateSharingLookupOrder")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let fixture = try SharingOwnerBoxFixture(directory: directory)
+        let emailParticipant = sharingTestShare().owner
+        let phoneParticipant = sharingTestShare().owner
+        let probe = SharingAdapterProbe(
+            fetchedShares: [],
+            createdResults: [],
+            emailLookupResults: [.success([
+                "reader@example.com": .success(emailParticipant),
+                "missing@example.com": .failure(cloudKitError(.unknownItem)),
+            ])],
+            phoneLookupResults: [.success([
+                "+15555550100": .success(phoneParticipant),
+            ])]
+        )
+        let sharing = SlateSharing(state: SlateSharingState(
+            owner: fixture.owner,
+            sharingAdapter: probe.adapter()
+        ))
+
+        let result = try await sharing.lookupParticipants(
+            emailAddresses: [
+                "reader@example.com",
+                "missing@example.com",
+                "reader@example.com",
+            ],
+            phoneNumbers: [
+                "+15555550100",
+                "+15555550100",
+            ]
+        )
+
+        #expect(result.emailAddressResults == [
+            SlateParticipantLookupEntry(
+                input: "reader@example.com",
+                outcome: .found(SlateParticipant(cloudKitParticipant: emailParticipant))
+            ),
+            SlateParticipantLookupEntry(
+                input: "missing@example.com",
+                outcome: .failed(.notFound)
+            ),
+            SlateParticipantLookupEntry(
+                input: "reader@example.com",
+                outcome: .found(SlateParticipant(cloudKitParticipant: emailParticipant))
+            ),
+        ])
+        #expect(result.phoneNumberResults == [
+            SlateParticipantLookupEntry(
+                input: "+15555550100",
+                outcome: .found(SlateParticipant(cloudKitParticipant: phoneParticipant))
+            ),
+            SlateParticipantLookupEntry(
+                input: "+15555550100",
+                outcome: .found(SlateParticipant(cloudKitParticipant: phoneParticipant))
+            ),
+        ])
+        #expect(probe.events == [
+            .lookupEmail([
+                "reader@example.com",
+                "missing@example.com",
+                "reader@example.com",
+            ]),
+            .lookupPhone([
+                "+15555550100",
+                "+15555550100",
+            ]),
+        ])
+        #expect(probe.adapterCallsInsideSlatePerform == [false, false])
+    }
+
+    @Test
+    func lookupParticipantsMapsPerInputCloudKitFailures() async throws {
+        let directory = try temporaryDirectory(prefix: "SlateSharingLookupFailures")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let fixture = try SharingOwnerBoxFixture(directory: directory)
+        let probe = SharingAdapterProbe(
+            fetchedShares: [],
+            createdResults: [],
+            emailLookupResults: [.success([
+                "not-found@example.com": .failure(cloudKitError(.unknownItem)),
+                "invalid@example.com": .failure(cloudKitError(.invalidArguments)),
+                "service@example.com": .failure(cloudKitError(.serviceUnavailable)),
+                "unknown@example.com": .failure(cloudKitError(.internalError)),
+            ])]
+        )
+        let sharing = SlateSharing(state: SlateSharingState(
+            owner: fixture.owner,
+            sharingAdapter: probe.adapter()
+        ))
+
+        let result = try await sharing.lookupParticipants(
+            emailAddresses: [
+                "not-found@example.com",
+                "invalid@example.com",
+                "service@example.com",
+                "unknown@example.com",
+                "dictionary-omitted@example.com",
+            ],
+            phoneNumbers: []
+        )
+
+        #expect(result.emailAddressResults == [
+            SlateParticipantLookupEntry(input: "not-found@example.com", outcome: .failed(.notFound)),
+            SlateParticipantLookupEntry(input: "invalid@example.com", outcome: .failed(.invalidInput)),
+            SlateParticipantLookupEntry(input: "service@example.com", outcome: .failed(.serviceUnavailable)),
+            SlateParticipantLookupEntry(input: "unknown@example.com", outcome: .failed(.unknown)),
+            SlateParticipantLookupEntry(input: "dictionary-omitted@example.com", outcome: .failed(.unknown)),
+        ])
+        #expect(result.phoneNumberResults.isEmpty)
+        #expect(probe.events == [
+            .lookupEmail([
+                "not-found@example.com",
+                "invalid@example.com",
+                "service@example.com",
+                "unknown@example.com",
+                "dictionary-omitted@example.com",
+            ]),
+        ])
+    }
+
+    @Test
+    func lookupParticipantsThrowsTopLevelFailure() async throws {
+        let directory = try temporaryDirectory(prefix: "SlateSharingLookupTopLevelFailure")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let fixture = try SharingOwnerBoxFixture(directory: directory)
+        let probe = SharingAdapterProbe(
+            fetchedShares: [],
+            createdResults: [],
+            emailLookupResults: [.failure(sharingProbeError("Lookup failed"))]
+        )
+        let sharing = SlateSharing(state: SlateSharingState(
+            owner: fixture.owner,
+            sharingAdapter: probe.adapter()
+        ))
+
+        do {
+            _ = try await sharing.lookupParticipants(
+                emailAddresses: ["reader@example.com"],
+                phoneNumbers: []
+            )
+            Issue.record("Expected lookupParticipants to throw")
+        } catch let error as NSError {
+            #expect(error.localizedDescription.contains("Lookup failed"))
+        }
+
+        #expect(probe.events == [
+            .lookupEmail(["reader@example.com"]),
+        ])
+    }
+
+    @Test
+    func lookupParticipantsWithEmptyInputsSkipsAdapterCalls() async throws {
+        let directory = try temporaryDirectory(prefix: "SlateSharingLookupEmpty")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let fixture = try SharingOwnerBoxFixture(directory: directory)
+        let probe = SharingAdapterProbe(
+            fetchedShares: [],
+            createdResults: [],
+            emailLookupResults: [.failure(sharingProbeError("Unexpected email lookup"))],
+            phoneLookupResults: [.failure(sharingProbeError("Unexpected phone lookup"))]
+        )
+        let sharing = SlateSharing(state: SlateSharingState(
+            owner: fixture.owner,
+            sharingAdapter: probe.adapter()
+        ))
+
+        let result = try await sharing.lookupParticipants(
+            emailAddresses: [],
+            phoneNumbers: []
+        )
+
+        #expect(result == SlateParticipantLookupResult(
+            emailAddressResults: [],
+            phoneNumberResults: []
+        ))
+        #expect(probe.events.isEmpty)
     }
 
     @Test
@@ -1552,6 +1751,8 @@ private enum SharingAdapterEvent: Equatable {
     case fetchRootRecord(SlateID, CKRecord.ID)
     case stop(rootRecordID: CKRecord.ID, shareRecordID: CKRecord.ID)
     case accept(metadataID: ObjectIdentifier, scope: SlateSharingStoreScope, storeURL: URL?)
+    case lookupEmail([String])
+    case lookupPhone([String])
 }
 
 private final class SharingAdapterProbe: @unchecked Sendable {
@@ -1561,6 +1762,8 @@ private final class SharingAdapterProbe: @unchecked Sendable {
     private var rootRecordResults: [Result<CKRecord, Error>]
     private var stopResults: [Result<Void, Error>]
     private var acceptResults: [Result<Void, Error>]
+    private var emailLookupResults: [Result<SlateParticipantLookupResultsByInput, Error>]
+    private var phoneLookupResults: [Result<SlateParticipantLookupResultsByInput, Error>]
     private let containerProvider: @Sendable () -> CKContainer
     private var recordedEvents: [SharingAdapterEvent] = []
     private var recordedAdapterCallsInsideSlatePerform: [Bool] = []
@@ -1571,6 +1774,8 @@ private final class SharingAdapterProbe: @unchecked Sendable {
         rootRecordResults: [Result<CKRecord, Error>] = [],
         stopResults: [Result<Void, Error>] = [],
         acceptResults: [Result<Void, Error>] = [],
+        emailLookupResults: [Result<SlateParticipantLookupResultsByInput, Error>] = [],
+        phoneLookupResults: [Result<SlateParticipantLookupResultsByInput, Error>] = [],
         containerProvider: @escaping @Sendable () -> CKContainer = probeContainer
     ) {
         self.fetchedShares = fetchedShares
@@ -1578,6 +1783,8 @@ private final class SharingAdapterProbe: @unchecked Sendable {
         self.rootRecordResults = rootRecordResults
         self.stopResults = stopResults
         self.acceptResults = acceptResults
+        self.emailLookupResults = emailLookupResults
+        self.phoneLookupResults = phoneLookupResults
         self.containerProvider = containerProvider
     }
 
@@ -1609,6 +1816,12 @@ private final class SharingAdapterProbe: @unchecked Sendable {
             },
             acceptShare: { [self] metadata, sharedSlot, _ in
                 try nextAccept(metadata: metadata, sharedSlot: sharedSlot)
+            },
+            lookupEmailParticipants: { [self] emailAddresses, _ in
+                try nextEmailLookup(emailAddresses)
+            },
+            lookupPhoneParticipants: { [self] phoneNumbers, _ in
+                try nextPhoneLookup(phoneNumbers)
             },
             accountContainer: { [self] _ in
                 containerProvider()
@@ -1697,6 +1910,40 @@ private final class SharingAdapterProbe: @unchecked Sendable {
             try acceptResults.removeFirst().get()
         }
     }
+
+    private func nextEmailLookup(
+        _ emailAddresses: [String]
+    ) throws -> SlateParticipantLookupResultsByInput {
+        try lock.withLock {
+            recordedEvents.append(.lookupEmail(emailAddresses))
+            recordedAdapterCallsInsideSlatePerform.append(SlateCoreDataContextExecution.isInsideSlatePerform)
+            guard !emailLookupResults.isEmpty else {
+                throw NSError(
+                    domain: "SlateSharingTests",
+                    code: -15,
+                    userInfo: [NSLocalizedDescriptionKey: "Unexpected lookupEmailParticipants adapter call"]
+                )
+            }
+            return try emailLookupResults.removeFirst().get()
+        }
+    }
+
+    private func nextPhoneLookup(
+        _ phoneNumbers: [String]
+    ) throws -> SlateParticipantLookupResultsByInput {
+        try lock.withLock {
+            recordedEvents.append(.lookupPhone(phoneNumbers))
+            recordedAdapterCallsInsideSlatePerform.append(SlateCoreDataContextExecution.isInsideSlatePerform)
+            guard !phoneLookupResults.isEmpty else {
+                throw NSError(
+                    domain: "SlateSharingTests",
+                    code: -16,
+                    userInfo: [NSLocalizedDescriptionKey: "Unexpected lookupPhoneParticipants adapter call"]
+                )
+            }
+            return try phoneLookupResults.removeFirst().get()
+        }
+    }
 }
 
 private func sharingTestShare(title: String? = nil) -> CKShare {
@@ -1730,6 +1977,14 @@ private func alreadySharedError() -> NSError {
     NSError(
         domain: "CKErrorDomain",
         code: 30,
+        userInfo: nil
+    )
+}
+
+private func cloudKitError(_ code: CKError.Code) -> NSError {
+    NSError(
+        domain: "CKErrorDomain",
+        code: code.rawValue,
         userInfo: nil
     )
 }
