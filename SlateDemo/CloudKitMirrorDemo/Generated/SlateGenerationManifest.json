@@ -1,0 +1,9 @@
+{
+  "files" : [
+    "CloudKitMirrorSchema.swift",
+    "DatabaseNote.swift",
+    "Note+SlateBridge.swift"
+  ],
+  "generatorVersion" : 1,
+  "schemaFingerprint" : "diagnostic:726bce411d5f1198"
+}

@@ -11,3 +11,11 @@ swift run slate-generator generate \
   --model-module SlateDemo \
   --runtime-module SlateDemo \
   --prune
+
+swift run slate-generator generate \
+  --input SlateDemo/CloudKitMirrorDemo/Models \
+  --output SlateDemo/CloudKitMirrorDemo/Generated \
+  --schema-name CloudKitMirrorSchema \
+  --model-module CloudKitMirrorDemo \
+  --runtime-module CloudKitMirrorDemo \
+  --prune
