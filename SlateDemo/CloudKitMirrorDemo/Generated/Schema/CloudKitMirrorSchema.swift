@@ -11,6 +11,7 @@ import SlateSchema
 public enum CloudKitMirrorSchema: SlateSchema {
     public static let schemaIdentifier = "CloudKitMirrorSchema"
     public static let schemaFingerprint = "diagnostic:726bce411d5f1198"
+    public static let cloudKitEnabled = true
 
     public static let entities: [SlateEntityMetadata] = [
         SlateEntityMetadata(

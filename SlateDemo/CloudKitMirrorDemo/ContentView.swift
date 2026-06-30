@@ -36,7 +36,7 @@ struct ContentView: View {
                 NoteDetailView(noteId: noteId)
             }
             .safeAreaInset(edge: .bottom) {
-                SyncStatusBar(isCloudKitEnabled: store.isCloudKitEnabled)
+                SyncStatusBar()
             }
             .alert("Something went wrong", isPresented: Binding(
                 get: { store.errorMessage != nil },
@@ -229,15 +229,13 @@ private struct NoteDetailView: View {
 // MARK: - Sync status
 
 private struct SyncStatusBar: View {
-    let isCloudKitEnabled: Bool
+    @Environment(NotesStore.self) private var store
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: isCloudKitEnabled ? "icloud" : "internaldrive")
-                .foregroundStyle(isCloudKitEnabled ? Color.blue : .secondary)
-            Text(isCloudKitEnabled
-                ? "Syncing with iCloud"
-                : "Stored on this device · CloudKit sync arrives in pass 2")
+            icon
+                .frame(width: 18)
+            Text(text)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -245,6 +243,40 @@ private struct SyncStatusBar: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(.bar)
+    }
+
+    @ViewBuilder private var icon: some View {
+        if !store.isCloudKitEnabled {
+            Image(systemName: "internaldrive").foregroundStyle(.secondary)
+        } else if store.isSyncing {
+            ProgressView().controlSize(.mini)
+        } else {
+            Image(systemName: iconName).foregroundStyle(iconColor)
+        }
+    }
+
+    private var iconName: String {
+        switch store.accountStatus {
+        case .available: "icloud"
+        case .unavailable: "icloud.slash"
+        case .restricted: "lock.icloud"
+        case .couldNotDetermine: "icloud"
+        }
+    }
+
+    private var iconColor: Color {
+        store.accountStatus == .available ? .blue : .secondary
+    }
+
+    private var text: String {
+        guard store.isCloudKitEnabled else { return "Stored on this device" }
+        if store.isSyncing { return "Syncing with iCloud…" }
+        switch store.accountStatus {
+        case .available: return "iCloud sync on"
+        case .unavailable: return "Sign in to iCloud to sync"
+        case .restricted: return "iCloud access is restricted"
+        case .couldNotDetermine: return "Checking iCloud…"
+        }
     }
 }
 

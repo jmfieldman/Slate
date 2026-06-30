@@ -6,29 +6,30 @@ import Slate
 ///
 /// ## CloudKit mirroring
 ///
-/// This first pass runs against a **local** store (`storageMode: .local`) so the
-/// app works without any iCloud provisioning. The point of the demo is that
-/// flipping to CloudKit requires no UI or query changes — only the store
-/// configuration below — because Slate mirrors the same Core Data stack to
-/// CloudKit transparently. To enable sync in pass 2:
+/// The store is opened in `.cloudKitMirrored` mode, so Slate mirrors the same
+/// Core Data stack to the private CloudKit database. No UI or query code knows
+/// about CloudKit — `notesStream` republishes whenever CloudKit imports remote
+/// changes, so two devices signed into the same iCloud account see each other's
+/// notes automatically. The only remaining work is provisioning (signing team +
+/// the iCloud/CloudKit container); the entitlements/Info.plist are already in the
+/// target. See `SlateDemo/README.md`.
 ///
-///   1. Add the iCloud + CloudKit capability and a container to the target.
-///   2. Set `cloudKit: true` on `Note` and re-run `./generate_cloudkit_demo.sh`.
-///   3. Change `Self.storageMode` to
-///      `.cloudKitMirrored(containerIdentifier: Self.cloudKitContainerIdentifier)`.
-///
-/// Once that's done, two devices signed into the same iCloud account see each
-/// other's notes automatically — the `notesStream` below republishes whenever
-/// CloudKit imports remote changes.
+/// On an unprovisioned simulator the local store still loads and the app works
+/// offline; it simply can't sync without an account/container.
 @MainActor
 @Observable
 final class NotesStore {
     /// The CloudKit container this demo will mirror to once provisioned (pass 2).
     static let cloudKitContainerIdentifier = "iCloud.org.fieldman.CloudKitMirrorDemo"
 
-    /// Pass 1: local-only. Pass 2: swap to
-    /// `.cloudKitMirrored(containerIdentifier: cloudKitContainerIdentifier)`.
-    static let storageMode: SlateStorageMode = .local
+    /// CloudKit-mirrored: every write is mirrored to the private CloudKit
+    /// database, and remote changes import back into `notesStream`. Requires the
+    /// target to be provisioned for the container below (signing team + iCloud
+    /// capability). To run purely locally again, set this to `.local` and revert
+    /// `Note` to `@SlateEntity()` (regenerate) — the schema's `cloudKitEnabled`
+    /// flag must match the storage mode.
+    static let storageMode: SlateStorageMode =
+        .cloudKitMirrored(containerIdentifier: cloudKitContainerIdentifier)
 
     private let slate: Slate<CloudKitMirrorSchema>
 
@@ -38,14 +39,20 @@ final class NotesStore {
     var isConfigured = false
     var errorMessage: String?
 
-    /// `true` once the store is configured for CloudKit mirroring (pass 2). Drives
-    /// the sync status footer. Derived from the storage mode so it stays honest.
+    /// `true` when the store is configured for CloudKit mirroring. Drives the sync
+    /// status footer. Derived from the storage mode so it stays honest.
     var isCloudKitEnabled: Bool {
         switch Self.storageMode {
         case .local: false
         case .cloudKitMirrored, .cloudKitShared: true
         }
     }
+
+    /// Live iCloud account status reported by the CloudKit mirroring stack.
+    var accountStatus: SlateAccountStatus { slate.accountStatus }
+
+    /// `true` while CloudKit is importing remote changes or merging them in.
+    var isSyncing: Bool { slate.isImporting || slate.isMerging }
 
     init() {
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

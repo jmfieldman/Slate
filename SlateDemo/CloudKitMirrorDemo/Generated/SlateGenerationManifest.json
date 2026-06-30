@@ -1,5 +1,6 @@
 {
   "files" : [
+    "CloudKitFieldsReport.md",
     "CloudKitMirrorSchema.swift",
     "DatabaseNote.swift",
     "Note+SlateBridge.swift"
