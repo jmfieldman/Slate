@@ -687,6 +687,71 @@ You shouldn't need to interact with the cache directly. It exists so
 that `slate.many(Patient.self)` called twice in a row doesn't allocate
 a fresh `Patient` for each row both times.
 
+## CloudKit (mirroring & sharing)
+
+Slate can mirror its Core Data store to CloudKit — and accept records shared by
+other iCloud users — by passing a `storageMode` when you create the handle.
+Everything else (queries, mutations, streams) is unchanged: no UI or query code
+knows CloudKit is on, and streams simply republish when remote changes import.
+
+```swift
+let slate = Slate<MyAppSchema>(
+    storeURL: url,
+    storageMode: .cloudKitMirrored(containerIdentifier: "iCloud.com.example.MyApp")
+)
+try await slate.configure()
+```
+
+Three modes (`SlateStorageMode`):
+
+- `.local` — the default. No CloudKit.
+- `.cloudKitMirrored(containerIdentifier:)` — mirrors the store to the signed-in
+  user's **private** CloudKit database. The same account on two devices syncs
+  automatically; `slate.stream(...)` republishes on every remote import.
+- `.cloudKitShared(containerIdentifier:)` — mirroring **plus** a second *shared*
+  store for records other users share with you, and access to the `slate.sharing`
+  API. A single `slate.stream(...)` surfaces both owned and shared-with-me rows.
+
+### Requirements
+
+- Mark the entity `@SlateEntity(cloudKit: true)` and honor CloudKit's subset:
+  every attribute optional or defaulted, `#Index` instead of `#Unique`, and no
+  ordered relationships. The generated schema's `cloudKitEnabled` flag must match
+  the storage mode — a mismatch throws `SlateError.storageModeSchemaMismatch` from
+  `configure()`.
+- Give the app target the iCloud/CloudKit container entitlement and the
+  `remote-notification` background mode (plus `CKSharingSupported` for sharing).
+- An unprovisioned build still runs locally; it just can't sync. Watch
+  `slate.accountStatus`, `slate.isImporting`, and `slate.isMerging` to drive UI.
+
+### Sharing
+
+`slate.sharing` (throws unless the mode is `.cloudKitShared`) wraps the CloudKit
+sharing flow:
+
+```swift
+// Owner: mint a CKShare for a record and hand it to the system share sheet.
+let (share, container) = try await slate.sharing.prepareShare(for: note, title: "My note")
+
+// Invitee: accept an invitation. Deliver the metadata from your scene delegate's
+// windowScene(_:userDidAcceptCloudKitShareWith:) — for a SwiftUI WindowGroup app
+// that callback does *not* arrive on the UIApplicationDelegate.
+try await slate.sharing.acceptShare(metadata)
+```
+
+Also `share(for:)` (inspect an existing share), `stopSharing(_:)`, and
+`lookupParticipants(emailAddresses:phoneNumbers:)`. Once a share is accepted the
+shared record lands in the shared store and shows up in your existing streams —
+edits from either side sync to both.
+
+### Demos
+
+`SlateDemo/CloudKitMirrorDemo` and `SlateDemo/CloudKitShareDemo` are end-to-end
+notes apps for each mode. **`SlateDemo/README.md` collects the CloudKit gotchas** —
+the signed-build requirement, which delegate receives accepted shares, the
+`CKShare.publicPermission` default that blocks copied links, and more — worth
+reading before wiring CloudKit into your own app.
+
 ## Tradeoffs and non-goals
 
 Slate 3 is opinionated about what it _isn't_:

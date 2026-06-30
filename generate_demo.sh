@@ -19,3 +19,11 @@ swift run slate-generator generate \
   --model-module CloudKitMirrorDemo \
   --runtime-module CloudKitMirrorDemo \
   --prune
+
+swift run slate-generator generate \
+  --input SlateDemo/CloudKitShareDemo/Models \
+  --output SlateDemo/CloudKitShareDemo/Generated \
+  --schema-name CloudKitShareSchema \
+  --model-module CloudKitShareDemo \
+  --runtime-module CloudKitShareDemo \
+  --prune
